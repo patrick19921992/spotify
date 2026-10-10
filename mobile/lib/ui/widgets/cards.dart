@@ -99,19 +99,36 @@ Widget contextCover(ContextItem item, double size, {double radius = 4}) {
 }
 
 /// Horizontale Reihe von Karten.
+///
+/// Ohne [height] wird die Höhe aus [cardWidth] und der Schriftgröße berechnet
+/// (Cover + 2 Zeilen Titel + Untertitel), sodass nichts überläuft – auch nicht bei großer Systemschrift.
 class CardRow extends StatelessWidget {
   final List<Widget> children;
-  final double height;
+  final double? height;
+  final double cardWidth;
 
-  const CardRow({super.key, required this.children, this.height = 210});
+  const CardRow({super.key, required this.children, this.height, this.cardWidth = 148});
+
+  /// Benötigte Höhe für [MediaCard]s der Breite [cardWidth].
+  static double heightFor(BuildContext context, double cardWidth) {
+    final scaler = MediaQuery.textScalerOf(context);
+    // Zeilenhöhe der Standard-Textstile ≈ 1,45 × Schriftgröße
+    return cardWidth + 8 + 2 + scaler.scale(13.5) * 1.45 * 2 + scaler.scale(12) * 1.45 + 6;
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Größere Systemschrift: Reihe entsprechend höher machen (Titel 2 Zeilen + Untertitel)
-    final textScaler = MediaQuery.textScalerOf(context);
-    final extra = (textScaler.scale(13.5) - 13.5) * 2.7 + (textScaler.scale(12) - 12) * 1.35;
+    final double rowHeight;
+    if (height == null) {
+      rowHeight = heightFor(context, cardWidth);
+    } else {
+      // Feste Höhe: bei größerer Systemschrift entsprechend zulegen
+      final scaler = MediaQuery.textScalerOf(context);
+      final extra = (scaler.scale(13.5) - 13.5) * 2.9 + (scaler.scale(12) - 12) * 1.45;
+      rowHeight = height! + extra.clamp(0, 140);
+    }
     return SizedBox(
-      height: height + extra.clamp(0, 120),
+      height: rowHeight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
