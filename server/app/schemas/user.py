@@ -36,6 +36,9 @@ class TokenOut(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+    # Für Stream- und Cover-Links: …/stream?t=<media_token>
+    media_token: str
+    media_expires_in: int
     user: UserOut
 
 

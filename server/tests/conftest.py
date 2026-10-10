@@ -21,6 +21,10 @@ def settings(tmp_path: Path) -> Settings:
         admin_username="admin",
         admin_password=ADMIN_PASSWORD,
         log_level="WARNING",
+        # In Tests wird gezielt per scanner.scan() eingelesen – keine Hintergrund-Scans
+        scan_on_startup=False,
+        library_watch=False,
+        scan_interval_minutes=0,
     )
 
 

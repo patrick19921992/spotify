@@ -13,6 +13,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TZ=Europe/Berlin \
     HOME=/tmp
 
+# ffmpeg/ffprobe: Videos einlesen, Vorschaubilder, Umwandlung für iPhone/Datensparmodus
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /srv
 COPY requirements.txt .
 RUN pip install -r requirements.txt

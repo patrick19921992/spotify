@@ -8,7 +8,7 @@ verfügbarer Qualität von YouTube (Music), und die App zeigt dabei an, wie lang
 
 | Teil | Ordner | Technik | Status |
 |------|--------|---------|--------|
-| Server (läuft auf Unraid) | `server/` | Python, FastAPI, SQLite, Docker | **Schritt 1 fertig:** Accounts, Login, Rubriken |
+| Server (läuft auf Unraid) | `server/` | Python, FastAPI, SQLite, ffmpeg, Docker | **Schritt 1–2 fertig:** Accounts, Rubriken, Bibliothek, Streaming |
 | Handy-App (Android + iOS) | `mobile/` | Flutter | geplant (Schritt 5–6) |
 
 Was noch kommt und in welcher Reihenfolge: siehe [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -43,7 +43,53 @@ mitangelegt, und Unterordner wie `Videos/Konzerte` sind möglich.
 
 ---
 
-## Installation (Stand Schritt 1, zum Ausprobieren)
+## Bibliothek: So werden deine Dateien erkannt
+
+Der Server liest alle Rubrik-Ordner automatisch ein:
+
+- **beim Start**,
+- **sofort bei Änderungen**: Neue oder gelöschte Dateien tauchen nach etwa 5 Sekunden in der App auf bzw. verschwinden,
+- **zur Sicherheit alle 30 Minuten**.
+
+Unveränderte Dateien werden übersprungen, ein erneuter Scan dauert deshalb nur Sekunden.
+
+**Unterstützte Formate**
+
+| Rubrik-Typ | Dateien |
+|-----------|---------|
+| Audio | MP3, M4A, M4B (Hörbücher), AAC, Opus, Ogg, FLAC, WAV, WMA, WebM |
+| Video | MP4, M4V, MKV, WebM, MOV |
+
+**Woher die Angaben kommen**
+
+1. Aus den **Tags** der Datei: Titel, Künstler, Album, Album-Künstler, Track- und CD-Nummer, Jahr, Genre, Cover.
+2. Fehlen Tags, aus **Ordner- und Dateinamen**. Empfohlene Ordnerstruktur:
+   ```
+   Musik/Künstler/Album/01 - Titel.mp3
+   Hoerspiele/Die drei Fragezeichen/Folge 001 - Titel/01 Kapitel.mp3
+   Musikvideos/Künstler - Titel.mp4
+   ```
+3. **Cover:** im Lied eingebettet → gleichnamiges Bild (`Titel.jpg`) → `cover.jpg`/`folder.jpg` im
+   Ordner → bei Videos ein Standbild aus dem Video.
+
+„feat.“-Künstler werden getrennt erkannt, z. B. „Daft Punk feat. Pharrell Williams“. Der Song erscheint
+dann bei beiden Künstlern, wie bei Spotify. Unfertige Downloads (`.part`), versteckte Dateien und defekte
+Dateien werden übersprungen. Defekte Dateien siehst du unter `GET /api/library/scan`.
+
+**Abspielen auf dem iPhone**
+
+iPhones können Opus, Ogg und WebM nicht abspielen. Die App fragt solche Titel deshalb mit
+`compatible=true` an. Der Server wandelt sie dann einmalig in AAC (256 kbit/s) um und speichert das
+Ergebnis zwischen (`/data/transcode`). Danach geht auch das Spulen sofort. Android spielt alles direkt.
+Den gleichen Mechanismus nutzt der **Datensparmodus** (`quality=low|normal|high`).
+
+> **Videos** werden nicht umgewandelt, dafür bräuchte ein Unraid ohne Grafikkarte zu viel Rechenleistung.
+> MP4 mit H.264 läuft überall. MKV und WebM laufen auf Android, auf dem iPhone aber nicht zuverlässig.
+> Deshalb lädt der Downloader in Schritt 4 Videos bevorzugt als MP4.
+
+---
+
+## Installation (Stand Schritt 2, zum Ausprobieren)
 
 Ein fertiges Image und eine Unraid-Vorlage („Add Container“) kommen in Schritt 7. Bis dahin baust du das
 Image direkt aus diesem Repository.
@@ -94,6 +140,12 @@ direkt im Browser testen.
 | `TZ` | `Europe/Berlin` | Zeitzone für Logs |
 | `ACCESS_TOKEN_MINUTES` | `30` | Gültigkeit des Zugriffs-Tokens; die App erneuert ihn automatisch |
 | `REFRESH_TOKEN_DAYS` | `90` | So lange bleibt ein Handy angemeldet, ohne die App zu nutzen |
+| `MEDIA_TOKEN_HOURS` | `168` | Gültigkeit der Stream-/Cover-Links (Player-Warteschlangen) |
+| `SCAN_ON_STARTUP` | `true` | Bibliothek beim Start einlesen |
+| `SCAN_INTERVAL_MINUTES` | `30` | Regelmäßiger Sicherheits-Scan (`0` = aus) |
+| `LIBRARY_WATCH` | `true` | Ordner live überwachen (neue Dateien sofort sichtbar) |
+| `TRANSCODE_CACHE_MB` | `2048` | Zwischenspeicher für umgewandelte Titel (iPhone/Datensparmodus) |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Nur ändern, wenn ffmpeg woanders liegt |
 | `LOGIN_MAX_FAILURES_PER_USER` | `10` | Fehlversuche je Benutzer, bevor der Login kurz gesperrt wird |
 | `LOGIN_MAX_FAILURES_PER_IP` | `30` | Fehlversuche je IP-Adresse |
 | `LOGIN_WINDOW_MINUTES` | `15` | Zeitfenster bzw. Sperrdauer |
@@ -143,7 +195,7 @@ docker exec -u 99:100 selfify python -m app.cli create-user papa 'SicheresPasswo
 
 ---
 
-## API-Überblick (Stand Schritt 1)
+## API-Überblick (Stand Schritt 2)
 
 Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/docs`.
 
@@ -153,7 +205,15 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Anmeldung | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` |
 | Mein Konto | `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/{id}` |
 | Benutzer (Admin) | `GET/POST /users`, `GET/PATCH/DELETE /users/{id}` |
-| Rubriken | `GET /categories` (alle), `POST /categories`, `PATCH/DELETE /categories/{id}` (Admin) |
+| Rubriken | `GET /categories` (alle, inkl. Anzahl Titel), `POST /categories`, `PATCH/DELETE /categories/{id}` (Admin) |
+| Bibliothek | `GET /artists`, `GET /artists/{id}`, `GET /albums`, `GET /albums/{id}`, `GET /tracks`, `GET /tracks/{id}` |
+| Suche | `GET /search?q=…` – Top-Treffer, Songs, Künstler, Alben, Videos (findet „Ärzte“ auch als „aerzte“) |
+| Scan | `GET /library` (Statistik), `GET /library/scan` (Status), `POST /library/scan` (Admin) |
+| Streaming | `GET /tracks/{id}/stream` (Spulen per Range; `quality`, `compatible`), `GET /covers/{id}?size=64\|128\|300\|600` |
+
+Listen sind seitenweise (`limit`, `offset`) und sortierbar (`sort=title|recent|…`). Streams und Cover
+akzeptieren statt des `Authorization`-Headers auch den **Medien-Token** aus dem Login als `?t=…`. So
+funktionieren lange Wiedergabelisten im Player auch nach Ablauf des 30-Minuten-Tokens.
 
 Benutzer haben das Recht **`can_download`**. Damit legst du z. B. fest, dass die Kinder Songs hören,
 aber keine neuen Downloads starten dürfen.

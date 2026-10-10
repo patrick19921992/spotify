@@ -19,14 +19,16 @@ Jeder Schritt endet mit einer Pause, einer Zusammenfassung und deiner Freigabe.
 - [x] **Rubriken mit eigenen Ordnern** (Musik, Musikvideos, Hörspiele & Hörbücher, Videos, weitere frei anlegbar)
 - [x] Konsolen-Befehle (Passwort zurücksetzen, Benutzer anlegen)
 
-## Schritt 2 – Bibliothek & Streaming
+## Schritt 2 – Bibliothek & Streaming ✅
 
-- [ ] Scanner liest alle Rubrik-Ordner: Titel, Künstler, Album, Jahr, Genre, Tracknummer, Dauer, Cover
-- [ ] Erkennt neue, geänderte und gelöschte Dateien automatisch (Ordner-Überwachung + nächtlicher Scan)
-- [ ] Künstler-, Album-, Song- und Video-Ansichten wie bei Spotify
-- [ ] Streaming mit Spulen (HTTP-Range), Cover in mehreren Größen
-- [ ] Optional: Datensparmodus (Server wandelt beim Streamen in kleinere Qualität um)
-- [ ] Suche in der eigenen Bibliothek (Songs, Künstler, Alben, Playlists, Videos)
+- [x] Scanner liest alle Rubrik-Ordner: Titel, Künstler, Album, Jahr, Genre, Tracknummer, Dauer, Qualität, Cover
+- [x] Fehlende Tags werden aus Ordner-/Dateinamen ergänzt, „feat.“-Künstler getrennt erkannt
+- [x] Erkennt neue, geänderte und gelöschte Dateien automatisch (Live-Überwachung + Scan alle 30 Min.)
+- [x] Künstler- (beliebte Titel, Alben, „Enthalten auf“, Videos), Album-, Song- und Video-Ansichten
+- [x] Streaming mit Spulen (HTTP-Range), Cover in mehreren Größen + Hauptfarbe für Farbverläufe
+- [x] Umwandlung Opus/Ogg → AAC fürs iPhone und **Datensparmodus** (mit Zwischenspeicher)
+- [x] Suche in der eigenen Bibliothek mit Top-Treffer (Umlaute egal: „Ärzte“ = „aerzte“)
+- [x] Stream-Links mit eigenem Medien-Token (Player-Warteschlangen laufen auch nach 30 Minuten weiter)
 
 ## Schritt 3 – Playlists & persönliche Daten
 

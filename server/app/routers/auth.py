@@ -17,6 +17,8 @@ def token_out(issued: IssuedTokens) -> TokenOut:
         access_token=issued.access_token,
         refresh_token=issued.refresh_token,
         expires_in=issued.expires_in,
+        media_token=issued.media_token,
+        media_expires_in=issued.media_expires_in,
         user=UserOut.model_validate(issued.user),
     )
 

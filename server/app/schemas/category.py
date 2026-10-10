@@ -20,6 +20,8 @@ class CategoryOut(BaseModel):
     icon: str
     sort_order: int
     is_default: bool
+    # Anzahl Titel/Videos in dieser Rubrik
+    item_count: int = 0
 
 
 class CategoryCreateIn(BaseModel):

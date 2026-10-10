@@ -3,14 +3,14 @@
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.database import get_db
 from app.models import User, UserSession, utcnow
-from app.security import decode_access_token
+from app.security import decode_access_token, decode_media_token
 from app.services.auth import active_session
 
 _bearer = HTTPBearer(auto_error=False)
@@ -39,19 +39,10 @@ def _unauthorized(detail: str = "Nicht angemeldet.") -> HTTPException:
     return HTTPException(status.HTTP_401_UNAUTHORIZED, detail, headers={"WWW-Authenticate": "Bearer"})
 
 
-def get_auth(
-    request: Request,
-    db: DbSession,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> AuthContext:
-    if credentials is None:
-        raise _unauthorized()
-    payload = decode_access_token(request.app.state.secret_key, credentials.credentials)
-    if payload is None:
-        raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
+def _auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
     try:
-        user_id, session_id = int(payload["sub"]), int(payload["sid"])
-    except (TypeError, ValueError):
+        user_id, session_id = int(str(payload["sub"])), int(str(payload["sid"]))
+    except (KeyError, TypeError, ValueError):
         raise _unauthorized("Anmeldung abgelaufen oder ungültig.") from None
 
     user = db.get(User, user_id)
@@ -68,7 +59,42 @@ def get_auth(
     return AuthContext(user=user, session=session)
 
 
+def get_auth(
+    request: Request,
+    db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> AuthContext:
+    if credentials is None:
+        raise _unauthorized()
+    payload = decode_access_token(request.app.state.secret_key, credentials.credentials)
+    if payload is None:
+        raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
+    return _auth_from_payload(db, payload)
+
+
 Auth = Annotated[AuthContext, Depends(get_auth)]
+
+
+def get_media_auth(
+    request: Request,
+    db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    t: Annotated[str | None, Query(description="Medien-Token aus dem Login (für Player-Links)")] = None,
+) -> AuthContext:
+    """Für Streams und Cover: normaler Bearer-Token ODER Medien-Token im Link (?t=…)."""
+    secret = request.app.state.secret_key
+    if credentials is not None:
+        payload = decode_access_token(secret, credentials.credentials)
+    elif t:
+        payload = decode_media_token(secret, t)
+    else:
+        raise _unauthorized()
+    if payload is None:
+        raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
+    return _auth_from_payload(db, payload)
+
+
+MediaAuth = Annotated[AuthContext, Depends(get_media_auth)]
 
 
 def get_current_user(auth: Auth) -> User:

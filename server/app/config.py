@@ -30,6 +30,18 @@ class Settings(BaseSettings):
 
     access_token_minutes: int = Field(default=30, ge=5, le=24 * 60)
     refresh_token_days: int = Field(default=90, ge=1, le=365)
+    # Token in Stream-/Cover-Links (Player brauchen Links, die länger gelten als 30 Minuten)
+    media_token_hours: int = Field(default=168, ge=1, le=24 * 90)
+
+    # Bibliothek: beim Start einlesen, regelmäßig nachsehen, Ordner live überwachen
+    scan_on_startup: bool = True
+    scan_interval_minutes: int = Field(default=30, ge=0)
+    library_watch: bool = True
+
+    # Umwandlung (z. B. Opus -> AAC fürs iPhone oder Datensparmodus)
+    ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
+    transcode_cache_mb: int = Field(default=2048, ge=0)
 
     # Schutz gegen Passwort-Raten (Fehlversuche innerhalb des Zeitfensters)
     login_max_failures_per_user: int = Field(default=10, ge=1)
@@ -54,6 +66,14 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip("/")
+
+    @property
+    def covers_dir(self) -> Path:
+        return self.data_dir / "covers"
+
+    @property
+    def transcode_dir(self) -> Path:
+        return self.data_dir / "transcode"
 
     @property
     def database_path(self) -> Path:

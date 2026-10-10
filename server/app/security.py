@@ -56,20 +56,20 @@ def load_or_create_secret_key(configured: str, data_dir: Path) -> str:
     return key
 
 
-def create_access_token(secret: str, user_id: int, session_id: int, minutes: int) -> str:
+def _create_token(secret: str, token_type: str, user_id: int, session_id: int, lifetime: timedelta) -> str:
     now = datetime.now(UTC)
     payload = {
         "iss": JWT_ISSUER,
         "sub": str(user_id),
         "sid": session_id,
-        "type": "access",
+        "type": token_type,
         "iat": now,
-        "exp": now + timedelta(minutes=minutes),
+        "exp": now + lifetime,
     }
     return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
 
 
-def decode_access_token(secret: str, token: str) -> dict[str, Any] | None:
+def _decode_token(secret: str, token: str, token_type: str) -> dict[str, Any] | None:
     try:
         payload = jwt.decode(
             token,
@@ -80,9 +80,26 @@ def decode_access_token(secret: str, token: str) -> dict[str, Any] | None:
         )
     except jwt.PyJWTError:
         return None
-    if payload.get("type") != "access":
+    if payload.get("type") != token_type:
         return None
     return payload
+
+
+def create_access_token(secret: str, user_id: int, session_id: int, minutes: int) -> str:
+    return _create_token(secret, "access", user_id, session_id, timedelta(minutes=minutes))
+
+
+def decode_access_token(secret: str, token: str) -> dict[str, Any] | None:
+    return _decode_token(secret, token, "access")
+
+
+def create_media_token(secret: str, user_id: int, session_id: int, hours: int) -> str:
+    """Token nur für Streams und Cover (als ?t=… im Link). Gilt nicht für die übrige API."""
+    return _create_token(secret, "media", user_id, session_id, timedelta(hours=hours))
+
+
+def decode_media_token(secret: str, token: str) -> dict[str, Any] | None:
+    return _decode_token(secret, token, "media")
 
 
 def new_refresh_token() -> str:

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import User, UserSession, utcnow
-from app.security import create_access_token, hash_token, new_refresh_token
+from app.security import create_access_token, create_media_token, hash_token, new_refresh_token
 
 # So lange gilt der vorherige Refresh-Token nach dem Erneuern noch (Antwort ging verloren)
 REFRESH_GRACE = timedelta(seconds=60)
@@ -19,6 +19,8 @@ class IssuedTokens:
     access_token: str
     refresh_token: str
     expires_in: int
+    media_token: str
+    media_expires_in: int
     user: User
     session: UserSession
 
@@ -33,7 +35,16 @@ def _issue(settings: Settings, secret: str, session: UserSession, user: User) ->
     session.last_used_at = now
     session.expires_at = now + timedelta(days=settings.refresh_token_days)
     access_token = create_access_token(secret, user.id, session.id, settings.access_token_minutes)
-    return IssuedTokens(access_token, refresh_token, settings.access_token_minutes * 60, user, session)
+    media_token = create_media_token(secret, user.id, session.id, settings.media_token_hours)
+    return IssuedTokens(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.access_token_minutes * 60,
+        media_token=media_token,
+        media_expires_in=settings.media_token_hours * 3600,
+        user=user,
+        session=session,
+    )
 
 
 def start_session(

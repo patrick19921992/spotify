@@ -1,6 +1,6 @@
 """Rubriken (eigene Ordner auf dem Unraid) – lesen für alle, ändern nur für Admins."""
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 
 from app.deps import AdminUser, AppSettings, CurrentUser, DbSession
@@ -14,6 +14,7 @@ from app.services.categories import (
     set_default,
     unique_slug,
 )
+from app.services.library import category_counts
 
 router = APIRouter(prefix="/categories", tags=["Rubriken"])
 
@@ -25,14 +26,21 @@ def _get_category(db: DbSession, category_id: int) -> Category:
     return category
 
 
+def _category_out(category: Category, count: int = 0) -> CategoryOut:
+    return CategoryOut.model_validate(category).model_copy(update={"item_count": count})
+
+
 @router.get("", response_model=list[CategoryOut])
 def list_categories(_: CurrentUser, db: DbSession) -> list[CategoryOut]:
+    counts = category_counts(db)
     categories = db.scalars(select(Category).order_by(Category.sort_order, Category.name))
-    return [CategoryOut.model_validate(c) for c in categories]
+    return [_category_out(c, counts.get(c.id, 0)) for c in categories]
 
 
 @router.post("", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
-def add_category(body: CategoryCreateIn, _: AdminUser, db: DbSession, settings: AppSettings) -> CategoryOut:
+def add_category(
+    body: CategoryCreateIn, request: Request, _: AdminUser, db: DbSession, settings: AppSettings
+) -> CategoryOut:
     try:
         category = create_category(
             db,
@@ -49,7 +57,9 @@ def add_category(body: CategoryCreateIn, _: AdminUser, db: DbSession, settings: 
         code = status.HTTP_409_CONFLICT if isinstance(exc, CategoryConflictError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(code, str(exc)) from None
     db.commit()
-    return CategoryOut.model_validate(category)
+    # Falls im Ordner schon Dateien liegen, gleich einlesen
+    request.app.state.scanner.request_scan([category.id])
+    return _category_out(category)
 
 
 @router.patch("/{category_id}", response_model=CategoryOut)
@@ -70,12 +80,14 @@ def update_category(category_id: int, body: CategoryUpdateIn, _: AdminUser, db: 
     if body.is_default:
         set_default(db, category)
     db.commit()
-    return CategoryOut.model_validate(category)
+    return _category_out(category, category_counts(db).get(category.id, 0))
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_category(category_id: int, _: AdminUser, db: DbSession) -> Response:
+def remove_category(category_id: int, request: Request, _: AdminUser, db: DbSession) -> Response:
     """Entfernt nur die Rubrik aus der App. Der Ordner und alle Dateien bleiben auf dem Unraid."""
     delete_category(db, _get_category(db, category_id))
     db.commit()
+    # Titel der Rubrik sind mit gelöscht -> leere Alben/Künstler/Cover aufräumen
+    request.app.state.scanner.finalize_now(db)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
