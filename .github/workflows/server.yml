@@ -87,7 +87,11 @@ jobs:
             type=semver,pattern={{version}}
             type=sha,format=short
       - name: Image veröffentlichen
+        id: publish
         if: github.event_name != 'pull_request'
+        # Private Repositories im kostenlosen GitHub-Tarif: 500 MB für Images + Artefakte.
+        # Ist das voll, bleibt der Build grün – siehe Hinweis unten und README ("selbst bauen").
+        continue-on-error: true
         uses: docker/build-push-action@v7
         with:
           context: server
@@ -95,3 +99,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+      - name: Hinweis, falls die Veröffentlichung nicht ging
+        if: github.event_name != 'pull_request' && steps.publish.outcome == 'failure'
+        run: |
+          echo "::warning::Das Docker-Image konnte nicht in der GitHub Container Registry veröffentlicht werden (meist: Speicher des privaten Repositories voll). Auf dem Unraid lässt sich das Image mit unraid/selfify-update.sh selbst bauen – siehe README."
+          {
+            echo "### Docker-Image nicht veröffentlicht"
+            echo "Meist ist der Speicher (500 MB bei privaten Repositories) voll."
+            echo "Lösung: Repository öffentlich machen **oder** auf dem Unraid selbst bauen (unraid/selfify-update.sh)."
+          } >> "$GITHUB_STEP_SUMMARY"

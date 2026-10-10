@@ -25,34 +25,54 @@ Den Funktionsumfang im Detail findest du in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Installation auf Unraid
 
-Das Docker-Image baut GitHub automatisch bei jeder Änderung (`ghcr.io/patrick19921992/selfify-server`).
-
-**1. Share anlegen:** Unraid → *Shares* → *Add Share* → Name `selfify`. Hier landen Musik, Hörspiele und
+**Vorbereitung:** Unraid → *Shares* → *Add Share* → Name `selfify`. Hier landen Musik, Hörspiele und
 Videos. Die Rechte (nobody:users) stimmen automatisch.
 
-**2. Vorlage einspielen:** Im Unraid-Terminal:
+Danach gibt es zwei Wege. **Weg A** ist der bequemste. **Weg B** brauchst du, solange das Repository privat
+ist und GitHub das fertige Image nicht speichern kann.
 
-```bash
-wget -O /boot/config/plugins/dockerMan/templates-user/my-selfify.xml \
-  https://raw.githubusercontent.com/patrick19921992/spotify/main/unraid/selfify.xml
-```
+### Weg A – fertiges Image + Unraid-Vorlage
 
-> Ist das Repository privat, lädt `wget` die Datei nicht. Kopiere dann `unraid/selfify.xml` per SMB nach
-> `\\tower\flash\config\plugins\dockerMan\templates-user\my-selfify.xml`.
+GitHub baut das Image bei jeder Änderung automatisch (`ghcr.io/patrick19921992/selfify-server`).
 
-**3. Container anlegen:** *Docker* → *Add Container* → Vorlage **selfify** wählen. Prüfe die Pfade
-(`/mnt/user/appdata/selfify`, `/mnt/user/selfify`), trage deine **Öffentliche Adresse** ein und klicke *Apply*.
+> **Voraussetzung:** Bei einem **privaten** Repository speichert GitHub im kostenlosen Tarif nur 500 MB für
+> Images und Build-Dateien zusammen. Ist das voll, wird kein Image veröffentlicht (der Build zeigt dann
+> eine Warnung). Abhilfe: Repository öffentlich machen. Es enthält keine Passwörter oder Daten, nur den
+> Code. Danach ist alles kostenlos und ohne Anmeldung nutzbar. Sonst → Weg B.
 
-**4. Admin-Passwort holen:** Container-Symbol → *Logs*. Beim ersten Start steht dort das erzeugte Passwort,
-falls du keins vorgegeben hast.
+1. Vorlage einspielen (Unraid-Terminal):
+   ```bash
+   wget -O /boot/config/plugins/dockerMan/templates-user/my-selfify.xml \
+     https://raw.githubusercontent.com/patrick19921992/spotify/main/unraid/selfify.xml
+   ```
+   Bei privatem Repository klappt `wget` nicht: Dann `unraid/selfify.xml` per SMB nach
+   `\\tower\flash\config\plugins\dockerMan\templates-user\my-selfify.xml` kopieren und vorher
+   einmalig `docker login ghcr.io -u <github-name>` mit einem Token mit Recht `read:packages` ausführen.
+2. *Docker* → *Add Container* → Vorlage **selfify** wählen, Pfade prüfen (`/mnt/user/appdata/selfify`,
+   `/mnt/user/selfify`), **Öffentliche Adresse** eintragen → *Apply*.
+3. Container-Symbol → *Logs*: Dort steht beim ersten Start das erzeugte Admin-Passwort.
 
-> **Privates Repository = privates Image:** GitHub legt das Image dann ebenfalls privat an. Entweder
-> machst du es öffentlich (GitHub → *Packages* → `selfify-server` → *Package settings* → *Change visibility*;
-> es enthält nur den Server-Code, keine Daten), oder du meldest Unraid einmalig an:
-> `docker login ghcr.io -u <github-name>` mit einem Token, das das Recht `read:packages` hat.
+Updates: *Docker* → *Check for Updates* → *Apply Update*.
 
-**Alternative:** `docker-compose.yml` mit dem Plugin „Docker Compose Manager“. Wer selbst bauen will, ändert
-dort `image:` in `build: ./server`.
+### Weg B – auf dem Unraid selbst bauen (klappt immer)
+
+1. Plugin **„Docker Compose Manager“** aus den *Apps* installieren (bringt `docker compose` mit).
+2. Bei privatem Repository ein Token anlegen: GitHub → *Settings* → *Developer settings* →
+   *Fine-grained tokens* → nur dieses Repository → *Contents: Read-only*.
+3. Das Skript [`unraid/selfify-update.sh`](unraid/selfify-update.sh) aufs Unraid kopieren (oder als neues
+   Skript im Plugin **„User Scripts“** einfügen), oben `GITHUB_TOKEN` eintragen und ausführen:
+   ```bash
+   bash /boot/config/selfify-update.sh
+   ```
+   Beim ersten Lauf legt es `/mnt/user/appdata/selfify-config.yml` an. Dort trägst du `PUBLIC_URL` (und
+   bei Bedarf andere Ordner) ein und startest das Skript noch einmal. Es lädt den Code, baut das Image
+   (ein paar Minuten) und startet den Container `selfify`.
+4. Admin-Passwort: `docker logs selfify`.
+
+Updates: Skript erneut ausführen. Im Plugin „User Scripts“ geht das z. B. automatisch jede Woche. Deine
+Einstellungen in `selfify-config.yml` bleiben erhalten.
+
+> Nimm nur **einen** der beiden Wege. Beide legen einen Container namens `selfify` an.
 
 Der Server ist danach unter `http://<unraid-ip>:8080` erreichbar. Unter `/api/docs` gibt es eine
 Testoberfläche für alle Funktionen.
@@ -86,13 +106,13 @@ Port 443 auf den Proxy weiterleiten.
 
 ## Die App installieren
 
-Die App baut GitHub automatisch: *Actions* → Workflow **App** → letzter Lauf → *Artifacts*. Bei
-Versions-Tags (`v1.0.0` …) liegen APK und IPA zusätzlich unter *Releases*.
+Die App baut GitHub automatisch. Die aktuelle Android-Version liegt nach jeder Änderung auf `main` unter
+**Releases → „App – aktuelle Version“** (`selfify.apk`). Bei Versions-Tags (`v1.0.0` …) gibt es zusätzlich
+feste Releases mit APK und IPA.
 
 ### Android
 
-1. `selfify-android` herunterladen, entpacken und `selfify.apk` aufs Handy kopieren (oder direkt am Handy
-   öffnen).
+1. `selfify.apk` aus dem Release herunterladen, am besten direkt am Handy (GitHub-App oder Browser, angemeldet).
 2. Installieren. Android fragt einmalig, ob Apps aus dieser Quelle erlaubt sind.
 3. Bei der ersten Wiedergabe die Benachrichtigungen erlauben (für die Steuerung auf dem Sperrbildschirm).
 
@@ -115,7 +135,7 @@ Apple erlaubt eigene Apps nur über einen dieser Wege:
 
 | Weg | Kosten | Hinweis |
 |-----|--------|---------|
-| **AltStore / SideStore** | kostenlos | IPA aus *Actions → App → „Run workflow“ (iOS anhaken)* oder aus *Releases* laden und mit AltStore/SideStore installieren. Mit kostenloser Apple-ID muss die App **alle 7 Tage** neu signiert werden (macht AltStore/SideStore automatisch im WLAN). |
+| **AltStore / SideStore** | kostenlos | *Actions → App → „Run workflow“* mit Haken bei iOS starten. Danach liegt `selfify.ipa` unter *Releases → „iOS – aktuelle Version“*. Mit AltStore/SideStore installieren. Mit kostenloser Apple-ID muss die App **alle 7 Tage** neu signiert werden (macht AltStore/SideStore automatisch im WLAN). |
 | **Apple-Developer-Account** | 99 €/Jahr | Signieren über Xcode (`mobile/ios/Runner.xcworkspace`) oder TestFlight. Ein Jahr gültig, bis zu 100 Geräte. |
 | **Xcode mit eigener Apple-ID** | kostenlos, Mac nötig | Handy per Kabel, in Xcode „Run“ – ebenfalls 7 Tage gültig. |
 
