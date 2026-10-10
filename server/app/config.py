@@ -1,0 +1,69 @@
+"""Zentrale Einstellungen – werden aus Umgebungsvariablen gelesen (Unraid-Template / docker-compose)."""
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Annotated
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Anzeigename des Servers in der App
+    server_name: str = "Selfify"
+    # Öffentliche Adresse hinter dem Reverse Proxy, z. B. https://musik.example.de
+    public_url: str = ""
+
+    # Datenordner (Datenbank, Schlüssel, Cover-Cache) -> Unraid: /mnt/user/appdata/selfify
+    data_dir: Path = Path("/data")
+    # Medienordner mit den Rubrik-Unterordnern -> Unraid: z. B. /mnt/user/selfify
+    media_dir: Path = Path("/media")
+
+    # Wird automatisch erzeugt und in data_dir/secret.key gespeichert, wenn leer
+    secret_key: str = ""
+
+    # Erster Admin – wird nur angelegt, solange noch kein Benutzer existiert
+    admin_username: str = "admin"
+    admin_password: str = ""
+
+    access_token_minutes: int = Field(default=30, ge=5, le=24 * 60)
+    refresh_token_days: int = Field(default=90, ge=1, le=365)
+
+    # Schutz gegen Passwort-Raten (Fehlversuche innerhalb des Zeitfensters)
+    login_max_failures_per_user: int = Field(default=10, ge=1)
+    login_max_failures_per_ip: int = Field(default=30, ge=1)
+    login_window_minutes: int = Field(default=15, ge=1)
+
+    # Swagger-Oberfläche unter /api/docs (praktisch zum Testen, ohne Login nutzlos)
+    enable_api_docs: bool = True
+    # Nur nötig, falls später ein Web-Client aus einer anderen Domain zugreift
+    cors_origins: Annotated[list[str], NoDecode] = []
+
+    log_level: str = "INFO"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("public_url")
+    @classmethod
+    def _strip_trailing_slash(cls, value: str) -> str:
+        return value.rstrip("/")
+
+    @property
+    def database_path(self) -> Path:
+        return self.data_dir / "selfify.db"
+
+    @property
+    def database_url(self) -> str:
+        return f"sqlite:///{self.database_path}"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

@@ -1,0 +1,25 @@
+# Selfify-Server für Unraid (z. B. mit dem Plugin "Docker Compose Manager")
+# oder per Konsole:  docker compose up -d --build
+services:
+  selfify:
+    build: ./server
+    image: selfify-server:local
+    container_name: selfify
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Europe/Berlin
+      PUID: "99"          # Unraid: nobody
+      PGID: "100"         # Unraid: users
+      SERVER_NAME: Selfify
+      # Adresse, unter der der Server über deinen Reverse Proxy erreichbar ist
+      PUBLIC_URL: https://musik.example.de
+      ADMIN_USERNAME: admin
+      # Leer lassen = sicheres Passwort wird erzeugt und einmalig im Log angezeigt
+      ADMIN_PASSWORD: ""
+    volumes:
+      # Datenbank, Schlüssel, Cache
+      - /mnt/user/appdata/selfify:/data
+      # Eigener Medien-Share – jede Rubrik bekommt hier ihren Unterordner
+      - /mnt/user/selfify:/media

@@ -1,0 +1,1 @@
+"""Geschäftslogik ohne HTTP-Bezug."""
