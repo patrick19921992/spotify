@@ -52,39 +52,47 @@ Jeder Schritt endet mit einer Pause, einer Zusammenfassung und deiner Freigabe.
 - [x] yt-dlp aktualisiert sich täglich selbst (mit Deno/EJS, wie YouTube es inzwischen verlangt)
 - [x] Admin: Titel samt Datei löschen, Downloader-Status
 
-## Schritt 5 – App Teil 1: Aussehen & Abspielen
+## Schritt 5 – App Teil 1: Aussehen & Abspielen ✅
 
-- [ ] Spotify-ähnliches dunkles Design, Startseite / Suche / Bibliothek als untere Leiste
-- [ ] Server-Adresse eingeben, Login, mehrere Konten auf einem Gerät
-- [ ] Startseite, Suche mit farbigen Rubrik-Kacheln, Bibliothek mit Filtern (Playlists, Alben, Künstler, Heruntergeladen)
-- [ ] Künstler- und Albumseiten
-- [ ] Mini-Player über der unteren Leiste, Vollbild-Player mit Hintergrundfarbe passend zum Cover
-- [ ] Wiedergabe im Hintergrund, Steuerung über Sperrbildschirm/Benachrichtigung, Kopfhörer- und Auto-Tasten
-- [ ] Warteschlange („Als Nächstes spielen“), Zufall, Wiederholen, Schlaf-Timer, Geschwindigkeit (für Hörspiele)
-- [ ] Lückenlose Wiedergabe und Überblenden
+- [x] Spotify-ähnliches dunkles Design, Startseite / Suche / Bibliothek als untere Leiste, eigenes App-Icon
+- [x] Server-Adresse eingeben und prüfen, Login, Anmeldung sicher gespeichert, automatische Token-Erneuerung
+- [x] Startseite (Begrüßung, Schnellzugriff, Zuletzt gehört, Mixe, Top-Songs, Familie, Neues, Videos)
+- [x] Suche mit Top-Ergebnis und farbigen Rubrik-Kacheln, Bibliothek mit Filtern und Sortierung
+- [x] Künstler- und Albumseiten
+- [x] Mini-Player über der unteren Leiste, Vollbild-Player mit Farbverlauf passend zum Cover
+- [x] Wiedergabe im Hintergrund, Steuerung über Sperrbildschirm/Benachrichtigung, Kopfhörer- und Auto-Tasten
+- [x] Warteschlange („Als Nächstes spielen“), Zufall, Wiederholen, Schlaf-Timer, Geschwindigkeit (für Hörspiele)
+- [x] Autoplay: Wenn die Warteschlange endet, laufen passende Titel weiter
 
-## Schritt 6 – App Teil 2: Playlists, Offline, Downloads, Videos
+## Schritt 6 – App Teil 2: Playlists, Offline, Downloads, Videos ✅
 
-- [ ] Playlists in der App verwalten, Song-Menü (Liken, zu Playlist, Warteschlange, Zum Album/Künstler)
-- [ ] **Offline-Modus**: Playlists, Alben und Lieblingssongs aufs Handy laden, Speicher verwalten
-- [ ] „Holen“-Button mit Fortschrittsbalken und Restzeit, Benachrichtigung, wenn der Download fertig ist
-- [ ] Videos und Musikvideos abspielen (Vollbild, Querformat)
-- [ ] Songtexte im Player
-- [ ] Einstellungen: Streaming- und Download-Qualität, Überblenden, Lautstärke angleichen, nur WLAN
-- [ ] Admin-Bereich in der App: Benutzer, Rubriken, Downloads, Bibliothek neu scannen
+- [x] Playlists in der App verwalten (anlegen, bearbeiten, Cover, Reihenfolge, gemeinsame Playlists),
+      Song-Menü (Liken, zu Playlist, Warteschlange, Radio, zum Album/Künstler)
+- [x] **Offline-Modus**: Playlists, Alben und Lieblingssongs aufs Handy laden, Speicher verwalten, nur im WLAN
+- [x] „Holen“-Knopf mit Fortschrittsring, Download-Liste mit Prozent, Tempo und Restzeit (live),
+      Meldung „ist jetzt in deiner Bibliothek – Abspielen“
+- [x] Videos und Musikvideos abspielen (Vollbild, Querformat)
+- [x] Songtexte im Player (zeitsynchron mitlaufend)
+- [x] Einstellungen: Streaming-Qualität WLAN/mobil, Download-Qualität, Offline-Modus, Ziel-Rubriken, Geräte
+- [x] Admin-Bereich in der App: Benutzer, Rubriken, Bibliothek neu einlesen, Downloader-Status
 
-## Schritt 7 – Fertig machen für Unraid & Handys
+## Schritt 7 – Fertig machen für Unraid & Handys ✅
 
-- [ ] GitHub Actions: Docker-Image automatisch bauen (GitHub Container Registry)
-- [ ] Unraid-Vorlage („Add Container“ mit allen Feldern vorbelegt)
-- [ ] Android: APK automatisch bauen
-- [ ] iOS: Build für Developer-Account oder Sideloading (AltStore/SideStore)
-- [ ] Ausführliche Anleitung: Unraid, Domain, Reverse Proxy, App installieren
+- [x] GitHub Actions: Tests, Docker-Image automatisch bauen (GitHub Container Registry), Container-Starttest
+- [x] Unraid-Vorlage („Add Container“ mit allen Feldern vorbelegt)
+- [x] Android: APK automatisch bauen (mit eigenem Signaturschlüssel für Updates)
+- [x] iOS: unsignierte IPA für AltStore/SideStore (oder eigenes Signieren mit Developer-Account)
+- [x] Ausführliche Anleitung: Unraid, Domain, Reverse Proxy, App installieren, erste Schritte
 
----
+## Ideen für später
 
-## Bewusst nicht geplant (wäre möglich, aber großer Aufwand)
-
+- „Spotify Connect“: auf einem anderen Gerät weiterspielen
+- Android Auto / CarPlay mit eigener Bibliotheks-Ansicht (Steuerung im Auto geht bereits)
+- Kinderprofile, die nur bestimmte Rubriken sehen
+- Jahresrückblick („Dein Jahr in Musik“)
 - Podcasts
-- „Spotify Connect“ (auf einem anderen Gerät weiterspielen)
-- Spotify-artige Empfehlungen fremder Musik (es gibt keinen Katalog, nur die eigene Bibliothek)
+
+## Bewusst nicht geplant
+
+- Empfehlungen fremder Musik wie bei Spotify: Es gibt keinen Katalog, nur die eigene Bibliothek. Neues
+  kommt über die YouTube-Suche.
