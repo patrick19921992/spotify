@@ -17,7 +17,7 @@ from app.library.covers import CoverStore
 from app.library.scanner import LibraryScanner
 from app.library.transcode import TranscodeCache
 from app.ratelimit import LoginRateLimiter
-from app.routers import auth, categories, library, me, media, system, users
+from app.routers import auth, categories, library, me, media, personal, playlists, system, users
 from app.security import load_or_create_secret_key
 from app.services.bootstrap import run_bootstrap
 
@@ -95,6 +95,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         categories.router,
         library.router,
         media.router,
+        playlists.router,
+        personal.router,
     ):
         app.include_router(router, prefix="/api")
     return app

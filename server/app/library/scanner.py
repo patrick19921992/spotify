@@ -462,12 +462,17 @@ class LibraryScanner:
                 """
             )
         )
+        # Playlists: Zähler und Positionen nach entfernten Titeln korrigieren
+        from app.services.playlists import refresh_all_stats
+
+        refresh_all_stats(db)
         orphaned = list(
             db.scalars(
                 text(
                     "SELECT id FROM covers WHERE id NOT IN (SELECT cover_id FROM tracks WHERE cover_id IS NOT NULL) "
                     "AND id NOT IN (SELECT cover_id FROM albums WHERE cover_id IS NOT NULL) "
-                    "AND id NOT IN (SELECT cover_id FROM artists WHERE cover_id IS NOT NULL)"
+                    "AND id NOT IN (SELECT cover_id FROM artists WHERE cover_id IS NOT NULL) "
+                    "AND id NOT IN (SELECT cover_id FROM playlists WHERE cover_id IS NOT NULL)"
                 )
             )
         )

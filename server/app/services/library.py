@@ -7,7 +7,7 @@ from sqlalchemy import Select, and_, func, select
 from sqlalchemy.orm import Session
 
 from app.library.text import match_key, search_terms
-from app.models import Album, Artist, Track, TrackArtist
+from app.models import Album, Artist, PlayHistory, Track, TrackArtist
 from app.schemas.library import (
     AlbumDetailOut,
     AlbumOut,
@@ -195,10 +195,18 @@ def album_detail(db: Session, album: Album) -> AlbumDetailOut:
 
 def artist_detail(db: Session, artist: Artist, top_limit: int = 10) -> ArtistDetailOut:
     own_tracks = select(TrackArtist.track_id).where(TrackArtist.artist_id == artist.id)
+    # "Beliebt": wie oft die Familie den Titel gehört hat (ab 30 Sekunden), danach die neuesten
+    plays = (
+        select(PlayHistory.track_id, func.count().label("plays"))
+        .where(PlayHistory.seconds >= 30, PlayHistory.track_id.in_(own_tracks))
+        .group_by(PlayHistory.track_id)
+        .subquery()
+    )
     top_tracks = db.scalars(
         select(Track)
+        .outerjoin(plays, plays.c.track_id == Track.id)
         .where(Track.id.in_(own_tracks), Track.media_type == "audio")
-        .order_by(Track.year.desc().nulls_last(), Track.added_at.desc())
+        .order_by(func.coalesce(plays.c.plays, 0).desc(), Track.year.desc().nulls_last(), Track.added_at.desc())
         .limit(top_limit)
     ).unique().all()
     albums = db.scalars(

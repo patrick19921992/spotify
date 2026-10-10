@@ -1,59 +1,13 @@
 """Bibliothek: Einlesen, Künstler/Alben, Cover, Suche, Streaming."""
 
-import shutil
 import time
-from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.config import Settings
-from app.main import create_app
-
-from .conftest import ADMIN_PASSWORD, bearer, login
-from .media_factory import FFMPEG, build_library, make_audio
+from .conftest import Library, bearer, login
+from .media_factory import FFMPEG, make_audio
 
 pytestmark = pytest.mark.skipif(FFMPEG is None, reason="ffmpeg wird für die Medien-Tests gebraucht")
-
-
-@pytest.fixture(scope="session")
-def library_template(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, dict[str, str]]:
-    root = tmp_path_factory.mktemp("media-template")
-    return root, build_library(root)
-
-
-class Library:
-    def __init__(self, client: TestClient, settings: Settings, paths: dict[str, str], tokens: dict) -> None:
-        self.client = client
-        self.settings = settings
-        self.paths = paths
-        self.tokens = tokens
-        self.headers = bearer(tokens)
-
-    def get(self, url: str, **params: object) -> dict:
-        response = self.client.get(url, headers=self.headers, params=params)
-        assert response.status_code == 200, response.text
-        return response.json()
-
-    def scan(self) -> dict:
-        response = self.client.post("/api/library/scan", headers=self.headers, json={"wait": True})
-        assert response.status_code == 202, response.text
-        return response.json()
-
-    def track_by_title(self, title: str) -> dict:
-        items = self.get("/api/tracks", limit=500)["items"]
-        return next(t for t in items if t["title"] == title)
-
-
-@pytest.fixture
-def lib(settings: Settings, library_template: tuple[Path, dict[str, str]]) -> Iterator[Library]:
-    template, paths = library_template
-    shutil.copytree(template, settings.media_dir, dirs_exist_ok=True)
-    with TestClient(create_app(settings)) as client:
-        library = Library(client, settings, paths, login(client, "admin", ADMIN_PASSWORD))
-        library.scan()
-        yield library
 
 
 def test_scan_finds_all_media(lib: Library) -> None:
