@@ -73,7 +73,12 @@ class LoginResult {
 String normalizeBaseUrl(String input) {
   var url = input.trim();
   if (url.isEmpty) return url;
-  if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://$url';
+  final scheme = RegExp(r'^(https?)://', caseSensitive: false).firstMatch(url);
+  if (scheme == null) {
+    url = 'https://$url';
+  } else {
+    url = '${scheme.group(1)!.toLowerCase()}://${url.substring(scheme.end)}';
+  }
   while (url.endsWith('/')) {
     url = url.substring(0, url.length - 1);
   }

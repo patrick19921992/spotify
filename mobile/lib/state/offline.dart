@@ -102,6 +102,8 @@ class OfflineController extends Notifier<OfflineState> {
   OfflineState build() {
     Future.microtask(_load);
     ref.listen(connectivityProvider, (_, _) => _pump());
+    // "Nur im WLAN" ausgeschaltet -> wartende Downloads sofort starten
+    ref.listen(settingsProvider.select((s) => s.offlineWifiOnly), (_, _) => _pump());
     return const OfflineState();
   }
 

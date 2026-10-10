@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/theme.dart';
 import '../data/models.dart';
 import '../state/auth.dart';
 import 'screens/admin_screen.dart';
@@ -59,18 +60,20 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.onDispose(listenable.dispose);
 
   return GoRouter(
-    initialLocation: '/home',
+    initialLocation: '/start',
     refreshListenable: listenable,
     redirect: (context, state) {
       final auth = ref.read(authProvider);
-      if (auth.isLoading && !auth.hasValue) return null;
+      final location = state.matchedLocation;
+      // Solange die gespeicherte Anmeldung geladen wird: Startbildschirm
+      if (auth.isLoading && !auth.hasValue) return location == '/start' ? null : '/start';
       final loggedIn = auth.value?.isLoggedIn ?? false;
-      final atLogin = state.matchedLocation == '/login';
-      if (!loggedIn) return atLogin ? null : '/login';
-      if (atLogin) return '/home';
+      if (!loggedIn) return location == '/login' ? null : '/login';
+      if (location == '/login' || location == '/start') return '/home';
       return null;
     },
     routes: [
+      GoRoute(path: '/start', builder: (_, _) => const _SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => AppShell(shell: shell),
@@ -103,3 +106,28 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Kurzer Startbildschirm, bis die gespeicherte Anmeldung geladen ist.
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundColor: AppColors.accent,
+              child: Icon(Icons.music_note_rounded, size: 44, color: Colors.black),
+            ),
+            SizedBox(height: 24),
+            SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -33,26 +33,69 @@ Future<bool> confirm(BuildContext context, {required String title, String? messa
   return result ?? false;
 }
 
-/// Texteingabe-Dialog (z. B. Playlist umbenennen).
+/// Texteingabe-Dialog (z. B. Playlist umbenennen). Liefert den Text (getrimmt) oder null bei Abbruch.
 Future<String?> promptText(BuildContext context,
-    {required String title, String initial = '', String hint = '', String confirmLabel = 'Speichern'}) {
-  final controller = TextEditingController(text: initial);
+    {required String title, String initial = '', String hint = '', String confirmLabel = 'Speichern', int? maxLength}) {
   return showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
+    builder: (_) => _PromptDialog(
+      title: title,
+      initial: initial,
+      hint: hint,
+      confirmLabel: confirmLabel,
+      maxLength: maxLength,
+    ),
+  );
+}
+
+class _PromptDialog extends StatefulWidget {
+  final String title;
+  final String initial;
+  final String hint;
+  final String confirmLabel;
+  final int? maxLength;
+
+  const _PromptDialog({
+    required this.title,
+    required this.initial,
+    required this.hint,
+    required this.confirmLabel,
+    required this.maxLength,
+  });
+
+  @override
+  State<_PromptDialog> createState() => _PromptDialogState();
+}
+
+class _PromptDialogState extends State<_PromptDialog> {
+  late final TextEditingController _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: TextField(
-        controller: controller,
+        controller: _controller,
         autofocus: true,
-        decoration: InputDecoration(hintText: hint),
-        onSubmitted: (value) => Navigator.pop(context, value.trim()),
+        maxLength: widget.maxLength,
+        textCapitalization: TextCapitalization.sentences,
+        decoration: InputDecoration(hintText: widget.hint),
+        onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
-        TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text(confirmLabel)),
+        TextButton(onPressed: _submit, child: Text(widget.confirmLabel)),
       ],
-    ),
-  );
+    );
+  }
 }
 
 /// Lade-/Fehler-/Daten-Anzeige für FutureProvider-Werte, mit "Erneut versuchen".

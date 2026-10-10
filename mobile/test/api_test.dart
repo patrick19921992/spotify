@@ -21,6 +21,8 @@ void main() {
     expect(normalizeBaseUrl('musik.example.de'), 'https://musik.example.de');
     expect(normalizeBaseUrl(' https://musik.example.de/ '), 'https://musik.example.de');
     expect(normalizeBaseUrl('http://192.168.1.10:8080/api'), 'http://192.168.1.10:8080');
+    expect(normalizeBaseUrl('HTTP://192.168.1.10:8080'), 'http://192.168.1.10:8080');
+    expect(normalizeBaseUrl('Https://Musik.example.de'), 'https://Musik.example.de');
   });
 
   test('Stream- und Cover-Links enthalten den Medien-Token', () {
