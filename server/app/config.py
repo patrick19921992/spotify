@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -43,6 +43,23 @@ class Settings(BaseSettings):
     ffprobe_path: str = "ffprobe"
     transcode_cache_mb: int = Field(default=2048, ge=0)
 
+    # YouTube-Downloader
+    download_workers: int = Field(default=2, ge=1, le=8)
+    # best = Originalspur ohne Umwandlung (meist Opus, beste Qualität), m4a = AAC (iPhone-nativ), mp3 = MP3 320k
+    ytdl_audio_format: Literal["best", "m4a", "mp3"] = "best"
+    ytdl_video_max_height: int = Field(default=1080, ge=144, le=4320)
+    # compatible = H.264/MP4 (läuft überall), best = höchste Qualität (VP9/AV1, evtl. nicht auf dem iPhone)
+    ytdl_video_codec: Literal["compatible", "best"] = "compatible"
+    # Täglich die neueste yt-dlp-Version holen (YouTube ändert häufig etwas)
+    ytdl_auto_update: bool = True
+    # Optional: Cookies (Netscape-Format) z. B. für YouTube-Music-Premium-Qualität
+    ytdl_cookies_file: Path = Path("/data/youtube-cookies.txt")
+    # Leer = eingebautes yt-dlp ("python -m yt_dlp"); nur für Tests/Sonderfälle
+    ytdlp_command: str = ""
+    ytmusic_language: str = "de"
+    ytmusic_location: str = "DE"
+    lyrics_enabled: bool = True
+
     # Schutz gegen Passwort-Raten (Fehlversuche innerhalb des Zeitfensters)
     login_max_failures_per_user: int = Field(default=10, ge=1)
     login_max_failures_per_ip: int = Field(default=30, ge=1)
@@ -74,6 +91,15 @@ class Settings(BaseSettings):
     @property
     def transcode_dir(self) -> Path:
         return self.data_dir / "transcode"
+
+    @property
+    def downloads_tmp_dir(self) -> Path:
+        return self.data_dir / "downloads"
+
+    @property
+    def ytdlp_update_dir(self) -> Path:
+        """Hierhin installiert die Auto-Aktualisierung neuere yt-dlp-Versionen (beschreibbar für 99:100)."""
+        return self.data_dir / "ytdlp"
 
     @property
     def database_path(self) -> Path:

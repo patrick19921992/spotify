@@ -4,10 +4,13 @@ import threading
 from dataclasses import asdict
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
-from app.deps import AdminUser, CurrentUser, DbSession
+from app.deps import AdminUser, AppSettings, CurrentUser, DbSession
+from app.library.covers import IMAGE_EXTENSIONS
+from app.library.lyrics import read_lyrics
 from app.models import Album, Artist, Category, Track
+from app.schemas.downloads import LyricsLineOut, LyricsOut
 from app.schemas.library import (
     AlbumDetailOut,
     AlbumOut,
@@ -110,6 +113,41 @@ def get_track(track_id: int, _: CurrentUser, db: DbSession) -> TrackOut:
     if track is None:
         raise _not_found("Titel")
     return service.track_out(track)
+
+
+@router.get("/tracks/{track_id}/lyrics", response_model=LyricsOut)
+def get_lyrics(track_id: int, _: CurrentUser, db: DbSession, settings: AppSettings) -> LyricsOut:
+    """Songtext – zeitsynchron (Karaoke-Ansicht), wenn eine .lrc-Datei vorhanden ist."""
+    track = db.get(Track, track_id)
+    if track is None:
+        raise _not_found("Titel")
+    found = read_lyrics(settings.media_dir / track.path)
+    if found is None:
+        raise _not_found("Songtext")
+    synced, lines, source = found
+    return LyricsOut(synced=synced, source=source, lines=[LyricsLineOut(time_ms=t, text=x) for t, x in lines])
+
+
+@router.delete("/tracks/{track_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_track(
+    track_id: int, request: Request, _: AdminUser, db: DbSession, settings: AppSettings, delete_file: bool = False
+) -> Response:
+    """Titel aus der Bibliothek entfernen (Admin). Mit delete_file=true wird auch die Datei gelöscht –
+    sonst taucht sie beim nächsten Scan wieder auf."""
+    track = db.get(Track, track_id)
+    if track is None:
+        raise _not_found("Titel")
+    if delete_file:
+        media_root = settings.media_dir.resolve()
+        path = (settings.media_dir / track.path).resolve()
+        if path.is_relative_to(media_root):
+            for extra in [path, path.with_suffix(".lrc"), *(path.with_suffix(ext) for ext in IMAGE_EXTENSIONS)]:
+                if extra.is_file() and (extra == path or extra.stem == path.stem):
+                    extra.unlink()
+    db.delete(track)
+    db.commit()
+    request.app.state.scanner.finalize_now(db)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/search", response_model=SearchOut)

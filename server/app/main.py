@@ -13,11 +13,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.config import Settings, get_settings
 from app.database import create_db_engine, create_session_factory, run_migrations
+from app.downloads.events import EventHub
+from app.downloads.manager import DownloadManager
+from app.downloads.youtube import YouTubeMusic
 from app.library.covers import CoverStore
 from app.library.scanner import LibraryScanner
 from app.library.transcode import TranscodeCache
 from app.ratelimit import LoginRateLimiter
-from app.routers import auth, categories, library, me, media, personal, playlists, system, users
+from app.routers import auth, categories, downloads, library, me, media, personal, playlists, system, users
 from app.security import load_or_create_secret_key
 from app.services.bootstrap import run_bootstrap
 
@@ -49,7 +52,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "ffmpeg nicht gefunden – Umwandlung (iPhone/Datensparmodus) und Video-Vorschaubilder sind aus."
             )
         app.state.scanner.start()
+        app.state.downloads.start()
         yield
+        app.state.downloads.stop()
         app.state.scanner.stop()
         app.state.engine.dispose()
 
@@ -73,6 +78,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.transcode_dir, settings.transcode_cache_mb * 1024 * 1024, settings.ffmpeg_path
     )
     app.state.scanner = LibraryScanner(settings, app.state.session_factory, app.state.covers)
+    app.state.youtube = YouTubeMusic(settings.ytmusic_language, settings.ytmusic_location)
+    app.state.download_events = EventHub()
+    app.state.downloads = DownloadManager(
+        settings, app.state.session_factory, app.state.scanner, app.state.youtube, app.state.download_events
+    )
     app.state.login_limiter = LoginRateLimiter(
         max_per_user=settings.login_max_failures_per_user,
         max_per_ip=settings.login_max_failures_per_ip,
@@ -97,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         media.router,
         playlists.router,
         personal.router,
+        downloads.router,
     ):
         app.include_router(router, prefix="/api")
     return app

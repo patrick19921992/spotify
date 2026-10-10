@@ -338,6 +338,8 @@ class LibraryScanner:
         track.file_size = stat.st_size
         track.file_mtime = stat.st_mtime
         track.cover_id = self._cover_for(db, path, info, category.media_type, caches)
+        if info.source_id:
+            track.source, track.source_id = "youtube", info.source_id
         db.flush()
 
         wanted = {artist.id: position for position, artist in enumerate(artists)}

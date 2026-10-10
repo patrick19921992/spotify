@@ -39,7 +39,7 @@ def _unauthorized(detail: str = "Nicht angemeldet.") -> HTTPException:
     return HTTPException(status.HTTP_401_UNAUTHORIZED, detail, headers={"WWW-Authenticate": "Bearer"})
 
 
-def _auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
+def auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
     try:
         user_id, session_id = int(str(payload["sub"])), int(str(payload["sid"]))
     except (KeyError, TypeError, ValueError):
@@ -69,7 +69,7 @@ def get_auth(
     payload = decode_access_token(request.app.state.secret_key, credentials.credentials)
     if payload is None:
         raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
-    return _auth_from_payload(db, payload)
+    return auth_from_payload(db, payload)
 
 
 Auth = Annotated[AuthContext, Depends(get_auth)]
@@ -91,7 +91,7 @@ def get_media_auth(
         raise _unauthorized()
     if payload is None:
         raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
-    return _auth_from_payload(db, payload)
+    return auth_from_payload(db, payload)
 
 
 MediaAuth = Annotated[AuthContext, Depends(get_media_auth)]

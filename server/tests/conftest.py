@@ -1,6 +1,7 @@
 """Testaufbau: jeder Test bekommt eine frische App mit eigener Datenbank und eigenem Medienordner."""
 
 import shutil
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -28,6 +29,11 @@ def settings(tmp_path: Path) -> Settings:
         scan_on_startup=False,
         library_watch=False,
         scan_interval_minutes=0,
+        # Downloader: Attrappe statt echtem yt-dlp, keine Auto-Aktualisierung
+        ytdlp_command=f"{sys.executable} {Path(__file__).parent / 'fake_ytdlp.py'}",
+        ytdl_auto_update=False,
+        ytdl_cookies_file=tmp_path / "keine-cookies.txt",
+        download_workers=2,
     )
 
 

@@ -30,26 +30,27 @@ Jeder Schritt endet mit einer Pause, einer Zusammenfassung und deiner Freigabe.
 - [x] Suche in der eigenen Bibliothek mit Top-Treffer (Umlaute egal: „Ärzte“ = „aerzte“)
 - [x] Stream-Links mit eigenem Medien-Token (Player-Warteschlangen laufen auch nach 30 Minuten weiter)
 
-## Schritt 3 – Playlists & persönliche Daten
+## Schritt 3 – Playlists & persönliche Daten ✅
 
-- [ ] Playlists erstellen, umbenennen, Beschreibung, eigenes Cover oder automatisches 2×2-Mosaik
-- [ ] Songs hinzufügen, entfernen und per Drag & Drop sortieren
-- [ ] **Lieblingssongs** (Herz-Button) als feste Playlist
-- [ ] Gemeinsame Playlists in der Familie (wie „Gemeinsame Playlist“ bei Spotify)
-- [ ] Hörverlauf → „Zuletzt gehört“, „Deine Top-Songs“, „Beliebt in der Familie“
-- [ ] Daten für die Startseite (Begrüßung je nach Tageszeit, Schnellzugriff-Kacheln, Mixe nach Genre/Künstler)
+- [x] Playlists erstellen, umbenennen, Beschreibung, eigenes Cover oder automatisches 2×2-Mosaik
+- [x] Titel hinzufügen (auch an bestimmter Stelle), entfernen und verschieben
+- [x] **Lieblingssongs** (Herz), gespeicherte Alben, gefolgte Künstler
+- [x] Öffentliche Playlists für die Familie, folgen, **gemeinsame Playlists** (alle dürfen Titel hinzufügen)
+- [x] Hörverlauf → „Zuletzt gehört“, „Deine Top-Songs“, „Beliebt in der Familie“
+- [x] Startseite: Schnellzugriff-Kacheln, Abschnitte, **Tagesmixe** (Genre, Entdecken, Künstler, Rubrik), Radio
 
-## Schritt 4 – YouTube-Downloader (der Unterschied zu Spotify)
+## Schritt 4 – YouTube-Downloader (der Unterschied zu Spotify) ✅
 
-- [ ] Suche bei YouTube Music mit sauberen Angaben (Titel, Künstler, Album, Cover statt „Official Video (HD)“)
-- [ ] In den Suchergebnissen: „In deiner Bibliothek“ und darunter „Von YouTube holen“
-- [ ] Download in bester verfügbarer Qualität, ohne erneutes Umwandeln (Opus/AAC); Videos bevorzugt H.264/H.265
-- [ ] Download-Warteschlange mit **Live-Fortschritt** (Prozent, Tempo, Restzeit) per WebSocket
-- [ ] Ablage im passenden Rubrik-Ordner: `Rubrik/Künstler/Album/Titel`
-- [ ] Automatische Tags, Cover, Songtexte (synchron, wenn verfügbar)
-- [ ] Ganze Alben oder Playlists von YouTube Music übernehmen
-- [ ] Rechte: nur Benutzer mit `can_download` dürfen Downloads starten
-- [ ] yt-dlp automatisch aktuell halten (YouTube ändert häufig etwas)
+- [x] Suche bei YouTube Music mit sauberen Angaben (Titel, Künstler, Album, Cover statt „Official Video (HD)“)
+- [x] Treffer zeigen, ob es den Titel schon gibt bzw. ob er gerade geladen wird
+- [x] Download in bester verfügbarer Qualität ohne Umwandlung (Opus/AAC); Videos als H.264/MP4 bis 1080p
+- [x] Warteschlange mit **Live-Fortschritt** (Prozent, Tempo, Restzeit) per WebSocket, Abbrechen, Wiederholen
+- [x] Ablage im passenden Rubrik-Ordner: `Rubrik/Künstler/Album/01 - Titel`
+- [x] Tags, quadratisches Album-Cover, YouTube-ID, Songtexte (zeitsynchron, YouTube Music oder LRCLIB)
+- [x] Ganze Alben von YouTube Music übernehmen, YouTube-Links (Video oder Playlist) einfügen
+- [x] Rechte: nur Benutzer mit `can_download` dürfen Downloads starten
+- [x] yt-dlp aktualisiert sich täglich selbst (mit Deno/EJS, wie YouTube es inzwischen verlangt)
+- [x] Admin: Titel samt Datei löschen, Downloader-Status
 
 ## Schritt 5 – App Teil 1: Aussehen & Abspielen
 

@@ -1,0 +1,233 @@
+"""Nach dem Download: Tags + Cover schreiben, Songtexte speichern, Dateinamen und Zielordner bilden."""
+
+import base64
+import io
+import json
+import logging
+import re
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from mutagen.flac import Picture
+from mutagen.id3 import APIC, ID3, TALB, TDRC, TIT2, TPE1, TPE2, TRCK, TXXX, ID3NoHeaderError
+from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
+from mutagen.oggopus import OggOpus
+from mutagen.oggvorbis import OggVorbis
+from PIL import Image, ImageOps, UnidentifiedImageError
+
+from app import __version__
+from app.downloads.youtube import LyricsResult, is_allowed_thumbnail
+from app.library.lyrics import parse_lrc
+
+logger = logging.getLogger(__name__)
+
+USER_AGENT = f"Selfify/{__version__} (privater Musikserver)"
+_UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+YOUTUBE_ID_TAG = "YOUTUBE_ID"
+MP4_YOUTUBE_ID = "----:com.selfify:youtube_id"
+
+
+@dataclass
+class TrackMeta:
+    title: str
+    artists: list[str] = field(default_factory=list)
+    album: str | None = None
+    album_artist: str | None = None
+    track_number: int | None = None
+    year: int | None = None
+    video_id: str | None = None
+
+
+# ------------------------------------------------------------------ Dateinamen
+
+def safe_name(value: str, fallback: str = "Unbekannt", limit: int = 120) -> str:
+    """Erlaubte Datei-/Ordnernamen für Unraid/SMB (keine / \\ : * ? " < > |, keine Punkte am Ende)."""
+    cleaned = _UNSAFE.sub("", value or "").strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+    return cleaned[:limit].rstrip(" .") or fallback
+
+
+def target_path(media_dir: Path, folder: str, media_type: str, meta: TrackMeta, extension: str) -> Path:
+    """Musik/Künstler/Album/01 - Titel.opus  bzw.  Musikvideos/Künstler/Titel.mp4"""
+    artist = safe_name(meta.album_artist or (meta.artists[0] if meta.artists else ""), "Unbekannter Künstler")
+    title = safe_name(meta.title, meta.video_id or "Titel")
+    base = media_dir / folder / artist
+    if media_type == "audio" and meta.album:
+        base = base / safe_name(meta.album, "Singles")
+        if meta.track_number:
+            title = f"{meta.track_number:02d} - {title}"
+    return base / f"{title}{extension}"
+
+
+def unique_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    for counter in range(2, 1000):
+        candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError(str(path))
+
+
+# ------------------------------------------------------------------- Bilder
+
+def fetch_image(url: str | None, timeout: int = 20) -> bytes | None:
+    """Lädt ein Coverbild – nur von YouTube-/Google-Servern."""
+    if not is_allowed_thumbnail(url):
+        return None
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # type: ignore[arg-type]
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 – Host geprüft
+            return response.read(15 * 1024 * 1024)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Cover konnte nicht geladen werden (%s): %s", url, exc)
+        return None
+
+
+def square_jpeg(data: bytes | None, crop: bool = True, max_size: int = 1200) -> bytes | None:
+    """Cover als JPEG; Video-Vorschaubilder (16:9) werden mittig quadratisch zugeschnitten."""
+    if not data:
+        return None
+    try:
+        with Image.open(io.BytesIO(data)) as raw:
+            image = ImageOps.exif_transpose(raw).convert("RGB")
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
+    if crop and abs(image.width - image.height) > min(image.width, image.height) * 0.05:
+        side = min(image.width, image.height)
+        image = ImageOps.fit(image, (side, side))
+    image.thumbnail((max_size, max_size))
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG", quality=92)
+    return buffer.getvalue()
+
+
+# --------------------------------------------------------------------- Tags
+
+def write_tags(path: Path, meta: TrackMeta, cover: bytes | None) -> None:
+    """Schreibt Titel, Künstler, Album, Nummer, Jahr, YouTube-ID und Cover in die Datei."""
+    suffix = path.suffix.lower()
+    if suffix in (".opus", ".ogg", ".oga"):
+        _tag_vorbis(path, meta, cover)
+    elif suffix in (".m4a", ".mp4", ".m4v", ".m4b"):
+        _tag_mp4(path, meta, cover)
+    elif suffix == ".mp3":
+        _tag_mp3(path, meta, cover)
+    else:
+        logger.info("Tags für %s werden nicht unterstützt – Angaben kommen aus dem Dateinamen.", suffix)
+
+
+def _tag_vorbis(path: Path, meta: TrackMeta, cover: bytes | None) -> None:
+    try:
+        audio = OggOpus(path)
+    except Exception:  # noqa: BLE001 – kein Opus -> Vorbis versuchen
+        audio = OggVorbis(path)
+    tags = audio.tags
+    tags["title"] = meta.title
+    if meta.artists:
+        tags["artist"] = meta.artists
+    if meta.album:
+        tags["album"] = meta.album
+    if meta.album_artist:
+        tags["albumartist"] = meta.album_artist
+    if meta.track_number:
+        tags["tracknumber"] = str(meta.track_number)
+    if meta.year:
+        tags["date"] = str(meta.year)
+    if meta.video_id:
+        tags[YOUTUBE_ID_TAG] = meta.video_id
+    if cover:
+        picture = Picture()
+        picture.type = 3
+        picture.mime = "image/jpeg"
+        picture.desc = "Cover"
+        with Image.open(io.BytesIO(cover)) as image:
+            picture.width, picture.height = image.size
+        picture.depth = 24
+        picture.data = cover
+        tags["metadata_block_picture"] = [base64.b64encode(picture.write()).decode("ascii")]
+    audio.save()
+
+
+def _tag_mp4(path: Path, meta: TrackMeta, cover: bytes | None) -> None:
+    audio = MP4(path)
+    if audio.tags is None:
+        audio.add_tags()
+    tags = audio.tags
+    tags["\xa9nam"] = [meta.title]
+    if meta.artists:
+        tags["\xa9ART"] = meta.artists
+    if meta.album:
+        tags["\xa9alb"] = [meta.album]
+    if meta.album_artist:
+        tags["aART"] = [meta.album_artist]
+    if meta.track_number:
+        tags["trkn"] = [(meta.track_number, 0)]
+    if meta.year:
+        tags["\xa9day"] = [str(meta.year)]
+    if meta.video_id:
+        tags[MP4_YOUTUBE_ID] = [MP4FreeForm(meta.video_id.encode("utf-8"))]
+    if cover:
+        tags["covr"] = [MP4Cover(cover, imageformat=MP4Cover.FORMAT_JPEG)]
+    audio.save()
+
+
+def _tag_mp3(path: Path, meta: TrackMeta, cover: bytes | None) -> None:
+    try:
+        tags = ID3(path)
+    except ID3NoHeaderError:
+        tags = ID3()
+    tags.add(TIT2(encoding=3, text=meta.title))
+    if meta.artists:
+        tags.add(TPE1(encoding=3, text=meta.artists))
+    if meta.album:
+        tags.add(TALB(encoding=3, text=meta.album))
+    if meta.album_artist:
+        tags.add(TPE2(encoding=3, text=meta.album_artist))
+    if meta.track_number:
+        tags.add(TRCK(encoding=3, text=str(meta.track_number)))
+    if meta.year:
+        tags.add(TDRC(encoding=3, text=str(meta.year)))
+    if meta.video_id:
+        tags.add(TXXX(encoding=3, desc=YOUTUBE_ID_TAG, text=meta.video_id))
+    if cover:
+        tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover))
+    tags.save(path)
+
+
+# --------------------------------------------------------------- Songtexte
+
+def fetch_lrclib(meta: TrackMeta, duration: float | None, timeout: int = 10) -> LyricsResult | None:
+    """Freie Songtext-Datenbank LRCLIB (oft mit Zeitstempeln) als Ersatz, wenn YouTube Music keine hat."""
+    if not meta.title or not meta.artists:
+        return None
+    params = {"artist_name": meta.artists[0], "track_name": meta.title}
+    if meta.album:
+        params["album_name"] = meta.album
+    if duration:
+        params["duration"] = str(round(duration))
+    url = "https://lrclib.net/api/get?" + urllib.parse.urlencode(params)
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 – feste Adresse
+            data = json.loads(response.read(2 * 1024 * 1024))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("LRCLIB ohne Ergebnis für %s: %s", meta.title, exc)
+        return None
+    synced = data.get("syncedLyrics")
+    if synced:
+        lines = parse_lrc(synced)
+        if lines:
+            return LyricsResult(synced=True, lines=lines, source="LRCLIB")
+    plain = data.get("plainLyrics")
+    if plain:
+        return LyricsResult(synced=False, lines=[(None, line) for line in plain.splitlines()], source="LRCLIB")
+    return None
+
+
+def write_lrc(media_file: Path, lyrics: LyricsResult) -> Path:
+    target = media_file.with_suffix(".lrc")
+    target.write_text(lyrics.to_lrc(), encoding="utf-8")
+    return target

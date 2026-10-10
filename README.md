@@ -8,7 +8,7 @@ verfügbarer Qualität von YouTube (Music), und die App zeigt dabei an, wie lang
 
 | Teil | Ordner | Technik | Status |
 |------|--------|---------|--------|
-| Server (läuft auf Unraid) | `server/` | Python, FastAPI, SQLite, ffmpeg, Docker | **Schritt 1–2 fertig:** Accounts, Rubriken, Bibliothek, Streaming |
+| Server (läuft auf Unraid) | `server/` | Python, FastAPI, SQLite, ffmpeg, yt-dlp, Docker | **fertig:** Accounts, Rubriken, Bibliothek, Streaming, Playlists, Startseite, YouTube-Downloader |
 | Handy-App (Android + iOS) | `mobile/` | Flutter | geplant (Schritt 5–6) |
 
 Was noch kommt und in welcher Reihenfolge: siehe [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -89,7 +89,36 @@ Den gleichen Mechanismus nutzt der **Datensparmodus** (`quality=low|normal|high`
 
 ---
 
-## Installation (Stand Schritt 2, zum Ausprobieren)
+## Fehlende Songs: der YouTube-Downloader
+
+1. In der App suchen. Unter den eigenen Treffern stehen die Treffer von **YouTube Music** mit sauberen Angaben
+   zu Titel, Künstler, Album und Cover.
+2. Auf **„Holen“** tippen. Der Server lädt im Hintergrund in **bester verfügbarer Qualität** und zeigt live
+   Prozent, Geschwindigkeit und Restzeit. Danach ist der Titel sofort in der Bibliothek und auf Wunsch
+   gleich in einer Playlist.
+3. Ganze Alben lassen sich mit einem Tipp holen. Ein YouTube-Link (Video oder Playlist) geht auch.
+
+| Was | Wie |
+|-----|-----|
+| Ton | Originalspur **ohne Umwandlung**, meist Opus mit ca. 130–160 kbit/s. Das ist die beste Qualität, die YouTube liefert. Mit YouTube-Music-Premium-Cookies gibt es AAC mit 256 kbit/s. |
+| Video | H.264 + AAC als MP4 bis 1080p (läuft auf jedem Handy). Mit `YTDL_VIDEO_CODEC=best` VP9/AV1 bis 4K, das läuft aber nicht auf jedem iPhone. |
+| Tags | Titel, Künstler, Album, Tracknummer, Jahr, Album-Cover (quadratisch) und YouTube-ID werden in die Datei geschrieben. |
+| Songtexte | Zeitsynchron von YouTube Music, ersatzweise von LRCLIB, gespeichert als `.lrc` neben dem Titel |
+| Ablage | `Rubrik/Künstler/Album/01 - Titel.opus` bzw. `Musikvideos/Künstler/Titel.mp4` (+ Vorschaubild) |
+| Doppelte | Gibt es den Titel schon (gleiche YouTube-ID), ist der Download sofort „fertig“. |
+| Rechte | Nur Benutzer mit **Download-Recht** (`can_download`) dürfen Downloads starten. Suchen dürfen alle. |
+| Aktualität | yt-dlp aktualisiert sich **täglich selbst** (YouTube ändert häufig etwas), ohne Neustart. |
+
+Laufende Downloads überstehen einen Neustart des Containers und werden danach fortgesetzt. Downloads lassen
+sich abbrechen und bei einem Fehler erneut starten.
+
+> **YouTube-Music-Premium (optional):** Cookies im Netscape-Format als `youtube-cookies.txt` in den
+> Datenordner (`/mnt/user/appdata/selfify/`) legen. Dann lädt yt-dlp in Premium-Qualität und auch
+> altersbeschränkte Videos.
+
+---
+
+## Installation (zum Ausprobieren, bis die Unraid-Vorlage fertig ist)
 
 Ein fertiges Image und eine Unraid-Vorlage („Add Container“) kommen in Schritt 7. Bis dahin baust du das
 Image direkt aus diesem Repository.
@@ -146,6 +175,14 @@ direkt im Browser testen.
 | `LIBRARY_WATCH` | `true` | Ordner live überwachen (neue Dateien sofort sichtbar) |
 | `TRANSCODE_CACHE_MB` | `2048` | Zwischenspeicher für umgewandelte Titel (iPhone/Datensparmodus) |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Nur ändern, wenn ffmpeg woanders liegt |
+| `DOWNLOAD_WORKERS` | `2` | Wie viele Downloads gleichzeitig laufen |
+| `YTDL_AUDIO_FORMAT` | `best` | `best` = Originalspur (Opus), `m4a` = AAC (iPhone-nativ), `mp3` = MP3 320k |
+| `YTDL_VIDEO_MAX_HEIGHT` | `1080` | Höchste Video-Auflösung |
+| `YTDL_VIDEO_CODEC` | `compatible` | `compatible` = H.264/MP4, `best` = VP9/AV1 (höher, nicht überall abspielbar) |
+| `YTDL_AUTO_UPDATE` | `true` | yt-dlp täglich aktualisieren |
+| `YTDL_COOKIES_FILE` | `/data/youtube-cookies.txt` | Optionale Cookies (Premium-Qualität) |
+| `YTMUSIC_LANGUAGE` / `YTMUSIC_LOCATION` | `de` / `DE` | Sprache/Land der YouTube-Music-Suche |
+| `LYRICS_ENABLED` | `true` | Songtexte beim Download mitladen |
 | `LOGIN_MAX_FAILURES_PER_USER` | `10` | Fehlversuche je Benutzer, bevor der Login kurz gesperrt wird |
 | `LOGIN_MAX_FAILURES_PER_IP` | `30` | Fehlversuche je IP-Adresse |
 | `LOGIN_WINDOW_MINUTES` | `15` | Zeitfenster bzw. Sperrdauer |
@@ -195,7 +232,7 @@ docker exec -u 99:100 selfify python -m app.cli create-user papa 'SicheresPasswo
 
 ---
 
-## API-Überblick (Stand Schritt 2)
+## API-Überblick
 
 Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/docs`.
 
@@ -210,6 +247,15 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Suche | `GET /search?q=…` – Top-Treffer, Songs, Künstler, Alben, Videos (findet „Ärzte“ auch als „aerzte“) |
 | Scan | `GET /library` (Statistik), `GET /library/scan` (Status), `POST /library/scan` (Admin) |
 | Streaming | `GET /tracks/{id}/stream` (Spulen per Range; `quality`, `compatible`), `GET /covers/{id}?size=64\|128\|300\|600` |
+| Songtexte | `GET /tracks/{id}/lyrics` (zeitsynchron, wenn vorhanden) |
+| Playlists | `GET/POST /playlists`, `GET/PATCH/DELETE /playlists/{id}`, `POST …/items`, `POST …/items/remove`, `POST …/items/move`, `PUT/DELETE …/cover`, `PUT/DELETE …/follow` |
+| Persönlich | `GET /home`, `GET /me/library`, `GET /me/likes`, `GET /me/likes/ids`, `PUT/DELETE /me/likes/{track}`, `PUT/DELETE /me/albums/{id}`, `PUT/DELETE /me/artists/{id}` |
+| Verlauf | `POST /me/history`, `GET /me/history`, `DELETE /me/history`, `GET /me/recent`, `GET /me/top-tracks` |
+| Mixe & Radio | `GET /mixes/{genre:Rock\|discover\|artist:ID\|category:ID\|recent}`, `GET /tracks/{id}/radio` |
+| YouTube | `GET /youtube/search?q=…&type=songs\|videos\|albums`, `GET /youtube/albums/{browseId}` |
+| Downloads | `POST /downloads`, `POST /downloads/album`, `POST /downloads/url`, `GET /downloads`, `POST /downloads/{id}/cancel\|retry`, `DELETE /downloads/{id}` |
+| Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse |
+| Admin | `DELETE /tracks/{id}?delete_file=true`, `GET /downloads-system`, `POST /downloads-system/update` |
 
 Listen sind seitenweise (`limit`, `offset`) und sortierbar (`sort=title|recent|…`). Streams und Cover
 akzeptieren statt des `Authorization`-Headers auch den **Medien-Token** aus dem Login als `?t=…`. So

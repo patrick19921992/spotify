@@ -2,6 +2,7 @@
 
 from app.models.base import Base, utcnow
 from app.models.category import MEDIA_TYPES, Category
+from app.models.downloads import ACTIVE_STATES, JOB_STATES, DownloadJob
 from app.models.library import Album, Artist, Cover, Track, TrackArtist
 from app.models.personal import (
     AlbumSave,
@@ -15,6 +16,8 @@ from app.models.personal import (
 from app.models.user import User, UserSession
 
 __all__ = [
+    "ACTIVE_STATES",
+    "JOB_STATES",
     "MEDIA_TYPES",
     "Album",
     "AlbumSave",
@@ -23,6 +26,7 @@ __all__ = [
     "Base",
     "Category",
     "Cover",
+    "DownloadJob",
     "PlayHistory",
     "Playlist",
     "PlaylistFollow",

@@ -44,6 +44,8 @@ class MediaInfo:
     width: int | None = None
     height: int | None = None
     cover: bytes | None = None
+    # YouTube-ID (schreibt der Downloader in die Tags) – damit bleibt die Herkunft auch nach einem Neuaufbau erhalten
+    source_id: str | None = None
 
 
 def split_artists(values: list[str]) -> list[str]:
@@ -127,6 +129,9 @@ def _mutagen_tags(audio: mutagen.FileType) -> dict[str, list[str]]:
         for frame_id, key in mapping.items():
             for frame in raw.getall(frame_id):
                 add(key, frame)
+        for frame in raw.getall("TXXX"):
+            if str(getattr(frame, "desc", "")).upper() == "YOUTUBE_ID":
+                add("youtube_id", frame)
     elif type_name == "MP4Tags":
         mapping = {
             "\xa9nam": "title", "\xa9ART": "artist", "aART": "albumartist", "\xa9alb": "album",
@@ -134,6 +139,8 @@ def _mutagen_tags(audio: mutagen.FileType) -> dict[str, list[str]]:
         }
         for atom, key in mapping.items():
             add(key, raw.get(atom))
+        for value in raw.get("----:com.selfify:youtube_id", []):
+            add("youtube_id", bytes(value).decode("utf-8", "replace"))
     elif type_name == "ASFTags":
         mapping = {
             "Title": "title", "Author": "artist", "WM/AlbumArtist": "albumartist", "WM/AlbumTitle": "album",
@@ -192,6 +199,10 @@ def _codec_name(audio: mutagen.FileType) -> str | None:
     return names.get(type_name, str(codec).lower() if codec else None)
 
 
+def _youtube_id(value: str | None) -> str | None:
+    return value if value and re.fullmatch(r"[A-Za-z0-9_-]{11}", value) else None
+
+
 def read_with_mutagen(path: Path) -> MediaInfo | None:
     try:
         audio = mutagen.File(path)
@@ -216,6 +227,7 @@ def read_with_mutagen(path: Path) -> MediaInfo | None:
         sample_rate=getattr(audio.info, "sample_rate", None),
         codec=_codec_name(audio),
         cover=_mutagen_cover(audio),
+        source_id=_youtube_id(_clean(_all(tags, "youtube_id"))),
     )
     bitrate = getattr(audio.info, "bitrate", None)
     if bitrate:
@@ -350,9 +362,15 @@ def read_media_info(path: Path, media_type: str, ffprobe: str) -> MediaInfo | No
         if probed is not None:
             if info is not None:  # Tags von mutagen behalten, technische Daten von ffprobe
                 probed.cover = info.cover
+                probed.source_id = info.source_id
             info = probed
             if media_type == "video" and path.suffix.lower() in {".mp4", ".m4v", ".mov"}:
                 tagged = read_with_mutagen(path)
                 if tagged is not None:
                     info.cover = info.cover or tagged.cover
+                    info.source_id = tagged.source_id
+                    # Eigene Tags (vom Downloader) haben Vorrang vor den ffprobe-Angaben
+                    if tagged.artists:
+                        info.artists, info.artist_display = tagged.artists, tagged.artist_display
+                    info.title = tagged.title or info.title
     return info
