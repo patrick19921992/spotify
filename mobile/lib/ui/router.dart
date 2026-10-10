@@ -32,7 +32,7 @@ List<RouteBase> _detailRoutes() => [
       GoRoute(path: 'artist/:id', builder: (_, s) => ArtistScreen(artistId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: 'playlist/:id', builder: (_, s) => PlaylistScreen(playlistId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: 'liked', builder: (_, _) => const LikedSongsScreen()),
-      GoRoute(path: 'mix/:key', builder: (_, s) => MixScreen(mixKey: Uri.decodeComponent(s.pathParameters['key']!))),
+      GoRoute(path: 'mix/:key', builder: (_, s) => MixScreen(mixKey: s.pathParameters['key']!)),
       GoRoute(path: 'category/:id', builder: (_, s) => CategoryScreen(categoryId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: 'youtube-album/:id', builder: (_, s) => YouTubeAlbumScreen(browseId: s.pathParameters['id']!)),
     ];

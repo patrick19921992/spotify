@@ -107,8 +107,11 @@ class CardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Größere Systemschrift: Reihe entsprechend höher machen (Titel 2 Zeilen + Untertitel)
+    final textScaler = MediaQuery.textScalerOf(context);
+    final extra = (textScaler.scale(13.5) - 13.5) * 2.7 + (textScaler.scale(12) - 12) * 1.35;
     return SizedBox(
-      height: height,
+      height: height + extra.clamp(0, 120),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
