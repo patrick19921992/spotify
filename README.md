@@ -1,17 +1,140 @@
 # Selfify – dein eigenes Spotify auf dem Unraid
 
-Selfify funktioniert wie Spotify, nur mit deiner eigenen Musik: Bibliothek, Playlists, Lieblingssongs,
-Offline-Modus und mehrere Accounts für die ganze Familie. Fehlt ein Song, holt der Server ihn in bester
-verfügbarer Qualität von YouTube (Music), und die App zeigt dabei an, wie lange es noch dauert.
+<img src="docs/icon.png" alt="Selfify" width="96" align="right">
 
-> **Arbeitstitel:** „Selfify“ ist nur ein Platzhalter und lässt sich später ändern.
+Selfify funktioniert wie Spotify, nur mit deiner eigenen Musik: Startseite mit Mixen, Suche, Bibliothek,
+Playlists (auch gemeinsame für die Familie), Lieblingssongs, Offline-Modus, Hörspiele und Videos – mit
+mehreren Konten für die ganze Familie. **Fehlt ein Song, holt der Server ihn in bester verfügbarer Qualität
+von YouTube (Music)**, und die App zeigt dabei live an, wie lange es noch dauert.
 
-| Teil | Ordner | Technik | Status |
-|------|--------|---------|--------|
-| Server (läuft auf Unraid) | `server/` | Python, FastAPI, SQLite, ffmpeg, yt-dlp, Docker | **fertig:** Accounts, Rubriken, Bibliothek, Streaming, Playlists, Startseite, YouTube-Downloader |
-| Handy-App (Android + iOS) | `mobile/` | Flutter | geplant (Schritt 5–6) |
+> **Arbeitstitel:** „Selfify“ lässt sich jederzeit umbenennen.
 
-Was noch kommt und in welcher Reihenfolge: siehe [docs/ROADMAP.md](docs/ROADMAP.md).
+| Teil | Ordner | Technik |
+|------|--------|---------|
+| Server (läuft auf Unraid) | `server/` | Python, FastAPI, SQLite, ffmpeg, yt-dlp + Deno, Docker |
+| Handy-App (Android + iOS) | `mobile/` | Flutter (just_audio, audio_service, Riverpod) |
+| Unraid-Vorlage | `unraid/selfify.xml` | „Add Container“ mit allen Feldern vorbelegt |
+| Automatische Builds | `.github/workflows/` | Docker-Image (GHCR), Android-APK, iOS-IPA |
+
+Den Funktionsumfang im Detail findest du in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+**Schnellstart:** [Server auf Unraid installieren](#installation-auf-unraid) → [Domain einrichten](#zugriff-über-eine-domain-reverse-proxy)
+→ [App installieren](#die-app-installieren) → [Erste Schritte](#erste-schritte).
+
+---
+
+## Installation auf Unraid
+
+Das Docker-Image baut GitHub automatisch bei jeder Änderung (`ghcr.io/patrick19921992/selfify-server`).
+
+**1. Share anlegen:** Unraid → *Shares* → *Add Share* → Name `selfify`. Hier landen Musik, Hörspiele und
+Videos. Die Rechte (nobody:users) stimmen automatisch.
+
+**2. Vorlage einspielen:** Im Unraid-Terminal:
+
+```bash
+wget -O /boot/config/plugins/dockerMan/templates-user/my-selfify.xml \
+  https://raw.githubusercontent.com/patrick19921992/spotify/main/unraid/selfify.xml
+```
+
+> Ist das Repository privat, lädt `wget` die Datei nicht. Kopiere dann `unraid/selfify.xml` per SMB nach
+> `\\tower\flash\config\plugins\dockerMan\templates-user\my-selfify.xml`.
+
+**3. Container anlegen:** *Docker* → *Add Container* → Vorlage **selfify** wählen. Prüfe die Pfade
+(`/mnt/user/appdata/selfify`, `/mnt/user/selfify`), trage deine **Öffentliche Adresse** ein und klicke *Apply*.
+
+**4. Admin-Passwort holen:** Container-Symbol → *Logs*. Beim ersten Start steht dort das erzeugte Passwort,
+falls du keins vorgegeben hast.
+
+> **Privates Repository = privates Image:** GitHub legt das Image dann ebenfalls privat an. Entweder
+> machst du es öffentlich (GitHub → *Packages* → `selfify-server` → *Package settings* → *Change visibility*;
+> es enthält nur den Server-Code, keine Daten), oder du meldest Unraid einmalig an:
+> `docker login ghcr.io -u <github-name>` mit einem Token, das das Recht `read:packages` hat.
+
+**Alternative:** `docker-compose.yml` mit dem Plugin „Docker Compose Manager“. Wer selbst bauen will, ändert
+dort `image:` in `build: ./server`.
+
+Der Server ist danach unter `http://<unraid-ip>:8080` erreichbar. Unter `/api/docs` gibt es eine
+Testoberfläche für alle Funktionen.
+
+---
+
+## Zugriff über eine Domain (Reverse Proxy)
+
+Damit alle in der Familie ohne VPN zugreifen können, läuft Selfify hinter einem Reverse Proxy mit HTTPS,
+z. B. **Nginx Proxy Manager** oder **SWAG** auf dem Unraid.
+
+**Nginx Proxy Manager → Proxy Hosts → Add Proxy Host**
+
+- *Domain Names:* `musik.example.de`
+- *Forward Hostname/IP:* IP deines Unraid, *Port:* `8080`, *Scheme:* `http`
+- **Websockets Support: an.** Wird ab Schritt 4 für die Live-Anzeige des Download-Fortschritts gebraucht.
+- *Block Common Exploits:* an
+- Tab *SSL:* Let's-Encrypt-Zertifikat anfordern, **Force SSL** und **HTTP/2** an
+
+Dazu einen DNS-Eintrag (bzw. DynDNS) für `musik.example.de` auf deine Internetadresse und im Router
+Port 443 auf den Proxy weiterleiten.
+
+**Sicherheit, weil der Server aus dem Internet erreichbar ist:**
+
+- Es gibt **keine offene Registrierung**. Nur Admins legen Konten an.
+- Passwörter werden mit Argon2 gespeichert, Logins nach zu vielen Fehlversuchen kurz gesperrt.
+- Jedes Handy ist eine eigene „Sitzung“ und kann einzeln abgemeldet werden, z. B. wenn ein Handy verloren geht.
+- Port `8080` **nicht** direkt im Router freigeben, immer nur über den Proxy mit HTTPS.
+
+---
+
+## Die App installieren
+
+Die App baut GitHub automatisch: *Actions* → Workflow **App** → letzter Lauf → *Artifacts*. Bei
+Versions-Tags (`v1.0.0` …) liegen APK und IPA zusätzlich unter *Releases*.
+
+### Android
+
+1. `selfify-android` herunterladen, entpacken und `selfify.apk` aufs Handy kopieren (oder direkt am Handy
+   öffnen).
+2. Installieren. Android fragt einmalig, ob Apps aus dieser Quelle erlaubt sind.
+3. Bei der ersten Wiedergabe die Benachrichtigungen erlauben (für die Steuerung auf dem Sperrbildschirm).
+
+> **Wichtig für Updates:** Damit sich neue Versionen über die alte installieren lassen (und die Offline-Musik
+> erhalten bleibt), braucht der Build immer denselben Signaturschlüssel. Einmalig erzeugen:
+>
+> ```bash
+> keytool -genkey -v -keystore selfify.keystore -alias selfify -keyalg RSA -keysize 2048 -validity 10000
+> base64 -w0 selfify.keystore    # Ausgabe kopieren
+> ```
+>
+> Dann im Repository unter *Settings → Secrets and variables → Actions* anlegen:
+> `ANDROID_KEYSTORE_BASE64` (die base64-Ausgabe), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
+> (`selfify`) und `ANDROID_KEY_PASSWORD`. Ohne diese Secrets signiert GitHub jeden Build mit einem anderen
+> Test-Schlüssel. Updates gehen dann nur nach Deinstallation.
+
+### iPhone / iPad
+
+Apple erlaubt eigene Apps nur über einen dieser Wege:
+
+| Weg | Kosten | Hinweis |
+|-----|--------|---------|
+| **AltStore / SideStore** | kostenlos | IPA aus *Actions → App → „Run workflow“ (iOS anhaken)* oder aus *Releases* laden und mit AltStore/SideStore installieren. Mit kostenloser Apple-ID muss die App **alle 7 Tage** neu signiert werden (macht AltStore/SideStore automatisch im WLAN). |
+| **Apple-Developer-Account** | 99 €/Jahr | Signieren über Xcode (`mobile/ios/Runner.xcworkspace`) oder TestFlight. Ein Jahr gültig, bis zu 100 Geräte. |
+| **Xcode mit eigener Apple-ID** | kostenlos, Mac nötig | Handy per Kabel, in Xcode „Run“ – ebenfalls 7 Tage gültig. |
+
+### Erste Anmeldung in der App
+
+Server-Adresse eintragen, z. B. `https://musik.example.de` oder im Heimnetz `http://192.168.1.10:8080`, dann
+*Verbinden*, Benutzername und Passwort eingeben.
+
+---
+
+## Erste Schritte
+
+1. **Als Admin anmelden** (Passwort aus dem Log) und unter *Einstellungen → Konto* das Passwort ändern.
+2. **Konten anlegen:** *Einstellungen → Admin-Bereich → Benutzer*. Bei den Kindern kannst du
+   „Darf YouTube-Downloads starten“ ausschalten. Sie können dann hören und suchen, aber nichts laden.
+3. **Musik reinlegen:** Vorhandene Dateien per SMB in `\\tower\selfify\Musik` (bzw. `Hoerspiele`,
+   `Videos` …) kopieren. Sie erscheinen nach wenigen Sekunden.
+4. **Fehlende Songs holen:** *Suche* → Song eintippen → unter „Von YouTube holen“ auf **Holen** tippen.
+5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Download-Pfeil tippen.
 
 ---
 
@@ -118,44 +241,6 @@ sich abbrechen und bei einem Fehler erneut starten.
 
 ---
 
-## Installation (zum Ausprobieren, bis die Unraid-Vorlage fertig ist)
-
-Ein fertiges Image und eine Unraid-Vorlage („Add Container“) kommen in Schritt 7. Bis dahin baust du das
-Image direkt aus diesem Repository.
-
-**Variante A – Unraid-Plugin „Docker Compose Manager“**
-
-1. Plugin über *Apps* installieren.
-2. Unter *Docker → Compose* einen neuen Stack `selfify` anlegen.
-3. Repository auf den Unraid klonen, z. B. nach `/mnt/user/appdata/selfify-src`, und dort
-   `docker-compose.yml` verwenden (oder den Inhalt in den Stack kopieren und `build:` auf den Pfad
-   `/mnt/user/appdata/selfify-src/server` setzen).
-4. In der `docker-compose.yml` mindestens `PUBLIC_URL` anpassen, dann *Compose Up*.
-
-**Variante B – Unraid-Terminal**
-
-```bash
-cd /mnt/user/appdata
-git clone https://github.com/patrick19921992/spotify.git selfify-src
-cd selfify-src
-# PUBLIC_URL usw. in docker-compose.yml anpassen
-docker compose up -d --build
-docker logs selfify        # zeigt beim ersten Start das Admin-Passwort
-```
-
-Danach ist der Server unter `http://<unraid-ip>:8080` erreichbar. Zum Ausprobieren ohne App öffnest du
-**`http://<unraid-ip>:8080/api/docs`**. Dort kannst du dich anmelden (*Authorize*) und alle Funktionen
-direkt im Browser testen.
-
-### Erster Login
-
-- Ist `ADMIN_PASSWORD` leer, erzeugt der Server beim ersten Start ein sicheres Passwort und schreibt es
-  **einmalig ins Log** (Unraid: Container-Symbol → *Logs*).
-- Bitte nach dem ersten Login ändern: `POST /api/me/password`, später geht das in der App.
-- Admin-Passwort vergessen? Siehe [Konsolen-Befehle](#konsolen-befehle).
-
----
-
 ## Einstellungen (Umgebungsvariablen)
 
 | Variable | Standard | Bedeutung |
@@ -190,31 +275,6 @@ direkt im Browser testen.
 | `FORWARDED_ALLOW_IPS` | private Netze | Von welchen Proxys die echte Client-IP übernommen wird |
 | `SECRET_KEY` | leer | Leer = wird erzeugt und in `/data/secret.key` gespeichert |
 | `DATA_DIR` / `MEDIA_DIR` | `/data` / `/media` | Pfade **im** Container (nicht ändern) |
-
----
-
-## Zugriff über eine Domain (Reverse Proxy)
-
-Damit alle in der Familie ohne VPN zugreifen können, läuft Selfify hinter einem Reverse Proxy mit HTTPS,
-z. B. **Nginx Proxy Manager** oder **SWAG** auf dem Unraid.
-
-**Nginx Proxy Manager → Proxy Hosts → Add Proxy Host**
-
-- *Domain Names:* `musik.example.de`
-- *Forward Hostname/IP:* IP deines Unraid, *Port:* `8080`, *Scheme:* `http`
-- **Websockets Support: an.** Wird ab Schritt 4 für die Live-Anzeige des Download-Fortschritts gebraucht.
-- *Block Common Exploits:* an
-- Tab *SSL:* Let's-Encrypt-Zertifikat anfordern, **Force SSL** und **HTTP/2** an
-
-Dazu einen DNS-Eintrag (bzw. DynDNS) für `musik.example.de` auf deine Internetadresse und im Router
-Port 443 auf den Proxy weiterleiten.
-
-**Sicherheit, weil der Server aus dem Internet erreichbar ist:**
-
-- Es gibt **keine offene Registrierung**. Nur Admins legen Konten an.
-- Passwörter werden mit Argon2 gespeichert, Logins nach zu vielen Fehlversuchen kurz gesperrt.
-- Jedes Handy ist eine eigene „Sitzung“ und kann einzeln abgemeldet werden, z. B. wenn ein Handy verloren geht.
-- Port `8080` **nicht** direkt im Router freigeben, immer nur über den Proxy mit HTTPS.
 
 ---
 
@@ -268,6 +328,8 @@ aber keine neuen Downloads starten dürfen.
 
 ## Entwicklung
 
+**Server** (Python 3.13):
+
 ```bash
 cd server
 python3 -m venv .venv && . .venv/bin/activate
@@ -283,6 +345,19 @@ DATA_DIR=../dev-data/data MEDIA_DIR=../dev-data/media ADMIN_PASSWORD=admin12345 
 Neue Datenbank-Migration nach einer Modelländerung:
 `DATA_DIR=../dev-data/data alembic revision --autogenerate -m "beschreibung"`.
 Beim Serverstart werden Migrationen automatisch ausgeführt.
+
+**App** (Flutter 3.47):
+
+```bash
+cd mobile
+flutter pub get
+flutter analyze
+flutter test
+flutter run            # Handy/Emulator angeschlossen
+```
+
+Aufbau: `lib/data` (Modelle, Server-Client), `lib/state` (Anmeldung, Einstellungen, Downloads,
+Offline-Speicher), `lib/player` (Hintergrund-Wiedergabe), `lib/ui` (Navigation, Bildschirme, Bausteine).
 
 ---
 
