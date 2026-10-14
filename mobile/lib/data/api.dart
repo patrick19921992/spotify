@@ -219,11 +219,14 @@ class ApiClient {
     }
   }
 
+  /// [timeout]: längere Wartezeit für Aufrufe, die auf dem Server lange laufen (yt-dlp).
   Future<T> _send<T>(String method, String path, T Function(dynamic data) parse,
-      {Object? body, Map<String, dynamic>? query}) async {
+      {Object? body, Map<String, dynamic>? query, Duration? timeout}) async {
     try {
       final response = await _dio.request(path,
-          data: body, queryParameters: _clean(query), options: Options(method: method));
+          data: body,
+          queryParameters: _clean(query),
+          options: Options(method: method, receiveTimeout: timeout));
       return parse(response.data);
     } catch (e) {
       throw toApiException(e);
@@ -517,8 +520,10 @@ class ApiClient {
       'POST', '/downloads/album', (d) => _listOf(d, DownloadJob.fromJson),
       body: _clean({'browse_id': browseId, 'category_id': categoryId, 'playlist_id': playlistId}));
   Future<List<DownloadJob>> downloadUrl(String url, {String mediaType = 'audio', int? categoryId, int? playlistId}) =>
+      // Der Server liest den Link erst mit yt-dlp aus (Playlists: bis zu 2 Minuten)
       _send('POST', '/downloads/url', (d) => _listOf(d, DownloadJob.fromJson),
-          body: _clean({'url': url, 'media_type': mediaType, 'category_id': categoryId, 'playlist_id': playlistId}));
+          body: _clean({'url': url, 'media_type': mediaType, 'category_id': categoryId, 'playlist_id': playlistId}),
+          timeout: const Duration(seconds: 150));
   Future<List<DownloadJob>> downloads({String scope = 'mine', String state = 'all', int limit = 100}) =>
       _get('/downloads', (d) => _listOf(d, DownloadJob.fromJson), query: {'scope': scope, 'state': state, 'limit': limit});
   Future<DownloadJob> download(int id) => _get('/downloads/$id', (d) => DownloadJob.fromJson(d as Json));
@@ -530,6 +535,8 @@ class ApiClient {
   Future<void> clearFinishedDownloads() => _noContent('DELETE', '/downloads');
   Future<DownloaderStatus> downloaderStatus() =>
       _get('/downloads-system', (d) => DownloaderStatus.fromJson(d as Json));
-  Future<DownloaderStatus> updateYtdlp() =>
-      _send('POST', '/downloads-system/update', (d) => DownloaderStatus.fromJson(d as Json));
+  /// Der Server installiert dabei per pip (bis zu 10 Minuten).
+  Future<DownloaderStatus> updateYtdlp() => _send(
+      'POST', '/downloads-system/update', (d) => DownloaderStatus.fromJson(d as Json),
+      timeout: const Duration(minutes: 11));
 }

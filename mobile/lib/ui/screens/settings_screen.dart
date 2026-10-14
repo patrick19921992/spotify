@@ -205,9 +205,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _setWifiOnly(bool value) async {
+    // Der Offline-Speicher startet wartende Downloads selbst, sobald mobile Daten erlaubt sind
     await ref.read(settingsProvider.notifier).update((s) => s.copyWith(offlineWifiOnly: value));
-    // Wartende Downloads dürfen jetzt evtl. auch über mobile Daten laufen -> Warteschlange anstoßen
-    if (!value) ref.read(offlineProvider.notifier).downloadTracks(const []);
   }
 
   // ---------------------------------------------------------------- YouTube-Downloads

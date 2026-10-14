@@ -6,26 +6,54 @@ import '../data/models.dart';
 /// Navigation wie bei Spotify: Detailseiten öffnen sich im aktuellen Tab (Start/Suche/Bibliothek),
 /// die untere Leiste und der Mini-Player bleiben sichtbar.
 class Nav {
-  static String _tab(BuildContext context) {
-    String path;
+  static const _tabs = {'home', 'search', 'library'};
+
+  /// Pfad der obersten Seite (z. B. "/player" über "/home").
+  static String _topPath(GoRouter router) {
     try {
-      path = GoRouter.of(context).routerDelegate.currentConfiguration.uri.path;
+      return router.state.uri.path;
     } catch (_) {
-      path = '/home';
+      return '/home';
     }
-    final first = path.split('/').where((s) => s.isNotEmpty).firstOrNull;
-    return switch (first) { 'search' => '/search', 'library' => '/library', _ => '/home' };
   }
 
-  static void album(BuildContext context, int id) => context.push('${_tab(context)}/album/$id');
-  static void artist(BuildContext context, int id) => context.push('${_tab(context)}/artist/$id');
-  static void playlist(BuildContext context, int id) => context.push('${_tab(context)}/playlist/$id');
-  static void liked(BuildContext context) => context.push('${_tab(context)}/liked');
-  static void mix(BuildContext context, String key) =>
-      context.push('${_tab(context)}/mix/${Uri.encodeComponent(key)}');
-  static void category(BuildContext context, int id) => context.push('${_tab(context)}/category/$id');
-  static void youtubeAlbum(BuildContext context, String browseId) =>
-      context.push('${_tab(context)}/youtube-album/$browseId');
+  /// "/home", "/search" oder "/library" – null, wenn oben eine Vollbild-Seite liegt.
+  static String? _tabOf(String path) {
+    final first = path.split('/').where((s) => s.isNotEmpty).firstOrNull;
+    return _tabs.contains(first) ? '/$first' : null;
+  }
+
+  /// Öffnet eine Detailseite im aktuellen Tab.
+  ///
+  /// Liegt eine Vollbild-Seite darüber (Player, Warteschlange, Video, Downloads, Einstellungen …),
+  /// wird sie zuerst geschlossen: Würde die Detailseite darüber gelegt, baut go_router die Tab-Ansicht
+  /// ein zweites Mal auf und die App stürzt ab.
+  static void _openInTab(BuildContext context, String subPath) {
+    final GoRouter router;
+    try {
+      router = GoRouter.of(context);
+    } catch (_) {
+      return;
+    }
+    var tab = _tabOf(_topPath(router));
+    while (tab == null && router.canPop()) {
+      router.pop();
+      tab = _tabOf(_topPath(router));
+    }
+    if (tab == null) {
+      router.go('/home/$subPath');
+    } else {
+      router.push('$tab/$subPath');
+    }
+  }
+
+  static void album(BuildContext context, int id) => _openInTab(context, 'album/$id');
+  static void artist(BuildContext context, int id) => _openInTab(context, 'artist/$id');
+  static void playlist(BuildContext context, int id) => _openInTab(context, 'playlist/$id');
+  static void liked(BuildContext context) => _openInTab(context, 'liked');
+  static void mix(BuildContext context, String key) => _openInTab(context, 'mix/${Uri.encodeComponent(key)}');
+  static void category(BuildContext context, int id) => _openInTab(context, 'category/$id');
+  static void youtubeAlbum(BuildContext context, String browseId) => _openInTab(context, 'youtube-album/$browseId');
 
   /// Kachel der Startseite öffnen (Album, Playlist, Künstler, Lieblingssongs, Mix).
   static void context_(BuildContext context, ContextItem item) {

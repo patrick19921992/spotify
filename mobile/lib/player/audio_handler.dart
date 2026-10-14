@@ -253,12 +253,26 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     _lastIndex = player.currentIndex;
   }
 
+  /// Alles entfernen, was nach dem aktuellen Titel noch kommt – bei Zufallswiedergabe in
+  /// Abspiel-Reihenfolge (dann stehen kommende Titel auch vor dem aktuellen in der Liste).
   Future<void> clearUpcoming() async {
     final current = player.currentIndex;
-    if (current == null || current >= _tracks.length - 1) return;
-    _tracks.removeRange(current + 1, _tracks.length);
-    _publishQueue();
-    await player.removeAudioSourceRange(current + 1, player.audioSources.length);
+    if (current == null || current >= _tracks.length) return;
+    if (!player.shuffleModeEnabled) {
+      if (current >= _tracks.length - 1) return;
+      _tracks.removeRange(current + 1, _tracks.length);
+      _publishQueue();
+      await player.removeAudioSourceRange(current + 1, player.audioSources.length);
+      return;
+    }
+    final order = playOrder.where((i) => i >= 0 && i < _tracks.length).toList();
+    final position = order.indexOf(current);
+    if (position < 0) return;
+    // Von hinten nach vorn entfernen, damit die übrigen Positionen gültig bleiben
+    final upcoming = order.sublist(position + 1)..sort((a, b) => b.compareTo(a));
+    for (final index in upcoming) {
+      await removeQueueItemAt(index);
+    }
   }
 
   @override

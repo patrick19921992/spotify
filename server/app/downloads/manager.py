@@ -136,6 +136,16 @@ class DownloadManager:
     def publish(self, db: Session, job: DownloadJob) -> None:
         self.hub.publish({"type": "job", "job": self.out(db, job).model_dump(mode="json")}, job.user_id)
 
+    def publish_queue(self, db: Session) -> None:
+        """Ein Auftrag hat die Warteschlange verlassen: alle wartenden mit ihrem neuen Platz melden."""
+        positions = self.queue_positions(db)
+        if not positions:
+            return
+        for job in db.scalars(select(DownloadJob).where(DownloadJob.id.in_(list(positions)))).unique():
+            self.hub.publish(
+                {"type": "job", "job": self.out(db, job, positions).model_dump(mode="json")}, job.user_id
+            )
+
     def enqueue(
         self,
         db: Session,
@@ -204,6 +214,7 @@ class DownloadManager:
             job.status, job.finished_at = "cancelled", utcnow()
             db.commit()
             self.publish(db, job)
+            self.publish_queue(db)
         elif job.status in ("downloading", "processing"):
             flag = self._cancel_flags.get(job.id)
             if flag is not None:
@@ -238,6 +249,7 @@ class DownloadManager:
             job.status, job.started_at, job.progress = "downloading", utcnow(), 0.0
             db.commit()
             self.publish(db, job)
+            self.publish_queue(db)
             return job.id
 
     def _worker(self) -> None:

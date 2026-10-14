@@ -288,10 +288,11 @@ def clear_finished(user: CurrentUser, db: DbSession) -> Response:
 
 
 @router.websocket("/downloads/ws")
-async def downloads_ws(websocket: WebSocket, token: str | None = None) -> None:
+async def downloads_ws(websocket: WebSocket, token: str | None = None, scope: str = "mine") -> None:
     """Live-Fortschritt: Erst eine Liste aller aktiven Downloads ("snapshot"), danach jede Änderung ("job").
 
     Anmeldung über `?token=<access_token>` oder den Header `Authorization: Bearer …`.
+    Jeder sieht seine eigenen Downloads; Admins mit `?scope=all` die aller Benutzer.
     """
     app = websocket.app
     raw = token or websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
@@ -303,22 +304,23 @@ async def downloads_ws(websocket: WebSocket, token: str | None = None) -> None:
                 auth = auth_from_payload(db, payload or {})
             except HTTPException:
                 return None
+            all_jobs = auth.user.is_admin and scope == "all"
             query = select(DownloadJob).where(DownloadJob.status.in_(ACTIVE_STATES))
-            if not auth.user.is_admin:
+            if not all_jobs:
                 query = query.where(DownloadJob.user_id == auth.user.id)
             manager = app.state.downloads
             positions = manager.queue_positions(db)
             jobs = [manager.out(db, j, positions).model_dump(mode="json") for j in db.scalars(query).unique()]
-            return auth.user.id, auth.user.is_admin, jobs
+            return auth.user.id, all_jobs, jobs
 
     result = await run_in_threadpool(authenticate) if payload else None
     if result is None:
         await websocket.close(code=4401, reason="Nicht angemeldet")
         return
-    user_id, is_admin, jobs = result
+    user_id, all_jobs, jobs = result
     await websocket.accept()
     hub = app.state.download_events
-    subscriber = hub.subscribe(user_id, is_admin)
+    subscriber = hub.subscribe(user_id, all_jobs)
     try:
         await websocket.send_json({"type": "snapshot", "jobs": jobs})
         receiver = asyncio.create_task(websocket.receive_text())

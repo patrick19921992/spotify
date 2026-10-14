@@ -12,7 +12,7 @@ class Subscriber:
     loop: asyncio.AbstractEventLoop
     queue: asyncio.Queue[dict[str, Any]]
     user_id: int
-    is_admin: bool
+    all_jobs: bool  # nur für Admins mit scope=all: Downloads aller Benutzer
 
 
 class EventHub:
@@ -20,8 +20,8 @@ class EventHub:
         self._subscribers: set[Subscriber] = set()
         self._lock = threading.Lock()
 
-    def subscribe(self, user_id: int, is_admin: bool) -> Subscriber:
-        subscriber = Subscriber(asyncio.get_running_loop(), asyncio.Queue(maxsize=500), user_id, is_admin)
+    def subscribe(self, user_id: int, all_jobs: bool = False) -> Subscriber:
+        subscriber = Subscriber(asyncio.get_running_loop(), asyncio.Queue(maxsize=500), user_id, all_jobs)
         with self._lock:
             self._subscribers.add(subscriber)
         return subscriber
@@ -36,9 +36,9 @@ class EventHub:
             return len(self._subscribers)
 
     def publish(self, event: dict[str, Any], owner_id: int | None) -> None:
-        """Thread-sicher: jeder Benutzer sieht seine eigenen Downloads, Admins alle."""
+        """Thread-sicher: jeder Benutzer sieht seine eigenen Downloads (Admins mit scope=all alle)."""
         with self._lock:
-            targets = [s for s in self._subscribers if s.is_admin or s.user_id == owner_id]
+            targets = [s for s in self._subscribers if s.all_jobs or s.user_id == owner_id]
         for subscriber in targets:
             try:
                 subscriber.loop.call_soon_threadsafe(_offer, subscriber.queue, event)

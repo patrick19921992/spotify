@@ -97,6 +97,7 @@ class OfflineController extends Notifier<OfflineState> {
   final Map<int, Track> _queued = {};
   bool _working = false;
   CancelToken? _cancel;
+  Future<void> _saveQueue = Future.value();
 
   @override
   OfflineState build() {
@@ -140,13 +141,35 @@ class OfflineController extends Notifier<OfflineState> {
       final names = <String, String>{
         for (final entry in (data['names'] as Map? ?? const {}).entries) entry.key as String: entry.value as String,
       };
-      state = state.copyWith(tracks: tracks, collections: collections, collectionNames: names, loaded: true);
+      // Warteschlange vom letzten Mal (App wurde beendet, bevor alles geladen war)
+      final pending = <int>[];
+      for (final raw in (data['queue'] as List? ?? const [])) {
+        final track = Track.fromJson(raw as Json);
+        if (tracks.containsKey(track.id) || pending.contains(track.id)) continue;
+        _queued[track.id] = track;
+        pending.add(track.id);
+      }
+      state = state.copyWith(
+        tracks: tracks,
+        collections: collections,
+        collectionNames: names,
+        pending: pending,
+        loaded: true,
+      );
+      if (pending.isNotEmpty) _pump();
     } catch (_) {
       state = state.copyWith(loaded: true);
     }
   }
 
-  Future<void> _save() async {
+  /// Speichert den Index – nacheinander, damit sich zwei Speichervorgänge nicht überholen.
+  Future<void> _save() {
+    final next = _saveQueue.then((_) => _write());
+    _saveQueue = next.catchError((Object _) {});
+    return next;
+  }
+
+  Future<void> _write() async {
     final dir = await _directory();
     final file = _indexFile(dir);
     final tmp = File('${file.path}.tmp');
@@ -154,8 +177,17 @@ class OfflineController extends Notifier<OfflineState> {
       'tracks': {for (final t in state.tracks.values) '${t.track.id}': t.toJson()},
       'collections': state.collections,
       'names': state.collectionNames,
+      'queue': [
+        for (final id in state.pending)
+          if (_queued[id] case final track?) track.toJson(),
+      ],
     }));
     await tmp.rename(file.path);
+  }
+
+  /// Fehlermeldung ausblenden.
+  void clearError() {
+    if (state.lastError != null) state = state.copyWith(lastError: () => null);
   }
 
   /// Pfad der Datei auf dem Handy – oder null, wenn nicht heruntergeladen.
@@ -175,6 +207,7 @@ class OfflineController extends Notifier<OfflineState> {
       pending.add(track.id);
     }
     state = state.copyWith(pending: pending, lastError: () => null);
+    _save().ignore();
     _pump();
   }
 

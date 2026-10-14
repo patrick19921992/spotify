@@ -57,7 +57,13 @@ final bufferedPositionProvider =
 
 final durationProvider = StreamProvider<Duration?>((ref) => ref.watch(audioHandlerProvider).player.durationStream);
 
-final sleepTimerProvider = StreamProvider<DateTime?>((ref) => ref.watch(audioHandlerProvider).sleepTimerStream);
+/// Schlaf-Timer: Zeitpunkt der Pause, Epoche 0 = „Ende des Titels“, null = aus.
+/// Startet mit dem aktuellen Wert, damit später geöffnete Bildschirme einen laufenden Timer sehen.
+final sleepTimerProvider = StreamProvider<DateTime?>((ref) async* {
+  final handler = ref.watch(audioHandlerProvider);
+  yield handler.sleepAfterTrack ? DateTime.fromMillisecondsSinceEpoch(0) : handler.sleepAt;
+  yield* handler.sleepTimerStream;
+});
 
 /// Der gerade gespielte Titel (mit allen Angaben).
 final currentTrackProvider = Provider<Track?>((ref) {

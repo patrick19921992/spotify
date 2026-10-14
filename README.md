@@ -334,7 +334,7 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Mixe & Radio | `GET /mixes/{genre:Rock\|discover\|artist:ID\|category:ID\|recent}`, `GET /tracks/{id}/radio` |
 | YouTube | `GET /youtube/search?q=…&type=songs\|videos\|albums`, `GET /youtube/albums/{browseId}` |
 | Downloads | `POST /downloads`, `POST /downloads/album`, `POST /downloads/url`, `GET /downloads`, `POST /downloads/{id}/cancel\|retry`, `DELETE /downloads/{id}` |
-| Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse |
+| Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse (eigene Downloads; Admins mit `&scope=all` alle) |
 | Admin | `DELETE /tracks/{id}?delete_file=true`, `GET /downloads-system`, `POST /downloads-system/update` |
 
 Listen sind seitenweise (`limit`, `offset`) und sortierbar (`sort=title|recent|…`). Streams und Cover

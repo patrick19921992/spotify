@@ -293,6 +293,55 @@ def test_websocket_live_progress(env: Env) -> None:
     assert any(e["eta"] is not None and e["speed"] for e in seen)
 
 
+def _next_job_event(ws, job_id: int | None = None) -> dict:
+    """Nächstes Auftrags-Ereignis (Pings überspringen), optional nur für einen bestimmten Auftrag."""
+    while True:
+        event = ws.receive_json()
+        if event["type"] == "job" and (job_id is None or event["job"]["id"] == job_id):
+            return event["job"]
+
+
+def test_websocket_shows_only_own_jobs_unless_admin_asks_for_all(env: Env, make_user: Callable[..., dict]) -> None:
+    make_user("tim", "kinder-passwort")
+    child_tokens = login(env.client, "tim", "kinder-passwort")
+    url = "/api/downloads/ws?token="
+    with (
+        env.client.websocket_connect(url + env.tokens["access_token"]) as mine,
+        env.client.websocket_connect(url + env.tokens["access_token"] + "&scope=all") as everyone,
+        env.client.websocket_connect(url + child_tokens["access_token"] + "&scope=all") as kid,
+    ):
+        for ws in (mine, everyone, kid):
+            assert ws.receive_json()["type"] == "snapshot"
+        child_job = env.post("/api/downloads", {"video_id": "kkkkkkkkkk1", "title": "Kinderlied"},
+                             headers=bearer(child_tokens))
+        assert _next_job_event(kid)["id"] == child_job["id"]  # eigener Download
+        assert _next_job_event(everyone)["id"] == child_job["id"]  # Admin mit scope=all
+        env.wait(child_job["id"])
+        own = env.post("/api/downloads", {"video_id": "aaaaaaaaaa1", "title": "Papas Lied"})
+        # Ohne scope=all kommt beim Admin als Erstes sein eigener Download an, nichts vom Kind
+        assert _next_job_event(mine)["id"] == own["id"]
+        env.wait(own["id"])
+
+
+def test_queue_positions_move_up_live(env: Env) -> None:
+    env.client.app.state.downloads.stop()  # keine Worker: alles bleibt in der Warteschlange
+    with env.client.websocket_connect(f"/api/downloads/ws?token={env.tokens['access_token']}") as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+        jobs = [env.post("/api/downloads", {"video_id": f"qqqqqqqqqq{n}", "title": f"Q{n}"}) for n in range(3)]
+        assert [j["queue_position"] for j in jobs] == [0, 1, 2]
+        for job in jobs:
+            assert _next_job_event(ws, job["id"])["status"] == "queued"
+        cancelled = env.client.post(f"/api/downloads/{jobs[0]['id']}/cancel", headers=env.headers).json()
+        assert cancelled["status"] == "cancelled"
+        positions: dict[int, int | None] = {}
+        while len(positions) < 2:
+            event = ws.receive_json()
+            assert event["type"] != "ping", "Die übrigen Aufträge wurden nicht mit neuem Platz gemeldet"
+            if event["type"] == "job" and event["job"]["id"] != jobs[0]["id"]:
+                positions[event["job"]["id"]] = event["job"]["queue_position"]
+        assert positions == {jobs[1]["id"]: 0, jobs[2]["id"]: 1}
+
+
 def test_websocket_requires_login(env: Env) -> None:
     from starlette.websockets import WebSocketDisconnect
 
