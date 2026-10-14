@@ -342,6 +342,77 @@ def test_queue_positions_move_up_live(env: Env) -> None:
         assert positions == {jobs[1]["id"]: 0, jobs[2]["id"]: 1}
 
 
+def test_websocket_closes_when_account_is_disabled(
+    env: Env, make_user: Callable[..., dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from starlette.websockets import WebSocketDisconnect
+
+    from app.routers import downloads as downloads_router
+
+    monkeypatch.setattr(downloads_router, "ACCESS_CHECK_SECONDS", 0)  # bei jeder Runde prüfen
+    kid = make_user("tim", "kinder-passwort")
+    tokens = login(env.client, "tim", "kinder-passwort")
+    with env.client.websocket_connect(f"/api/downloads/ws?token={tokens['access_token']}") as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+        env.client.patch(f"/api/users/{kid['id']}", headers=env.headers, json={"is_active": False})
+        ws.send_text("ping")  # nächste Runde auslösen
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+    assert closed.value.code == 4401
+
+
+def test_same_song_for_two_users_gives_each_their_own_job(env: Env, make_user: Callable[..., dict]) -> None:
+    make_user("tim", "kinder-passwort")
+    kid = bearer(login(env.client, "tim", "kinder-passwort"))
+    playlist = env.post("/api/playlists", {"name": "Tims Lieder"}, headers=kid)
+    parent_job = env.post("/api/downloads", {"video_id": "ddddddddddd", "title": "Gemeinsam"})
+    kid_job = env.post("/api/downloads", {"video_id": "ddddddddddd", "title": "Gemeinsam",
+                                          "playlist_id": playlist["id"]}, headers=kid)
+    assert kid_job["id"] != parent_job["id"]
+    assert kid_job["user"]["display_name"] != "Admin"
+    # Das Kind sieht seinen Auftrag und kann ihn verfolgen
+    assert env.client.get(f"/api/downloads/{kid_job['id']}", headers=kid).status_code == 200
+    parent_done = env.wait(parent_job["id"])
+    deadline = time.monotonic() + 60
+    while (job := env.client.get(f"/api/downloads/{kid_job['id']}", headers=kid).json())["status"] != "done":
+        assert job["status"] not in ("failed", "cancelled"), job
+        assert time.monotonic() < deadline
+        time.sleep(0.1)
+    # Nur einmal geladen, und der Titel landet in der Playlist des Kindes
+    assert job["track_id"] == parent_done["track_id"]
+    items = env.client.get(f"/api/playlists/{playlist['id']}", headers=kid).json()["items"]
+    assert [i["track"]["id"] for i in items] == [parent_done["track_id"]]
+
+
+def test_long_japanese_title_fits_the_filesystem(env: Env) -> None:
+    title = "【公式】" + "あ" * 90
+    job = env.post("/api/downloads", {"video_id": "jjjjjjjjjjj", "media_type": "video", "title": title,
+                                      "artists": ["歌手"]})
+    done = env.wait(job["id"])
+    assert done["status"] == "done", done
+    files = list((env.settings.media_dir / "Musikvideos").rglob("*.mp4"))
+    assert files and all(len(f.name.encode()) <= 255 for f in files)
+
+
+def test_download_does_not_overwrite_or_delete_other_sidecars(env: Env) -> None:
+    job = env.post("/api/downloads", {"video_id": "wwwwwwwwwww", "title": "Weg", "artists": ["Band"]})
+    first = env.wait(job["id"])
+    song = next((env.settings.media_dir / "Musik").rglob("Weg.opus"))
+    # Neben dem Download liegt eine eigene FLAC gleichen Namens mit eigenem Songtext und Bild
+    (song.parent / "Weg.flac").write_bytes(b"flac")
+    (song.parent / "Weg.lrc").write_text("MEINE eigenen Lyrics", encoding="utf-8")
+    (song.parent / "Weg.jpg").write_bytes(b"jpg")
+    # Neuer Name, wenn schon eine gleichnamige Datei (egal welche Endung) existiert
+    assert tagging.unique_path(song.parent / "Weg.m4a").name == "Weg (2).m4a"
+    response = env.client.delete(f"/api/tracks/{first['track_id']}", headers=env.headers,
+                                 params={"delete_file": True})
+    assert response.status_code == 204
+    assert not song.exists()
+    # Die Begleitdateien gehören (auch) zur FLAC und bleiben
+    assert (song.parent / "Weg.lrc").read_text(encoding="utf-8") == "MEINE eigenen Lyrics"
+    assert (song.parent / "Weg.jpg").exists()
+
+
 def test_websocket_requires_login(env: Env) -> None:
     from starlette.websockets import WebSocketDisconnect
 

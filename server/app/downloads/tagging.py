@@ -1,6 +1,7 @@
 """Nach dem Download: Tags + Cover schreiben, Songtexte speichern, Dateinamen und Zielordner bilden."""
 
 import base64
+import glob
 import io
 import json
 import logging
@@ -42,11 +43,18 @@ class TrackMeta:
 
 # ------------------------------------------------------------------ Dateinamen
 
-def safe_name(value: str, fallback: str = "Unbekannt", limit: int = 120) -> str:
-    """Erlaubte Datei-/Ordnernamen für Unraid/SMB (keine / \\ : * ? " < > |, keine Punkte am Ende)."""
-    cleaned = _UNSAFE.sub("", value or "").strip()
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
-    return cleaned[:limit].rstrip(" .") or fallback
+def safe_name(value: str, fallback: str = "Unbekannt", limit: int = 120, max_bytes: int = 180) -> str:
+    """Erlaubte Datei-/Ordnernamen für Unraid/SMB (keine / \\ : * ? " < > |, keine Punkte am Ende).
+
+    Linux erlaubt höchstens 255 Byte je Name – japanische Titel oder Emojis brauchen 3–4 Byte pro Zeichen.
+    Gekürzt wird deshalb auch nach Bytes (mit Platz für "01 - ", " (2)" und die Endung).
+    """
+    cleaned = (value or "").encode("utf-8", "ignore").decode("utf-8")  # ungültige Zeichen (Surrogates) weg
+    cleaned = _UNSAFE.sub("", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")[:limit]
+    while len(cleaned.encode("utf-8")) > max_bytes:
+        cleaned = cleaned[:-1]
+    return cleaned.rstrip(" .") or fallback
 
 
 def target_path(media_dir: Path, folder: str, media_type: str, meta: TrackMeta, extension: str) -> Path:
@@ -61,12 +69,19 @@ def target_path(media_dir: Path, folder: str, media_type: str, meta: TrackMeta, 
     return base / f"{title}{extension}"
 
 
+def _stem_taken(path: Path) -> bool:
+    """Gibt es im Ordner schon eine Datei mit diesem Namen – egal welche Endung (Song, .lrc, .jpg)?"""
+    return path.exists() or any(path.parent.glob(glob.escape(path.stem) + ".*"))
+
+
 def unique_path(path: Path) -> Path:
-    if not path.exists():
+    """Freier Dateiname. Belegt ist ein Name auch durch eine gleichnamige Datei mit anderer Endung –
+    sonst würde ein neuer Download z. B. die Songtext-Datei (.lrc) einer vorhandenen FLAC überschreiben."""
+    if not _stem_taken(path):
         return path
     for counter in range(2, 1000):
         candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
-        if not candidate.exists():
+        if not _stem_taken(candidate):
             return candidate
     raise FileExistsError(str(path))
 

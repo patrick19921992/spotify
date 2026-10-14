@@ -2,6 +2,7 @@
 
 import asyncio
 import shutil
+import time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect, status
@@ -33,7 +34,7 @@ def _manager(request: Request):  # type: ignore[no-untyped-def]
     return request.app.state.downloads
 
 
-def _item_out(db: DbSession, item: YouTubeItem) -> YouTubeItemOut:
+def _item_out(db: DbSession, item: YouTubeItem, user_id: int) -> YouTubeItemOut:
     out = YouTubeItemOut(**item.__dict__)
     if item.video_id:
         media_type = "video" if item.type == "video" else "audio"
@@ -42,7 +43,12 @@ def _item_out(db: DbSession, item: YouTubeItem) -> YouTubeItemOut:
         )
         out.active_job_id = db.scalar(
             select(DownloadJob.id)
-            .where(DownloadJob.video_id == item.video_id, DownloadJob.status.in_(ACTIVE_STATES))
+            .where(
+                DownloadJob.video_id == item.video_id,
+                DownloadJob.media_type == media_type,
+                DownloadJob.user_id == user_id,
+                DownloadJob.status.in_(ACTIVE_STATES),
+            )
             .limit(1)
         )
     return out
@@ -61,7 +67,7 @@ def _youtube_call(func, *args):  # type: ignore[no-untyped-def]
 @router.get("/youtube/search", response_model=YouTubeSearchOut)
 def youtube_search(
     request: Request,
-    _: CurrentUser,
+    user: CurrentUser,
     db: DbSession,
     q: Annotated[str, Query(min_length=1, max_length=200)],
     type: Literal["songs", "videos", "albums"] = "songs",  # noqa: A002
@@ -69,11 +75,11 @@ def youtube_search(
 ) -> YouTubeSearchOut:
     """Sucht bei YouTube Music. Treffer, die es schon gibt, haben `in_library_track_id`."""
     items = _youtube_call(request.app.state.youtube.search, q, type, limit)
-    return YouTubeSearchOut(query=q, type=type, results=[_item_out(db, item) for item in items])
+    return YouTubeSearchOut(query=q, type=type, results=[_item_out(db, item, user.id) for item in items])
 
 
 @router.get("/youtube/albums/{browse_id}", response_model=YouTubeAlbumOut)
-def youtube_album(browse_id: BrowseId, request: Request, _: CurrentUser, db: DbSession) -> YouTubeAlbumOut:
+def youtube_album(browse_id: BrowseId, request: Request, user: CurrentUser, db: DbSession) -> YouTubeAlbumOut:
     album = _youtube_call(request.app.state.youtube.album, browse_id)
     return YouTubeAlbumOut(
         browse_id=album.browse_id,
@@ -81,7 +87,7 @@ def youtube_album(browse_id: BrowseId, request: Request, _: CurrentUser, db: DbS
         artists=album.artists,
         year=album.year,
         thumbnail_url=album.thumbnail_url,
-        tracks=[_item_out(db, t) for t in album.tracks],
+        tracks=[_item_out(db, t, user.id) for t in album.tracks],
     )
 
 
@@ -286,6 +292,8 @@ def clear_finished(user: CurrentUser, db: DbSession) -> Response:
 
 # ------------------------------------------------------------- Live-Fortschritt
 
+ACCESS_CHECK_SECONDS = 25  # so oft prüft eine offene Live-Verbindung, ob die Anmeldung noch gilt
+
 
 @router.websocket("/downloads/ws")
 async def downloads_ws(websocket: WebSocket, token: str | None = None, scope: str = "mine") -> None:
@@ -317,14 +325,34 @@ async def downloads_ws(websocket: WebSocket, token: str | None = None, scope: st
     if result is None:
         await websocket.close(code=4401, reason="Nicht angemeldet")
         return
+    def check_access() -> bool | None:
+        """Erneute Prüfung während der Verbindung: None = nicht mehr erlaubt, sonst ob alle Downloads sichtbar sind."""
+        if float((payload or {}).get("exp", 0)) <= time.time():
+            return None  # Token abgelaufen – die App verbindet sich mit einem frischen neu
+        with app.state.session_factory() as db:
+            try:
+                auth = auth_from_payload(db, payload or {})
+            except HTTPException:
+                return None  # abgemeldet, Gerät entfernt oder Konto gesperrt
+            return auth.user.is_admin and scope == "all"
+
     user_id, all_jobs, jobs = result
     await websocket.accept()
     hub = app.state.download_events
     subscriber = hub.subscribe(user_id, all_jobs)
+    receiver: asyncio.Task | None = None
     try:
         await websocket.send_json({"type": "snapshot", "jobs": jobs})
         receiver = asyncio.create_task(websocket.receive_text())
+        last_check = time.monotonic()
         while True:
+            if time.monotonic() - last_check >= ACCESS_CHECK_SECONDS:
+                allowed = await run_in_threadpool(check_access)
+                if allowed is None:
+                    await websocket.close(code=4401, reason="Nicht angemeldet")
+                    return
+                subscriber.all_jobs = allowed  # z. B. Admin-Rechte entzogen
+                last_check = time.monotonic()
             getter = asyncio.create_task(subscriber.queue.get())
             done, _ = await asyncio.wait({getter, receiver}, timeout=25, return_when=asyncio.FIRST_COMPLETED)
             if receiver in done:
@@ -340,6 +368,8 @@ async def downloads_ws(websocket: WebSocket, token: str | None = None, scope: st
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        if receiver is not None:
+            receiver.cancel()
         hub.unsubscribe(subscriber)
 
 

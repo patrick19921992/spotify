@@ -20,7 +20,8 @@ MAX_ORIGINAL = 1200
 FOLDER_IMAGE_NAMES = ("cover", "folder", "front", "album", "albumart", "thumb")
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 
-Image.MAX_IMAGE_PIXELS = 50_000_000  # Schutz vor absichtlich riesigen Bildern
+MAX_PIXELS = 50_000_000  # größere Bilder werden als Cover abgelehnt
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS  # Schutz vor absichtlich riesigen Bildern
 
 
 def dominant_color(image: Image.Image) -> str:
@@ -59,11 +60,18 @@ class CoverStore:
             return cover_id
         try:
             with Image.open(io.BytesIO(data)) as raw:
-                image = ImageOps.exif_transpose(raw).convert("RGB")
+                # Riesige, stark komprimierte Bilder gar nicht erst entpacken (Speicher/Rechenzeit)
+                if raw.width * raw.height > MAX_PIXELS:
+                    logger.debug("Coverbild zu groß ignoriert: %sx%s", raw.width, raw.height)
+                    return None
+                raw.draft("RGB", (MAX_ORIGINAL, MAX_ORIGINAL))  # JPEG gleich verkleinert dekodieren
+                image = ImageOps.exif_transpose(raw)
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+                image.thumbnail((MAX_ORIGINAL, MAX_ORIGINAL))
         except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
             logger.debug("Ungültiges Coverbild ignoriert: %s", exc)
             return None
-        image.thumbnail((MAX_ORIGINAL, MAX_ORIGINAL))
         target = self._file(cover_id)
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_suffix(".tmp")

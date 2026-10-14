@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select, update
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, aliased, sessionmaker
 
 from app.config import Settings
 from app.downloads import tagging, ytdlp
@@ -163,11 +163,17 @@ class DownloadManager:
         year: int | None = None,
         thumbnail_url: str | None = None,
     ) -> DownloadJob:
-        """Legt einen Auftrag an – oder liefert den laufenden/fertigen, falls es den Titel schon gibt."""
+        """Legt einen Auftrag an – oder liefert den eigenen laufenden bzw. sofort fertigen, falls es den Titel gibt.
+
+        Lädt gerade jemand anderes denselben Titel, bekommt der Benutzer trotzdem einen eigenen Auftrag (sichtbar,
+        abbrechbar, mit eigener Ziel-Playlist). Der Worker wartet damit, bis der andere fertig ist, und übernimmt
+        dann den schon geladenen Titel.
+        """
         running = db.scalar(
             select(DownloadJob).where(
                 DownloadJob.video_id == video_id,
                 DownloadJob.media_type == media_type,
+                DownloadJob.user_id == user.id,
                 DownloadJob.status.in_(ACTIVE_STATES),
             )
         )
@@ -238,9 +244,20 @@ class DownloadManager:
 
     def _claim(self) -> int | None:
         with self._claim_lock, self.session_factory() as db:
+            # Titel, die gerade schon (für jemand anderen) geladen werden, warten lassen
+            busy = aliased(DownloadJob)
+            already_loading = (
+                select(busy.id)
+                .where(
+                    busy.video_id == DownloadJob.video_id,
+                    busy.media_type == DownloadJob.media_type,
+                    busy.status.in_(("downloading", "processing")),
+                )
+                .exists()
+            )
             job = db.scalar(
                 select(DownloadJob)
-                .where(DownloadJob.status == "queued")
+                .where(DownloadJob.status == "queued", ~already_loading)
                 .order_by(DownloadJob.created_at, DownloadJob.id)
                 .limit(1)
             )
@@ -285,16 +302,28 @@ class DownloadManager:
             job = db.get(DownloadJob, job_id)
             if job is None:
                 return
-            category = db.get(Category, job.category_id)
-            if category is None:
-                self._finish(job_id, "failed", error="Die Rubrik gibt es nicht mehr.")
-                return
-            snapshot = {
-                "video_id": job.video_id, "media_type": job.media_type, "title": job.title,
-                "artists": list(job.artists or []), "album": job.album, "album_artist": job.album_artist,
-                "track_number": job.track_number, "year": job.year, "thumbnail_url": job.thumbnail_url,
-                "folder": category.folder, "category_id": category.id, "user_id": job.user_id,
-            }
+            existing = db.scalar(
+                select(Track.id).where(Track.source_id == job.video_id, Track.media_type == job.media_type).limit(1)
+            )
+            if existing is not None:  # inzwischen (z. B. für jemand anderen) geladen -> übernehmen
+                job.track_id = existing
+                if job.playlist_id:
+                    self._add_to_playlist(db, job)
+                db.commit()
+            else:
+                category = db.get(Category, job.category_id)
+                if category is None:
+                    self._finish(job_id, "failed", error="Die Rubrik gibt es nicht mehr.")
+                    return
+                snapshot = {
+                    "video_id": job.video_id, "media_type": job.media_type, "title": job.title,
+                    "artists": list(job.artists or []), "album": job.album, "album_artist": job.album_artist,
+                    "track_number": job.track_number, "year": job.year, "thumbnail_url": job.thumbnail_url,
+                    "folder": category.folder, "category_id": category.id, "user_id": job.user_id,
+                }
+        if existing is not None:
+            self._finish(job_id, "done", progress=1.0, track_id=existing, error=None)
+            return
 
         workdir = self.settings.downloads_tmp_dir / f"job-{job_id}"
         shutil.rmtree(workdir, ignore_errors=True)

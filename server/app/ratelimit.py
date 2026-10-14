@@ -1,4 +1,8 @@
-"""Einfacher Schutz gegen Passwort-Raten: zählt Fehlversuche je Benutzername und je IP."""
+"""Einfacher Schutz gegen Passwort-Raten: zählt Fehlversuche je Benutzername+IP und je IP.
+
+Der Benutzer-Zähler gilt bewusst nur für die IP, von der die Fehlversuche kommen: Sonst könnte jeder aus
+dem Internet ein Konto (z. B. "admin") mit zehn falschen Passwörtern dauerhaft für alle sperren.
+"""
 
 import threading
 import time
@@ -28,7 +32,7 @@ class LoginRateLimiter:
         now = time.monotonic()
         waits: list[float] = []
         with self._lock:
-            for key, limit in ((f"u:{username}", self._max_per_user), (f"ip:{ip}", self._max_per_ip)):
+            for key, limit in ((self._user_key(username, ip), self._max_per_user), (f"ip:{ip}", self._max_per_ip)):
                 entries = self._recent(key, now)
                 if len(entries) >= limit:
                     waits.append(entries[0] + self._window - now)
@@ -39,10 +43,14 @@ class LoginRateLimiter:
     def record_failure(self, username: str, ip: str) -> None:
         now = time.monotonic()
         with self._lock:
-            for key in (f"u:{username}", f"ip:{ip}"):
+            for key in (self._user_key(username, ip), f"ip:{ip}"):
                 self._recent(key, now)
                 self._failures.setdefault(key, deque()).append(now)
 
-    def reset_user(self, username: str) -> None:
+    def reset_user(self, username: str, ip: str) -> None:
         with self._lock:
-            self._failures.pop(f"u:{username}", None)
+            self._failures.pop(self._user_key(username, ip), None)
+
+    @staticmethod
+    def _user_key(username: str, ip: str) -> str:
+        return f"u:{username}|{ip}"

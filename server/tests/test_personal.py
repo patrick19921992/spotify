@@ -143,6 +143,20 @@ def test_custom_cover_upload(lib: Library) -> None:
     assert lib.client.delete(url, headers=lib.headers).json()["cover_id"] is None
 
 
+def test_cover_upload_rejects_decompression_bomb(lib: Library) -> None:
+    """Ein winziges PNG mit riesiger Auflösung wird abgelehnt, ohne es zu entpacken."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("1", (9999, 9999)).save(buffer, "PNG")  # ca. 100 Megapixel, aber nur wenige KB
+    playlist = _create(lib)
+    response = lib.client.put(
+        f"/api/playlists/{playlist['id']}/cover", headers=lib.headers, files={"file": ("x.png", buffer.getvalue())}
+    )
+    assert response.status_code == 400
+
 def test_removed_files_disappear_from_playlists(lib: Library) -> None:
     ids = _ids(lib)
     playlist = _create(lib, track_ids=[ids["Get Lucky"], ids["Bohemian Rhapsody"]])

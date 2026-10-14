@@ -42,7 +42,7 @@ def login(body: LoginIn, request: Request, db: DbSession, settings: AppSettings)
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Dieses Konto ist deaktiviert.")
 
-    limiter.reset_user(body.username)
+    limiter.reset_user(body.username, ip)
     if password_needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
     issued = start_session(

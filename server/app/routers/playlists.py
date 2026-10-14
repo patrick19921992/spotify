@@ -115,12 +115,15 @@ def move_item(playlist_id: int, body: PlaylistMoveIn, user: CurrentUser, db: DbS
 
 
 @router.put("/{playlist_id}/cover", response_model=PlaylistOut)
-async def upload_cover(
+def upload_cover(
     playlist_id: int, file: UploadFile, request: Request, user: CurrentUser, db: DbSession
 ) -> PlaylistOut:
-    """Eigenes Coverbild hochladen (JPG/PNG/WebP, max. 10 MB)."""
+    """Eigenes Coverbild hochladen (JPG/PNG/WebP, max. 10 MB).
+
+    Bewusst ohne async: Das Umrechnen des Bildes läuft so in einem Hilfs-Thread und hält den Server nicht an.
+    """
     playlist = _managed(db, user, playlist_id)
-    data = await file.read(MAX_COVER_BYTES + 1)
+    data = file.file.read(MAX_COVER_BYTES + 1)
     if len(data) > MAX_COVER_BYTES:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Das Bild ist größer als 10 MB.")
     cover_id = request.app.state.covers.add(db, data)

@@ -81,6 +81,21 @@ def test_rate_limit_after_failures(client: TestClient) -> None:
     assert int(blocked.headers["Retry-After"]) > 0
 
 
+def test_rate_limit_does_not_lock_out_other_ips() -> None:
+    """Fehlversuche von einer fremden IP dürfen den echten Besitzer nicht aussperren."""
+    from app.ratelimit import LoginRateLimiter
+
+    limiter = LoginRateLimiter(max_per_user=10, max_per_ip=30, window_seconds=900)
+    for _ in range(10):
+        limiter.record_failure("admin", "203.0.113.9")
+    assert limiter.retry_after("admin", "203.0.113.9") is not None
+    assert limiter.retry_after("admin", "192.168.1.20") is None
+    # Eine IP, die viele Konten durchprobiert, wird trotzdem gebremst
+    for n in range(30):
+        limiter.record_failure(f"user{n}", "198.51.100.7")
+    assert limiter.retry_after("lena", "198.51.100.7") is not None
+
+
 def test_sessions_list_and_remote_logout(client: TestClient) -> None:
     phone = login(client, "admin", ADMIN_PASSWORD, device="Handy")
     tablet = login(client, "admin", ADMIN_PASSWORD, device="Tablet")

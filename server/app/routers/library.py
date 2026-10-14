@@ -1,5 +1,6 @@
 """Bibliothek: Künstler, Alben, Titel, Suche und Scan."""
 
+import glob
 import threading
 from dataclasses import asdict
 from typing import Annotated
@@ -9,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from app.deps import AdminUser, AppSettings, CurrentUser, DbSession
 from app.library.covers import IMAGE_EXTENSIONS
 from app.library.lyrics import read_lyrics
+from app.library.metadata import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 from app.models import Album, Artist, Category, Track
 from app.schemas.downloads import LyricsLineOut, LyricsOut
 from app.schemas.library import (
@@ -141,9 +143,16 @@ def delete_track(
         media_root = settings.media_dir.resolve()
         path = (settings.media_dir / track.path).resolve()
         if path.is_relative_to(media_root):
-            for extra in [path, path.with_suffix(".lrc"), *(path.with_suffix(ext) for ext in IMAGE_EXTENSIONS)]:
-                if extra.is_file() and (extra == path or extra.stem == path.stem):
-                    extra.unlink()
+            if path.is_file():
+                path.unlink()
+            # Songtext/Bild gleichen Namens nur löschen, wenn sie zu keiner anderen Datei gehören
+            # (z. B. "01 - Song.flac" und "01 - Song.opus" im selben Ordner)
+            media = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
+            siblings = [p for p in path.parent.glob(glob.escape(path.stem) + ".*") if p.suffix.lower() in media]
+            if not siblings:
+                for extra in [path.with_suffix(".lrc"), *(path.with_suffix(ext) for ext in IMAGE_EXTENSIONS)]:
+                    if extra.is_file():
+                        extra.unlink()
     db.delete(track)
     db.commit()
     request.app.state.scanner.finalize_now(db)
