@@ -3,6 +3,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:selfify/ui/screens/album_screen.dart';
+import 'package:selfify/ui/screens/artist_screen.dart';
 import 'package:selfify/ui/screens/category_screen.dart';
 import 'package:selfify/ui/screens/devices_screen.dart';
 import 'package:selfify/ui/screens/home_screen.dart';
@@ -33,6 +35,8 @@ final cases = <ScreenCase>[
   (name: 'Lieblingssongs', build: () => const LikedSongsScreen(), expectTexts: ['Lieblingssongs']),
   (name: 'Eigene Playlist', build: () => const PlaylistScreen(playlistId: 5), expectTexts: ['Roadtrip 5']),
   (name: 'Gemeinsame Playlist', build: () => const PlaylistScreen(playlistId: 6), expectTexts: ['Roadtrip 6']),
+  (name: 'Album', build: () => const AlbumScreen(albumId: 7), expectTexts: ['A Night at the Opera']),
+  (name: 'Künstler', build: () => const ArtistScreen(artistId: 3), expectTexts: ['Queen']),
 ];
 
 void main() {
