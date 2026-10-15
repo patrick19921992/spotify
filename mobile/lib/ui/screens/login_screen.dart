@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
@@ -6,6 +7,7 @@ import '../../data/api.dart';
 import '../../data/models.dart';
 import '../../state/auth.dart';
 import '../../state/library.dart';
+import '../widgets/common.dart';
 import 'account_widgets.dart';
 
 /// Willkommen: Server verbinden, dann anmelden. Nach der Anmeldung leitet der Router weiter.
@@ -30,6 +32,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loggingIn = false;
   bool _obscure = true;
   String? _serverError;
+
+  /// Technische Angaben zur fehlgeschlagenen Prüfung (wer hat geantwortet, mit welchem Inhalt).
+  String? _serverDetails;
   String? _loginError;
 
   /// Zählt Verbindungsversuche – veraltete Antworten werden ignoriert.
@@ -82,6 +87,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _probing = true;
       _serverError = null;
+      _serverDetails = null;
       _loginError = null;
     });
 
@@ -115,7 +121,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!mounted || run != _probeRun) return;
     setState(() {
       _probing = false;
-      if (!automatic) _serverError = error == null ? null : errorText(error);
+      if (!automatic) {
+        _serverError = error == null ? null : errorText(error);
+        _serverDetails = error is ServerProbeException && error.details.isNotEmpty ? error.details : null;
+      }
     });
   }
 
@@ -124,6 +133,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!changed && _serverError == null && !_probing) return;
     setState(() {
       _serverError = null;
+      _serverDetails = null;
       if (changed) {
         _info = null;
         _connectedUrl = null;
@@ -233,7 +243,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          _ServerStatus(info: _info, error: _serverError, probing: _probing),
+                          _ServerStatus(info: _info, error: _serverError, details: _serverDetails, probing: _probing),
                           AnimatedSize(
                             duration: const Duration(milliseconds: 220),
                             curve: Curves.easeOutCubic,
@@ -381,15 +391,23 @@ class _FieldLabel extends StatelessWidget {
 class _ServerStatus extends StatelessWidget {
   final ServerInfo? info;
   final String? error;
+  final String? details;
   final bool probing;
 
-  const _ServerStatus({required this.info, required this.error, required this.probing});
+  const _ServerStatus({required this.info, required this.error, required this.details, required this.probing});
 
   @override
   Widget build(BuildContext context) {
     final Widget child;
     if (error != null) {
-      child = AccountNotice.error(error!, key: ValueKey('error:$error'));
+      child = Column(
+        key: ValueKey('error:$error'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AccountNotice.error(error!),
+          if (details != null) _ProbeDetails(details: details!),
+        ],
+      );
     } else if (info != null) {
       child = Row(
         key: const ValueKey('connected'),
@@ -416,5 +434,39 @@ class _ServerStatus extends StatelessWidget {
       );
     }
     return AnimatedSwitcher(duration: const Duration(milliseconds: 180), child: child);
+  }
+}
+
+/// Aufklappbare technische Angaben zu einer fehlgeschlagenen Server-Prüfung – zum Kopieren und Weitergeben.
+class _ProbeDetails extends StatelessWidget {
+  final String details;
+
+  const _ProbeDetails({required this.details});
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        title: const Text('Technische Details', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(
+            details,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontFamily: 'monospace', height: 1.4),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: details));
+              showMessage(context, 'Details kopiert');
+            },
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: const Text('Details kopieren'),
+          ),
+        ],
+      ),
+    );
   }
 }
