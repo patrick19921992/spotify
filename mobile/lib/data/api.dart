@@ -268,7 +268,11 @@ class ApiClient {
   Future<Response<dynamic>> downloadFile(String url, String savePath,
       {void Function(int received, int total)? onProgress, CancelToken? cancelToken}) async {
     try {
-      return await _dio.download(url, savePath, onReceiveProgress: onProgress, cancelToken: cancelToken);
+      // Lange Hörbücher wandelt der Server fürs iPhone erst komplett um, bevor das erste Byte kommt
+      return await _dio.download(url, savePath,
+          onReceiveProgress: onProgress,
+          cancelToken: cancelToken,
+          options: Options(receiveTimeout: const Duration(minutes: 15)));
     } catch (e) {
       throw toApiException(e);
     }

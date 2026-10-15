@@ -37,7 +37,7 @@ fi
 git -C "$SRC" remote set-url origin "https://github.com/${REPO}.git"
 
 if [ ! -f "$CONFIG" ]; then
-    echo "==> Lege $CONFIG an – bitte dort PUBLIC_URL usw. anpassen und das Skript erneut starten"
+    echo "==> Lege $CONFIG an"
     cat > "$CONFIG" <<'YAML'
 # Eigene Einstellungen für Selfify (überschreiben docker-compose.yml, bleiben bei Updates erhalten).
 # Alle Möglichkeiten: siehe README, Abschnitt "Einstellungen".
@@ -53,6 +53,9 @@ services:
     #   - /mnt/user/appdata/selfify:/data
     #   - /mnt/user/selfify:/media
 YAML
+    echo "==> Erst die Einstellungen in $CONFIG anpassen (PUBLIC_URL, ADMIN_PASSWORD …),"
+    echo "    dann das Skript noch einmal starten – erst dann wird der Container angelegt."
+    exit 0
 fi
 
 if ! docker compose version >/dev/null 2>&1; then

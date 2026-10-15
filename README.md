@@ -64,10 +64,13 @@ Updates: *Docker* → *Check for Updates* → *Apply Update*.
    ```bash
    bash /boot/config/selfify-update.sh
    ```
-   Beim ersten Lauf legt es `/mnt/user/appdata/selfify-config.yml` an. Dort trägst du `PUBLIC_URL` (und
-   bei Bedarf andere Ordner) ein und startest das Skript noch einmal. Es lädt den Code, baut das Image
-   (ein paar Minuten) und startet den Container `selfify`.
-4. Admin-Passwort: `docker logs selfify`.
+   Beim ersten Lauf legt es nur `/mnt/user/appdata/selfify-config.yml` an und hört dann auf. Dort trägst du
+   `PUBLIC_URL` (und bei Bedarf ein eigenes `ADMIN_PASSWORD` oder andere Ordner) ein und startest das Skript
+   noch einmal. Erst dann lädt es den Code, baut das Image (ein paar Minuten) und startet den Container
+   `selfify`.
+4. Admin-Passwort: dein `ADMIN_PASSWORD` – oder, falls leer gelassen, das erzeugte aus `docker logs selfify`.
+   `ADMIN_PASSWORD` wirkt nur beim allerersten Start. Später hilft
+   `docker exec -u 99:100 selfify python -m app.cli reset-password admin 'NeuesPasswort'`.
 
 Updates: Skript erneut ausführen. Im Plugin „User Scripts“ geht das z. B. automatisch jede Woche. Deine
 Einstellungen in `selfify-config.yml` bleiben erhalten.
@@ -91,6 +94,13 @@ z. B. **Nginx Proxy Manager** oder **SWAG** auf dem Unraid.
 - **Websockets Support: an.** Wird ab Schritt 4 für die Live-Anzeige des Download-Fortschritts gebraucht.
 - *Block Common Exploits:* an
 - Tab *SSL:* Let's-Encrypt-Zertifikat anfordern, **Force SSL** und **HTTP/2** an
+- Tab *Advanced → Custom Nginx Configuration:* längere Wartezeiten eintragen. Lange Hörbücher werden fürs
+  iPhone erst umgewandelt, ein yt-dlp-Update dauert ein paar Minuten – sonst bricht der Proxy nach 60–90
+  Sekunden mit Fehler 504 ab:
+  ```nginx
+  proxy_read_timeout 900s;
+  proxy_send_timeout 900s;
+  ```
 
 Dazu einen DNS-Eintrag (bzw. DynDNS) für `musik.example.de` auf deine Internetadresse und im Router
 Port 443 auf den Proxy weiterleiten.
@@ -244,7 +254,7 @@ Den gleichen Mechanismus nutzt der **Datensparmodus** (`quality=low|normal|high`
 | Was | Wie |
 |-----|-----|
 | Ton | Originalspur **ohne Umwandlung**, meist Opus mit ca. 130–160 kbit/s. Das ist die beste Qualität, die YouTube liefert. Mit YouTube-Music-Premium-Cookies gibt es AAC mit 256 kbit/s. |
-| Video | H.264 + AAC als MP4 bis 1080p (läuft auf jedem Handy). Mit `YTDL_VIDEO_CODEC=best` VP9/AV1 bis 4K, das läuft aber nicht auf jedem iPhone. |
+| Video | H.264 + AAC als MP4 bis 1080p (läuft auf jedem Handy). Mit `YTDL_VIDEO_CODEC=best` und `YTDL_VIDEO_MAX_HEIGHT=2160` VP9/AV1 bis 4K, das läuft aber nicht auf jedem iPhone. |
 | Tags | Titel, Künstler, Album, Tracknummer, Jahr, Album-Cover (quadratisch) und YouTube-ID werden in die Datei geschrieben. |
 | Songtexte | Zeitsynchron von YouTube Music, ersatzweise von LRCLIB, gespeichert als `.lrc` neben dem Titel |
 | Ablage | `Rubrik/Künstler/Album/01 - Titel.opus` bzw. `Musikvideos/Künstler/Titel.mp4` (+ Vorschaubild) |
@@ -300,7 +310,8 @@ sich abbrechen und bei einem Fehler erneut starten.
 
 ## Konsolen-Befehle
 
-Im Unraid-Terminal (oder Container-Symbol → *Console*):
+Im Unraid-Terminal (oben rechts in der Unraid-Oberfläche, **nicht** in der Container-Konsole – dort gibt es
+kein `docker`):
 
 ```bash
 docker exec -u 99:100 selfify python -m app.cli list-users

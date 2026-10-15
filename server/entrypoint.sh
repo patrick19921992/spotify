@@ -6,7 +6,9 @@ set -e
 PUID="${PUID:-99}"
 PGID="${PGID:-100}"
 
-if [ "$(id -u)" = "0" ]; then
+# Als root gestartet: Rechte abgeben. Bei PUID=0 läuft der Server bewusst als root weiter
+# (sonst würde sich das Skript endlos selbst neu starten).
+if [ "$(id -u)" = "0" ] && [ "$PUID" != "0" ]; then
     mkdir -p "$DATA_DIR" "$MEDIA_DIR"
     # Nur den Datenordner anpassen – der Medienordner (Unraid-Share) bleibt unangetastet
     chown -R "$PUID:$PGID" "$DATA_DIR"

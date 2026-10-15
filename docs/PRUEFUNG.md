@@ -12,7 +12,7 @@ Stand: 15.10.2026
 | Server-Sicherheit | ✅ fertig | 6 | 6 |
 | Server-Logik | ✅ fertig | 11 | 11 |
 | Schnittstelle App ↔ Server | ✅ fertig | 6 | 0 |
-| Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 1 |
+| Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 7 |
 | App-Kern (Player, Offline, Downloads, Anmeldung) | ⏳ läuft | – | – |
 | App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ⏳ läuft | – | – |
 | App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ⏳ läuft | – | – |
@@ -59,18 +59,18 @@ Stand: 15.10.2026
 - [ ] niedrig – Medien-Token läuft nach 7 Tagen ab, eingereihte Titel spielen dann nicht mehr
       (`mobile/lib/player/audio_handler.dart:202`)
 
-## Docker, Unraid, CI, Anleitung – offen
+## Docker, Unraid, CI, Anleitung – alle behoben
 
-- [ ] **hoch** – Weg B: Schon der erste Lauf startet den Container, das Admin-Passwort aus dem Log geht
+- [x] **hoch** – Weg B: Schon der erste Lauf startet den Container, das Admin-Passwort aus dem Log geht
       beim dokumentierten zweiten Lauf verloren (`unraid/selfify-update.sh:39`)
-- [ ] mittel – PUID=0 lässt das Startskript endlos neu starten (`server/entrypoint.sh:10`)
-- [ ] mittel – Anleitung zum Reverse Proxy erwähnt keine Zeitlimits (lange Umwandlungen/Aufrufe)
-      (`README.md:87`)
+- [x] mittel – PUID=0 lässt das Startskript endlos neu starten (`server/entrypoint.sh:10`)
+- [x] mittel – Anleitung zum Reverse Proxy erwähnt keine Zeitlimits (lange Umwandlungen/Aufrufe)
+      (`README.md:87`) – Anleitung ergänzt, App wartet bei Offline-Downloads bis 15 Min.
 - [x] niedrig – Alte yt-dlp-Kopie in /data überdeckt neuere im Image (`ytdlp.py:52`, wie oben)
-- [ ] niedrig – iOS: `NSAllowsLocalNetworking` hebt `NSAllowsArbitraryLoads` auf, http im Heimnetz
+- [x] niedrig – iOS: `NSAllowsLocalNetworking` hebt `NSAllowsArbitraryLoads` auf, http im Heimnetz
       per Hostname blockiert (`mobile/ios/Runner/Info.plist:79`)
-- [ ] niedrig – README: „best“ verspricht 4K, YTDL_VIDEO_MAX_HEIGHT begrenzt aber auf 1080 (`README.md:247`)
-- [ ] niedrig – README: Konsolen-Befehle funktionieren so nicht in „Container-Symbol → Console“
+- [x] niedrig – README: „best“ verspricht 4K, YTDL_VIDEO_MAX_HEIGHT begrenzt aber auf 1080 (`README.md:247`)
+- [x] niedrig – README: Konsolen-Befehle funktionieren so nicht in „Container-Symbol → Console“
       (`README.md:303`)
 
 ## Sonstiges
