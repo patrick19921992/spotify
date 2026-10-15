@@ -158,6 +158,27 @@ Workflow `wf_0cfa73a2-740`: 11 Funde, 10 bestätigt (der Desugaring-Fund war sch
 
 Tests: `app_update_test.dart` (u. a. mit nachgebildeter Android-Seite des Plugins), `server_probe_test.dart`.
 
+## Windows-App (PR #5)
+
+Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs (`wf_3fa73ce4-8fa`, 3 Blickwinkel).
+
+- [x] blockierend – Weiterschalten, während ein Titel noch öffnet, hängte die Wiedergabe (libmpv-Ladevorgang
+      endet nie) → überholte Ladevorgänge werden beendet (`player/windows_audio.dart`)
+- [x] mittel – Weiter/Warteschlangen-Klick/Spulen während des Öffnens wurden verschluckt (just_audio ignoriert
+      Spulen bei „lädt“) → eigene Ladevorgänge melden „puffert“, Spulen wird nachgeholt
+- [x] mittel – Ziehen mit der Maus überall: Klicks mit 1–2 px Mausbewegung gingen verloren, Text ließ sich
+      nicht markieren → app-weites Maus-Ziehen entfernt (Mausrad/Scrollleiste)
+- [x] Windows meldet „keine Verbindung“, wenn sein Internet-Test scheitert → am Computer nie „offline“
+- [x] Leertaste startete auf der Videoseite zusätzlich die Musik; auf fokussierten Knöpfen betätigt sie jetzt
+      den Knopf; gedrückt halten schaltet nur einmal um
+- [x] Strg+F bei offenem Dialog zog den Fokus hinter den Dialog; Alt+← umging PopScope
+- [x] Player-Leiste bei großer Windows-Schrift zu niedrig; Songtext/Warteschlange-Knöpfe auf Vollbildseiten
+      ohne Wirkung → ausgeblendet
+- [x] fehlende libmpv-2.dll verhinderte den Start → App startet, Abspielen meldet den Grund; CI prüft die DLL
+- [x] Installer: nur pro Benutzer, fester Ordner (kein Löschen von „data“ in fremden Ordnern)
+- [ ] offen (Folgeschritt): systemweite Medientasten/Windows-Medienübersicht (SMTC), Update-Hinweis für
+      Windows, Fenstergröße merken, lückenlose Übergänge zwischen Titeln
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

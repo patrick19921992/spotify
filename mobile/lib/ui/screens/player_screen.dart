@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../player/player.dart';
 import '../../state/offline.dart';
+import '../desktop/desktop_layout.dart';
 import '../nav.dart';
 import '../widgets/common.dart';
 import '../widgets/cover.dart';
@@ -118,16 +119,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     SliverToBoxAdapter(
                       child: SizedBox(
                         height: mainHeight,
-                        child: _NowPlaying(track: track, playContext: handler.playContext, onClose: _close),
+                        child: _centered(context, _NowPlaying(track: track, playContext: handler.playContext, onClose: _close)),
                       ),
                     ),
                     SliverToBoxAdapter(
-                      child: PlayerLyricsCard(track: track, margin: const EdgeInsets.fromLTRB(16, 0, 16, 16)),
+                      child: _centered(context, PlayerLyricsCard(track: track, margin: const EdgeInsets.fromLTRB(16, 0, 16, 16))),
                     ),
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _AboutCard(track: track),
+                        child: _centered(context, _AboutCard(track: track)),
                       ),
                     ),
                     SliverToBoxAdapter(child: SizedBox(height: 32 + bottomInset)),
@@ -141,6 +142,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 }
+
+/// Computer mit breitem Fenster: Player mittig statt über die ganze Breite gezogen (Handy: unverändert).
+Widget _centered(BuildContext context, Widget child) => useDesktopLayout(context)
+    ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: child))
+    : child;
 
 /// Der sichtbare Player: Kopfzeile, Cover, Titel, Fortschritt, Steuerung.
 class _NowPlaying extends ConsumerWidget {

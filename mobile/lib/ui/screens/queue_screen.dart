@@ -20,7 +20,9 @@ class _Entry {
 
 /// Warteschlange: was gerade läuft und was als Nächstes kommt (sortieren, entfernen, leeren).
 class QueueScreen extends ConsumerStatefulWidget {
-  const QueueScreen({super.key});
+  /// In der rechten Spalte der Desktop-App: ohne Kopfzeile und ohne eigene Steuerung.
+  final bool embedded;
+  const QueueScreen({super.key, this.embedded = false});
 
   @override
   ConsumerState<QueueScreen> createState() => _QueueScreenState();
@@ -105,7 +107,7 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
+      appBar: widget.embedded ? null : AppBar(
         leading: IconButton(
           tooltip: 'Schließen',
           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
@@ -159,7 +161,7 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                     ],
                   ),
                 ),
-                const _BottomControls(),
+                if (!widget.embedded) const _BottomControls(),
               ],
             ),
     );

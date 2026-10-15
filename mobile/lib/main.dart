@@ -8,10 +8,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'player/player.dart';
+import 'player/windows_audio.dart';
 import 'state/auth.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  setupWindowsAudio(); // nur Windows: Wiedergabe über libmpv
   await initializeDateFormatting('de_DE');
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,

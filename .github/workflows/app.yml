@@ -1,4 +1,4 @@
-# App: Prüfung + Android-APK (bei jedem Lauf) + iOS-IPA für Sideloading (Tags/manuell)
+# App: Prüfung + Android-APK + Windows-App (bei jedem Lauf) + iOS-IPA für Sideloading (Tags/manuell)
 name: App
 
 on:
@@ -157,6 +157,98 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: mobile/build/selfify.apk
+
+  windows:
+    name: Windows-App
+    # Läuft erst nach der APK: Der Android-Job legt das Release "app-latest" bei jedem Stand auf main
+    # komplett neu an (alte Dateien fliegen dabei raus). Danach legt dieser Job die Windows-Dateien dazu.
+    # Schlägt der Windows-Build fehl, ist die APK trotzdem schon veröffentlicht.
+    needs: android
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Windows-App bauen
+        run: flutter build windows --release --build-number=${{ github.run_number }}
+      - name: Visual-C++-Laufzeit beilegen (läuft dann auch auf PCs ohne VC++-Redistributable)
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $release = 'build\windows\x64\runner\Release'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Directory |
+            Where-Object Name -match '^\d+(\.\d+){2,3}$' |
+            Sort-Object { [version]$_.Name } -Descending |
+            ForEach-Object { Get-ChildItem "$($_.FullName)\x64" -Directory -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue } |
+            Select-Object -First 1
+          if ($crt) {
+            Write-Host "VC++-Laufzeit aus $($crt.FullName)"
+            Copy-Item "$($crt.FullName)\*.dll" $release
+          } else {
+            Write-Host '::warning::VC++-Redist-Ordner nicht gefunden - nehme die DLLs aus System32.'
+            'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll' |
+              ForEach-Object { Copy-Item "$env:SystemRoot\System32\$_" $release }
+          }
+          'selfify.exe', 'flutter_windows.dll', 'libmpv-2.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
+          'data\app.so', 'data\icudtl.dat', 'data\flutter_assets' | ForEach-Object {
+            if (-not (Test-Path (Join-Path $release $_))) { throw "Fehlt im Build: $_" }
+          }
+      - name: ZIP und Installer packen
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $release = 'build\windows\x64\runner\Release'
+          $v = (Get-Item "$release\selfify.exe").VersionInfo
+          $version = '{0}.{1}.{2}.{3}' -f $v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart, $v.FilePrivatePart
+          Write-Host "Version $version"
+          # ZIP ohne Installation: Ordner "Selfify" mit selfify.exe, allen DLLs und dem Ordner "data"
+          New-Item -ItemType Directory -Force build\zip | Out-Null
+          Copy-Item $release build\zip\Selfify -Recurse
+          Compress-Archive -Path build\zip\Selfify -DestinationPath build\selfify-windows.zip -CompressionLevel Optimal -Force
+          # Installer mit Startmenü-Eintrag und Deinstallation (Inno Setup; fehlt es auf dem Runner, wird es nachinstalliert)
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if (-not (Test-Path $iscc)) { throw 'Inno Setup nicht gefunden' }
+          }
+          & $iscc /Q "/DAppVersion=$version" "/DAppSourceDir=$PWD\$release" "/DAppOutputDir=$PWD\build" windows\installer\selfify.iss
+          Get-ChildItem build\selfify-windows*
+      - name: Windows-Dateien als Artefakt (nur zum Testen)
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: selfify-windows
+          path: |
+            mobile/build/selfify-windows.zip
+            mobile/build/selfify-windows-setup.exe
+          retention-days: 3
+      - name: Windows-Dateien ins Release "app-latest" legen (bei jedem Stand auf main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Nur in das Release dieses Stands – ein später neu gestarteter alter Lauf darf neuere Dateien nicht ersetzen
+          $target = gh release view app-latest --repo $env:GITHUB_REPOSITORY --json targetCommitish -q .targetCommitish
+          if ($target -ne $env:GITHUB_SHA) {
+            Write-Host "::warning::app-latest gehört inzwischen zu $target - Windows-Dateien dieses Laufs werden nicht hochgeladen."
+            exit 0
+          }
+          gh release upload app-latest build/selfify-windows.zip build/selfify-windows-setup.exe --clobber --repo $env:GITHUB_REPOSITORY
+      - name: Release mit Windows-Dateien (bei Tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            mobile/build/selfify-windows.zip
+            mobile/build/selfify-windows-setup.exe
 
   ios:
     name: iOS (unsigniert, für AltStore/SideStore)

@@ -25,8 +25,14 @@ import 'player_widgets.dart';
 /// Titel laden, wenn die Seite ohne Titeldaten geöffnet wurde (z. B. über einen Link).
 final _videoTrackProvider = FutureProvider.autoDispose.family<Track, int>((ref, id) => requireApi(ref).track(id));
 
-const _unsupportedMessage =
-    'Dieses Video kann hier nicht abgespielt werden. MKV/WebM laufen oft nicht auf dem iPhone – lade Videos als MP4.';
+final _unsupportedMessage = Platform.isWindows
+    ? 'Dieses Video kann hier nicht abgespielt werden. MKV/WebM brauchen unter Windows oft Zusatz-Codecs '
+        '(VP9-/AV1-Erweiterung aus dem Microsoft Store) – lade Videos als MP4.'
+    : 'Dieses Video kann hier nicht abgespielt werden. MKV/WebM laufen oft nicht auf dem iPhone – lade Videos als MP4.';
+
+/// Anzahl offener Videoseiten. Am Computer gehört die Leertaste dann dem Video, nicht der Musik.
+final openVideoPages = ValueNotifier<int>(0);
+
 const _offlineMessage = 'Du bist offline. Videos kannst du nur mit Verbindung zum Server ansehen.';
 const _offlineModeMessage =
     'Der Offline-Modus ist an. Videos werden nicht aufs Handy geladen und lassen sich nur online ansehen.';
@@ -56,6 +62,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
   @override
   void initState() {
     super.initState();
+    openVideoPages.value++;
     _trackId = widget.trackId;
     _track = widget.track?.id == widget.trackId ? widget.track : null;
     // Musik pausieren – Video und Musik gleichzeitig ergibt keinen Sinn
@@ -66,6 +73,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
 
   @override
   void dispose() {
+    openVideoPages.value--;
     _generation++;
     final video = _video;
     video?.removeListener(_onVideoValue);
@@ -119,7 +127,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
     try {
       controller = _createController(_trackId);
     } catch (e) {
-      _problem = e is _VideoProblem ? e : const _VideoProblem(_unsupportedMessage);
+      _problem = e is _VideoProblem ? e : _VideoProblem(_unsupportedMessage);
       if (!initial && mounted) setState(() {});
       return;
     }
@@ -129,7 +137,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       await controller.initialize().timeout(const Duration(seconds: 45));
     } catch (_) {
       controller.dispose().ignore();
-      if (mounted && generation == _generation) setState(() => _problem = const _VideoProblem(_unsupportedMessage));
+      if (mounted && generation == _generation) setState(() => _problem = _VideoProblem(_unsupportedMessage));
       return;
     }
     if (!mounted || generation != _generation) {
@@ -162,7 +170,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
         qualityButtonText: 'Qualität',
       ),
       errorBuilder: (context, _) => _VideoMessage(
-        problem: const _VideoProblem(_unsupportedMessage),
+        problem: _VideoProblem(_unsupportedMessage),
         onRetry: _initialize,
       ),
     );
