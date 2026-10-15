@@ -15,7 +15,7 @@ Stand: 15.10.2026 (PR #1 ist zusammengeführt, App-Kern und Teil B kommen in PR 
 | Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 7 |
 | App-Kern (Player, Offline, Downloads, Anmeldung) | ✅ fertig | 9 | 9 |
 | App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ✅ fertig | 5 | 5 |
-| App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ✅ fertig | 5 | 0 |
+| App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ✅ fertig | 5 | 5 |
 
 ## Server-Sicherheit – alle behoben (Commit 19f3d3c)
 
@@ -109,21 +109,30 @@ Stand: 15.10.2026 (PR #1 ist zusammengeführt, App-Kern und Teil B kommen in PR 
 Tests: `player_queue_test.dart` (nachgebautes just_audio), `downloads_refresh_test.dart` (echter WebSocket),
 `offline_queue_test.dart` (echtes Dateisystem) – jeder schlägt ohne die Korrektur fehl.
 
-## App-Bildschirme Teil B – offen
+## App-Bildschirme Teil B – alle behoben
 
-- [ ] **hoch** – Rubrik löschen entfernt die Titel aus allen Playlists, Lieblingssongs und Verläufen der
+- [x] **hoch** – Rubrik löschen entfernt die Titel aus allen Playlists, Lieblingssongs und Verläufen der
       Familie, die Abfrage behauptet aber, es gehe nichts verloren (`mobile/lib/ui/screens/admin_categories.dart:17`)
-- [ ] mittel – Warteschlange: Wischt man eine von zwei direkt aufeinanderfolgenden Kopien desselben Songs weg,
+      – Abfrage nennt jetzt die Folgen, bei Rubriken mit Titeln muss der Name eingetippt werden.
+      Offen als Vorschlag: Rubrik am Server nur ausblenden statt löschen (Daten blieben erhalten)
+- [x] mittel – Warteschlange: Wischt man eine von zwei direkt aufeinanderfolgenden Kopien desselben Songs weg,
       verschwindet die andere unsichtbar mit (`mobile/lib/ui/screens/queue_screen.dart:49`)
-- [ ] mittel – Verwaltung „Alle“ Downloads: Für ein anderes Familienmitglied wiederholter/abgebrochener Auftrag
+- [x] mittel – Verwaltung „Alle“ Downloads: Für ein anderes Familienmitglied wiederholter/abgebrochener Auftrag
       friert ein und zählt beim Admin als „läuft“ (`mobile/lib/ui/screens/downloads_screen.dart:144`)
-- [ ] niedrig – Mini-Player-Herz: Fehler beim Liken (z. B. offline) werden verschluckt
+- [x] niedrig – Mini-Player-Herz: Fehler beim Liken (z. B. offline) werden verschluckt
       (`mobile/lib/ui/widgets/mini_player.dart:58`)
-- [ ] niedrig – Verwaltung: „Alle Downloads ansehen“ öffnet nur die eigenen (`admin_downloader.dart:118`)
+- [x] niedrig – Verwaltung: „Alle Downloads ansehen“ öffnet nur die eigenen (`admin_downloader.dart:118`)
+
+Tests: `player_screens_test.dart`, `admin_screens_test.dart` – jeder schlägt ohne die Korrektur fehl.
 
 ## Sonstiges
 
 - [x] Android-Build: NDK-Download brach ab (CI rot bei 93f6c7c) → eigener Schritt mit 3 Versuchen
+
+## Abschlussprüfung von PR #2
+
+- [ ] Unabhängige Gegenprüfung des ganzen PR-Stands auf Rückschritte (Workflow `wf_e930ef2d-137`, lässt sich
+      fortsetzen) – Ergebnisse hier eintragen, bestätigte Funde beheben
 
 ## Weitermachen nach einer Unterbrechung
 
