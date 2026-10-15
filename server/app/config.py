@@ -56,7 +56,9 @@ class Settings(BaseSettings):
     ytdl_cookies_file: Path = Path("/data/youtube-cookies.txt")
     # Leer = eingebautes yt-dlp ("python -m yt_dlp"); nur für Tests/Sonderfälle
     ytdlp_command: str = ""
-    ytmusic_language: str = "de"
+    # Sprache bleibt Englisch: ytmusicapi verwirft sonst Trefferlisten mit deutscher Überschrift ("Titel",
+    # "Alben") – die Suche fände nichts. Das Land bestimmt, welche Titel verfügbar sind.
+    ytmusic_language: str = "en"
     ytmusic_location: str = "DE"
     lyrics_enabled: bool = True
 

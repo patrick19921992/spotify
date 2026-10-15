@@ -298,7 +298,7 @@ sich abbrechen und bei einem Fehler erneut starten.
 | `YTDL_VIDEO_CODEC` | `compatible` | `compatible` = H.264/MP4, `best` = VP9/AV1 (höher, nicht überall abspielbar) |
 | `YTDL_AUTO_UPDATE` | `true` | yt-dlp täglich aktualisieren |
 | `YTDL_COOKIES_FILE` | `/data/youtube-cookies.txt` | Optionale Cookies (Premium-Qualität) |
-| `YTMUSIC_LANGUAGE` / `YTMUSIC_LOCATION` | `de` / `DE` | Sprache/Land der YouTube-Music-Suche |
+| `YTMUSIC_LANGUAGE` / `YTMUSIC_LOCATION` | `en` / `DE` | Sprache/Land der YouTube-Music-Suche. Die Sprache bitte auf `en` lassen – mit anderen Sprachen findet die Suche nichts |
 | `LYRICS_ENABLED` | `true` | Songtexte beim Download mitladen |
 | `LOGIN_MAX_FAILURES_PER_USER` | `10` | Fehlversuche je Benutzer, bevor der Login kurz gesperrt wird |
 | `LOGIN_MAX_FAILURES_PER_IP` | `30` | Fehlversuche je IP-Adresse |
