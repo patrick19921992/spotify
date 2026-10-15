@@ -115,7 +115,7 @@ class _AdminDownloaderTabState extends ConsumerState<AdminDownloaderTab> {
             ],
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () => Nav.downloads(context),
+              onPressed: () => Nav.allDownloads(context),
               style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14)),
               icon: const Icon(Icons.downloading_rounded, size: 20),
               label: const Text('Alle Downloads ansehen', style: TextStyle(fontWeight: FontWeight.w700)),

@@ -3,7 +3,7 @@
 Unabhängige Prüfung des ganzen Projekts in sieben Bereichen. Jeder Fund wird vor dem Beheben im Code
 nachvollzogen und bekommt einen Test, der ohne die Korrektur fehlschlägt.
 
-Stand: 15.10.2026
+Stand: 15.10.2026 (PR #1 ist zusammengeführt, App-Kern und Teil B kommen in PR #2)
 
 ## Bereiche
 
@@ -13,9 +13,9 @@ Stand: 15.10.2026
 | Server-Logik | ✅ fertig | 11 | 11 |
 | Schnittstelle App ↔ Server | ✅ fertig | 6 | 6 |
 | Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 7 |
-| App-Kern (Player, Offline, Downloads, Anmeldung) | ⏳ läuft | – | – |
+| App-Kern (Player, Offline, Downloads, Anmeldung) | ✅ fertig | 9 | 9 |
 | App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ✅ fertig | 5 | 5 |
-| App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ⏳ läuft | – | – |
+| App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ✅ fertig | 5 | 5 |
 
 ## Server-Sicherheit – alle behoben (Commit 19f3d3c)
 
@@ -87,9 +87,54 @@ Stand: 15.10.2026
       (`mobile/lib/ui/screens/artist_screen.dart:268`) – dazu neuer Test „kleines Handy mit großer Schrift“
       für alle Bildschirme; er fand drei weitere Überläufe (Geräte, Rubrik, leere Listen), alle behoben
 
+## App-Kern – alle behoben
+
+- [x] **hoch** – Zufallswiedergabe: „Als Nächstes spielen“, „Zur Warteschlange“ und Autoplay landen an
+      zufälligen Stellen, oft vor dem aktuellen Song – sie werden dann nie gespielt (`audio_handler.dart:254`)
+      – eigene Zufallsreihenfolge (`player/queue_shuffle_order.dart`)
+- [x] mittel – Knopf „Zufallswiedergabe“ startet immer mit dem ersten Titel (`audio_handler.dart:236`)
+- [x] mittel – Wechsel von WLAN zu mobilen Daten stellt die Warteschlange nicht auf die Mobil-Qualität um
+      (`player.dart:26`) – kommende Titel bekommen neue Links, der laufende spielt ohne Unterbrechung weiter
+- [x] mittel – Offline-Modus: Autoplay/Radio streamt trotzdem nicht heruntergeladene Songs (`player.dart:53`)
+- [x] mittel – Download-Liste: Aktualisieren überschreibt neuere Live-Meldungen (fertiger Download steht
+      ewig auf „lädt“), Fertig-Meldungen während Verbindungsabbruch gehen verloren (`downloads.dart:92`)
+- [x] niedrig – Offline-Warteschlange läuft nach dem Neustart nicht weiter, wenn die Anmeldung später geladen
+      wird (`offline.dart:294`)
+- [x] niedrig – Entfernen eines Songs, der gerade aufs Handy lädt, speichert ihn trotzdem (`offline.dart:252`)
+- [x] niedrig – Schlaf-Timer „Ende des Titels“ beim letzten Song: Play-Knopf reagiert danach nicht
+      (`audio_handler.dart:184`)
+- [x] niedrig – Autoplay hört nach einer Runde auf, wenn es per „Weiter“ im Pausenzustand ausgelöst wurde
+      (`audio_handler.dart:199`)
+
+Tests: `player_queue_test.dart` (nachgebautes just_audio), `downloads_refresh_test.dart` (echter WebSocket),
+`offline_queue_test.dart` (echtes Dateisystem) – jeder schlägt ohne die Korrektur fehl.
+
+## App-Bildschirme Teil B – alle behoben
+
+- [x] **hoch** – Rubrik löschen entfernt die Titel aus allen Playlists, Lieblingssongs und Verläufen der
+      Familie, die Abfrage behauptet aber, es gehe nichts verloren (`mobile/lib/ui/screens/admin_categories.dart:17`)
+      – Abfrage nennt jetzt die Folgen, bei Rubriken mit Titeln muss der Name eingetippt werden.
+      Offen als Vorschlag: Rubrik am Server nur ausblenden statt löschen (Daten blieben erhalten)
+- [x] mittel – Warteschlange: Wischt man eine von zwei direkt aufeinanderfolgenden Kopien desselben Songs weg,
+      verschwindet die andere unsichtbar mit (`mobile/lib/ui/screens/queue_screen.dart:49`)
+- [x] mittel – Verwaltung „Alle“ Downloads: Für ein anderes Familienmitglied wiederholter/abgebrochener Auftrag
+      friert ein und zählt beim Admin als „läuft“ (`mobile/lib/ui/screens/downloads_screen.dart:144`)
+- [x] niedrig – Mini-Player-Herz: Fehler beim Liken (z. B. offline) werden verschluckt
+      (`mobile/lib/ui/widgets/mini_player.dart:58`)
+- [x] niedrig – Verwaltung: „Alle Downloads ansehen“ öffnet nur die eigenen (`admin_downloader.dart:118`)
+
+Tests: `player_screens_test.dart`, `admin_screens_test.dart` – jeder schlägt ohne die Korrektur fehl.
+
 ## Sonstiges
 
 - [x] Android-Build: NDK-Download brach ab (CI rot bei 93f6c7c) → eigener Schritt mit 3 Versuchen
+- [x] „Stoppen“ direkt nach dem Start eines Downloads ging verloren (Abbruch-Signal entstand erst nach der
+      Vorbereitung; CI rot bei 0a0374a) → Signal wird schon beim Übernehmen angelegt (`downloads/manager.py`)
+
+## Abschlussprüfung von PR #2
+
+- [ ] Unabhängige Gegenprüfung des ganzen PR-Stands auf Rückschritte (Workflow `wf_e930ef2d-137`, lässt sich
+      fortsetzen) – Ergebnisse hier eintragen, bestätigte Funde beheben
 
 ## Weitermachen nach einer Unterbrechung
 

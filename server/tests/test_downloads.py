@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -211,6 +212,27 @@ def test_cancel_running_download(env: Env) -> None:
     cancelled = env.wait(job["id"], timeout=15)
     assert cancelled["status"] == "cancelled"
     assert not (env.settings.downloads_tmp_dir / f"job-{job['id']}").exists()
+
+
+def test_cancel_right_after_start_is_respected(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    """„Stoppen“ direkt nach dem Start, während der Server den Download noch vorbereitet, geht nicht verloren."""
+    from app.downloads import manager as manager_module
+
+    original = manager_module.shutil.rmtree
+    slow = {"left": 1}
+
+    def slow_rmtree(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if slow["left"] and Path(path).name.startswith("job-"):  # Vorbereitung dauert (langsame Platte)
+            slow["left"] -= 1
+            time.sleep(1.5)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(manager_module.shutil, "rmtree", slow_rmtree)
+    job = env.post("/api/downloads", {"video_id": "hangsoon000", "title": "Gleich weg"})
+    env.wait(job["id"], states=("downloading",), timeout=15)
+    assert env.client.post(f"/api/downloads/{job['id']}/cancel", headers=env.headers).status_code == 200
+    assert env.wait(job["id"], timeout=10)["status"] == "cancelled"
+    assert slow["left"] == 0
 
 
 def test_album_download_keeps_track_numbers(env: Env) -> None:

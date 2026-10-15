@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../player/player.dart';
 import '../../state/likes.dart';
 import '../nav.dart';
+import 'common.dart';
 import 'cover.dart';
 
 /// Mini-Player über der unteren Leiste – Tippen öffnet den Vollbild-Player.
@@ -53,9 +54,17 @@ class MiniPlayer extends ConsumerWidget {
                       ),
                     ),
                     IconButton(
+                      tooltip: liked ? 'Aus Lieblingssongs entfernen' : 'Zu Lieblingssongs hinzufügen',
                       icon: Icon(liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                           color: liked ? AppColors.accent : Colors.white),
-                      onPressed: () => ref.read(likesProvider.notifier).toggleTrack(track.id),
+                      onPressed: () async {
+                        // Wie im großen Player: Fehler (z. B. offline) anzeigen statt verschlucken
+                        try {
+                          await ref.read(likesProvider.notifier).toggleTrack(track.id);
+                        } catch (e) {
+                          if (context.mounted) showError(context, e);
+                        }
+                      },
                     ),
                     IconButton(
                       icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 30),

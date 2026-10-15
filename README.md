@@ -187,7 +187,9 @@ Als Admin kannst du weitere anlegen, z. B. „Kinderlieder“ oder „Konzerte�
 mitangelegt, und Unterordner wie `Videos/Konzerte` sind möglich.
 
 - Beim Download wählst du die Rubrik aus. Ohne Auswahl landet ein Song in der Standard-Rubrik seines Typs.
-- Wird eine Rubrik gelöscht, verschwindet sie nur aus der App. **Der Ordner und alle Dateien bleiben erhalten.**
+- Wird eine Rubrik gelöscht, verschwindet sie samt ihrer Titel aus der App – auch aus den Playlists,
+  Lieblingssongs und dem Verlauf aller Konten (kommt beim Neuanlegen nicht zurück). **Der Ordner und alle
+  Dateien bleiben erhalten.** Zum Umbenennen reicht „Speichern“, dabei geht nichts verloren.
 - Der Ordner einer Rubrik kann nachträglich nicht geändert werden, damit keine Dateien „verloren“ gehen.
   Name, Icon, Reihenfolge und Standard-Rubrik lassen sich jederzeit ändern.
 

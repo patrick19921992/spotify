@@ -448,7 +448,11 @@ Future<FakeApi> pumpScreen(
   OfflineState? offlineState,
   Size size = const Size(400, 860),
   double textScale = 1.0,
+  FakeApi? api,
+  SelfifyAudioHandler? handler,
 }) async {
+  final fakeApi = api ?? FakeApi(admin: admin);
+  final audioHandler = handler ?? SelfifyAudioHandler();
   await initializeDateFormatting('de_DE');
   SharedPreferences.setMockInitialValues({'search.recent': <String>['queen', 'abba']});
   final prefs = await SharedPreferences.getInstance();
@@ -460,8 +464,6 @@ Future<FakeApi> pumpScreen(
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final api = FakeApi(admin: admin);
-  final handler = SelfifyAudioHandler();
   final router = GoRouter(
     initialLocation: '/test',
     routes: [
@@ -473,8 +475,8 @@ Future<FakeApi> pumpScreen(
   await tester.pumpWidget(ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
-      audioHandlerProvider.overrideWithValue(handler),
-      authProvider.overrideWith(() => FakeAuth(api)),
+      audioHandlerProvider.overrideWithValue(audioHandler),
+      authProvider.overrideWith(() => FakeAuth(fakeApi)),
       connectivityProvider.overrideWith(
         (ref) => Stream.value(offline ? [ConnectivityResult.none] : [ConnectivityResult.wifi]),
       ),
@@ -490,7 +492,7 @@ Future<FakeApi> pumpScreen(
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
-  return api;
+  return fakeApi;
 }
 
 /// Prüft, dass kein Fehler (z. B. Layout-Überlauf) aufgetreten ist.

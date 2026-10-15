@@ -46,4 +46,9 @@ final recentProvider = FutureProvider.autoDispose<List<ContextItem>>((ref) => re
 final historyProvider = FutureProvider.autoDispose<List<HistoryEntry>>((ref) => requireApi(ref).history(limit: 100));
 
 /// Liefert eine verständliche Fehlermeldung für die Anzeige.
-String errorText(Object error) => error is ApiException ? error.message : 'Etwas ist schiefgelaufen: $error';
+String errorText(Object error) => switch (error) {
+      ApiException(:final message) => message,
+      // Eigene, verständliche Meldungen (z. B. „Im Offline-Modus ist Radio nicht verfügbar.“)
+      StateError(:final message) => message,
+      _ => 'Etwas ist schiefgelaufen: $error',
+    };

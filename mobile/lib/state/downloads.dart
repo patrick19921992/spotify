@@ -59,6 +59,13 @@ class DownloadsController extends Notifier<DownloadsState> {
   bool _disposed = false;
   final _finished = StreamController<DownloadJob>.broadcast();
 
+  /// Zähler der lokalen Änderungen (Live-Meldung, Start, Entfernen) je Auftrag: refresh() erkennt daran,
+  /// welche Einträge während der Abfrage neuer geworden sind als die Antwort des Servers.
+  int _sequence = 0;
+  final Map<int, int> _changed = {};
+
+  void _touch(int id) => _changed[id] = ++_sequence;
+
   /// Meldet jeden Download, der gerade fertig geworden (oder fehlgeschlagen) ist.
   Stream<DownloadJob> get finished => _finished.stream;
 
@@ -83,13 +90,38 @@ class DownloadsController extends Notifier<DownloadsState> {
   }
 
   /// Vollständige Liste vom Server (auch fertige/fehlgeschlagene).
+  ///
+  /// Die Antwort wird mit dem aktuellen Stand zusammengeführt: Live-Meldungen, die während der Abfrage
+  /// kamen, sind neuer und bleiben; fertige Aufträge werden nicht auf „lädt“ zurückgestuft. Was während
+  /// einer Verbindungspause fertig wurde, meldet sich wie eine Live-Meldung (Hinweis, Bibliothek neu laden).
   Future<void> refresh() async {
     final api = ref.read(apiProvider);
     if (api == null) return;
+    final since = _sequence;
     try {
-      final jobs = await api.downloads(limit: 200);
+      final listed = await api.downloads(limit: 200);
       if (_disposed) return;
-      state = state.copyWith(jobs: {for (final j in jobs) j.id: j});
+      bool changedMeanwhile(int id) => (_changed[id] ?? 0) > since;
+      final current = state.jobs;
+      final jobs = <int, DownloadJob>{
+        for (final entry in current.entries)
+          if (changedMeanwhile(entry.key)) entry.key: entry.value,
+      };
+      final finished = <DownloadJob>[];
+      for (final job in listed) {
+        if (changedMeanwhile(job.id)) continue;
+        final previous = current[job.id];
+        // Eine ältere Antwort darf einen fertigen Auftrag nicht wiederbeleben – „Erneut versuchen“ (auch
+        // von einem anderen Gerät) setzt dagegen eine neue Startzeit.
+        if (previous != null && !previous.isActive && job.isActive && !job.createdAt.isAfter(previous.createdAt)) {
+          jobs[job.id] = previous;
+          continue;
+        }
+        jobs[job.id] = job;
+        if (previous != null && previous.isActive && !job.isActive) finished.add(job);
+      }
+      state = state.copyWith(jobs: jobs);
+      finished.forEach(_announce);
     } catch (_) {}
   }
 
@@ -145,6 +177,7 @@ class DownloadsController extends Notifier<DownloadsState> {
         for (final j in (event['jobs'] as List)) {
           final job = DownloadJob.fromJson(j as Json);
           jobs[job.id] = job;
+          _touch(job.id);
         }
         state = state.copyWith(jobs: jobs);
       case 'job':
@@ -154,17 +187,21 @@ class DownloadsController extends Notifier<DownloadsState> {
 
   void _upsert(DownloadJob job) {
     final previous = state.jobs[job.id];
+    _touch(job.id);
     state = state.copyWith(jobs: {...state.jobs, job.id: job});
     final justFinished = (previous == null || previous.isActive) && !job.isActive;
-    if (justFinished) {
-      if (!_finished.isClosed) _finished.add(job);
-      if (job.isDone) {
-        // Neue Titel sollen sofort in Startseite/Bibliothek/Suche auftauchen
-        ref.invalidate(homeProvider);
-        ref.invalidate(libraryOverviewProvider);
-        ref.invalidate(categoriesProvider);
-        if (job.playlistId != null) ref.invalidate(playlistProvider(job.playlistId!));
-      }
+    if (justFinished) _announce(job);
+  }
+
+  /// Fertig (oder fehlgeschlagen): Hinweis auslösen und neue Titel überall sichtbar machen.
+  void _announce(DownloadJob job) {
+    if (!_finished.isClosed) _finished.add(job);
+    if (job.isDone) {
+      // Neue Titel sollen sofort in Startseite/Bibliothek/Suche auftauchen
+      ref.invalidate(homeProvider);
+      ref.invalidate(libraryOverviewProvider);
+      ref.invalidate(categoriesProvider);
+      if (job.playlistId != null) ref.invalidate(playlistProvider(job.playlistId!));
     }
   }
 
@@ -226,17 +263,30 @@ class DownloadsController extends Notifier<DownloadsState> {
     return jobs;
   }
 
-  Future<void> cancel(int id) async => _upsert(await _api.cancelDownload(id));
-  Future<void> retry(int id) async => _upsert(await _api.retryDownload(id));
+  Future<DownloadJob> cancel(int id) async => _keepIfOwn(await _api.cancelDownload(id));
+  Future<DownloadJob> retry(int id) async => _keepIfOwn(await _api.retryDownload(id));
+
+  /// Admins bedienen in „Alle“ auch Aufträge anderer. Die gehören nicht in die eigene Liste: Dafür kommen
+  /// keine Live-Meldungen, sie würden mit altem Stand einfrieren und als eigener Download zählen.
+  DownloadJob _keepIfOwn(DownloadJob job) {
+    final user = ref.read(currentUserProvider);
+    if (job.user == null || user == null || job.user!.id == user.id) _upsert(job);
+    return job;
+  }
 
   Future<void> remove(int id) async {
     await _api.removeDownload(id);
+    _touch(id);
     state = state.copyWith(jobs: Map.of(state.jobs)..remove(id));
   }
 
   Future<void> clearFinished() async {
     await _api.clearFinishedDownloads();
-    state = state.copyWith(jobs: Map.of(state.jobs)..removeWhere((_, j) => !j.isActive));
+    final jobs = Map.of(state.jobs);
+    for (final job in jobs.values.where((j) => !j.isActive)) {
+      _touch(job.id);
+    }
+    state = state.copyWith(jobs: jobs..removeWhere((_, j) => !j.isActive));
   }
 }
 

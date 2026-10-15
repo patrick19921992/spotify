@@ -75,6 +75,7 @@ class Nav {
   static void queue(BuildContext context) => context.push('/queue');
   static void video(BuildContext context, Track track) => context.push('/video/${track.id}', extra: track);
   static void downloads(BuildContext context) => context.push('/downloads');
+  static void allDownloads(BuildContext context) => context.push('/downloads?scope=all');
   static void offline(BuildContext context) => context.push('/offline');
   static void settings(BuildContext context) => context.push('/settings');
   static void devices(BuildContext context) => context.push('/settings/devices');

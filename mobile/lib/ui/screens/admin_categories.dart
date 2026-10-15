@@ -14,7 +14,23 @@ import 'admin_widgets.dart';
 
 // Verwaltung › Rubriken: eigene Bereiche (Ordner) anlegen, umbenennen, sortieren, entfernen.
 
-const _deleteMessage = 'Die Rubrik verschwindet aus der App. Der Ordner und alle Dateien bleiben auf dem Server erhalten.';
+const _deleteMessage = 'Entfernt die Rubrik mit allen ihren Titeln aus der App – auch aus den Playlists, Lieblingssongs '
+    'und dem Verlauf aller Familienmitglieder. Der Ordner und alle Dateien bleiben auf dem Server erhalten.';
+
+/// Was beim Entfernen verloren geht – ehrlich, mit Anzahl der Titel.
+String _deleteDetails(Category category) {
+  final buffer = StringBuffer();
+  if (category.itemCount > 0) {
+    buffer
+      ..write('„${category.name}“ enthält ${_itemCountLabel(category)}. ')
+      ..write('Sie verschwinden für alle aus Playlists, Lieblingssongs und Verlauf. ')
+      ..write('Legst du die Rubrik später neu an, kommen diese Einträge nicht zurück.\n\n');
+  }
+  buffer
+    ..write('Der Ordner /media/${category.folder} und alle Dateien bleiben auf dem Server erhalten.\n\n')
+    ..write('Nur umbenennen? Dafür reicht „Speichern“ – dabei geht nichts verloren.');
+  return buffer.toString();
+}
 
 String _mediaLabel(Category category) => category.isVideo ? 'Video' : 'Audio';
 
@@ -366,13 +382,16 @@ class _EditCategorySheetState extends ConsumerState<_EditCategorySheet> {
   }
 
   Future<void> _delete() async {
-    final ok = await confirm(
-      context,
-      title: '„${_category.name}“ entfernen?',
-      message: _deleteMessage,
-      confirmLabel: 'Entfernen',
-      danger: true,
-    );
+    final category = _category;
+    final ok = category.itemCount > 0
+        ? await showDialog<bool>(context: context, builder: (_) => _ConfirmDeleteDialog(category: category)) ?? false
+        : await confirm(
+            context,
+            title: '„${category.name}“ entfernen?',
+            message: _deleteDetails(category),
+            confirmLabel: 'Entfernen',
+            danger: true,
+          );
     if (!ok || !mounted) return;
     final api = ref.read(apiProvider);
     if (api == null) return;
@@ -485,6 +504,58 @@ class _EditCategorySheetState extends ConsumerState<_EditCategorySheet> {
           ),
         ),
         const Text(_deleteMessage, style: AppText.caption),
+      ],
+    );
+  }
+}
+
+/// Abfrage vor dem Entfernen einer Rubrik mit Titeln: erst nach Eintippen des Namens möglich.
+class _ConfirmDeleteDialog extends StatefulWidget {
+  const _ConfirmDeleteDialog({required this.category});
+
+  final Category category;
+
+  @override
+  State<_ConfirmDeleteDialog> createState() => _ConfirmDeleteDialogState();
+}
+
+class _ConfirmDeleteDialogState extends State<_ConfirmDeleteDialog> {
+  final _controller = TextEditingController();
+
+  bool get _matches => _controller.text.trim().toLowerCase() == widget.category.name.trim().toLowerCase();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('„${widget.category.name}“ endgültig entfernen?'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_deleteDetails(widget.category)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: InputDecoration(labelText: 'Zum Bestätigen „${widget.category.name}“ eingeben'),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+        TextButton(
+          onPressed: _matches ? () => Navigator.pop(context, true) : null,
+          child: Text('Endgültig entfernen', style: TextStyle(color: _matches ? AppColors.danger : null)),
+        ),
       ],
     );
   }
