@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -20,12 +21,29 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// Fehler beim Prüfen einer Server-Adresse – mit technischen Angaben für die Fehlersuche
+/// (wer geantwortet hat, mit welchem Status und Inhalt, wohin der Name aufgelöst wurde).
+class ServerProbeException extends ApiException {
+  final String details;
+  const ServerProbeException(super.message, {super.statusCode, this.details = ''});
+}
+
 /// Wandelt Dio-Fehler in [ApiException] um ({"detail": "..."} vom Server).
 ApiException toApiException(Object error) {
   if (error is ApiException) return error;
   if (error is DioException) {
     final response = error.response;
     if (response == null) {
+      final cause = error.error;
+      if (cause is HandshakeException || cause is TlsException) {
+        // Zertifikatsfehler – oder der Port spricht gar kein HTTPS (z. B. https:// auf den Unraid-Port 8095)
+        if (cause.toString().toLowerCase().contains('certificate')) {
+          return const ApiException('Dieses Gerät vertraut dem HTTPS-Zertifikat des Servers nicht.');
+        }
+        return const ApiException(
+          'Unter dieser Adresse antwortet kein HTTPS. Versuche die Adresse mit http:// statt https://.',
+        );
+      }
       return switch (error.type) {
         DioExceptionType.connectionTimeout ||
         DioExceptionType.receiveTimeout ||
@@ -79,10 +97,16 @@ String normalizeBaseUrl(String input) {
   } else {
     url = '${scheme.group(1)!.toLowerCase()}://${url.substring(scheme.end)}';
   }
+  // Aus dem Browser kopierte Adressen: Anhängsel wie "?x=1", "/api" oder "/api/server" weglassen
+  final cut = url.indexOf(RegExp(r'[?#]'));
+  if (cut >= 0) url = url.substring(0, cut);
   while (url.endsWith('/')) {
     url = url.substring(0, url.length - 1);
   }
-  if (url.endsWith('/api')) url = url.substring(0, url.length - 4);
+  url = url.replaceFirst(RegExp(r'/api(/.*)?$'), '');
+  while (url.endsWith('/')) {
+    url = url.substring(0, url.length - 1);
+  }
   return url;
 }
 
@@ -165,20 +189,68 @@ class ApiClient {
   // ------------------------------------------------------------ Anmeldung (ohne Konto)
 
   /// Prüft, ob unter der Adresse ein Selfify-Server läuft.
+  ///
+  /// Schlägt das fehl, enthält die [ServerProbeException] neben einer verständlichen Meldung technische
+  /// Angaben – z. B. dass Cloudflare die App blockiert oder ein anderer Server geantwortet hat.
   static Future<ServerInfo> probe(String baseUrl) async {
+    Response<dynamic>? response;
+    DioException? failure;
     try {
-      final response = await _plainDio(baseUrl).get('/server');
-      return ServerInfo.fromJson(response.data as Json);
+      response = await _plainDio(baseUrl).get('/server');
+      final data = response.data;
+      if (data is Map && data['api_version'] != null) return ServerInfo.fromJson(Map<String, dynamic>.from(data));
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
-        throw const ApiException('Unter dieser Adresse läuft kein Selfify-Server.');
-      }
-      throw toApiException(e);
-    } on FormatException {
-      throw const ApiException('Unter dieser Adresse läuft kein Selfify-Server.');
-    } on TypeError {
-      throw const ApiException('Unter dieser Adresse läuft kein Selfify-Server.');
+      response = e.response;
+      failure = e;
     }
+    final details = await _probeDetails('$baseUrl/api/server', response, failure);
+    if (response == null) {
+      throw ServerProbeException(toApiException(failure!).message, details: details);
+    }
+    final status = response.statusCode;
+    final String message;
+    if (response.headers.value('cf-mitigated') == 'challenge') {
+      message = 'Cloudflare hält die App für einen Bot und blockiert sie. Im Cloudflare-Dashboard unter '
+          'Security → Settings den „Bot fight mode“ ausschalten.';
+    } else if (response.realUri.host.endsWith('cloudflareaccess.com')) {
+      message = 'Vor dem Server ist eine Cloudflare-Access-Anmeldung eingerichtet. Die App kann sich dort '
+          'nicht anmelden – Access für diese Adresse abschalten.';
+    } else if (status == 401 || status == 403) {
+      message = 'Der Zugriff wurde abgewiesen (Fehler $status) – vermutlich blockiert ein Proxy oder Cloudflare die App.';
+    } else if (status == 502 || status == 503 || status == 504) {
+      message = 'Der Server ist gerade nicht erreichbar (Fehler $status).';
+    } else {
+      message = 'Unter dieser Adresse läuft kein Selfify-Server.';
+    }
+    throw ServerProbeException(message, statusCode: status ?? 0, details: details);
+  }
+
+  /// Technische Angaben zu einer fehlgeschlagenen Prüfung (zum Anzeigen und Weitergeben).
+  static Future<String> _probeDetails(String url, Response<dynamic>? response, DioException? failure) async {
+    final lines = <String>['Abgefragt: $url'];
+    try {
+      final host = Uri.parse(url).host;
+      final addresses = await InternetAddress.lookup(host).timeout(const Duration(seconds: 5));
+      lines.add('Aufgelöst zu: ${addresses.map((a) => a.address).join(', ')}');
+    } catch (e) {
+      lines.add('Namensauflösung fehlgeschlagen: $e');
+    }
+    if (response != null) {
+      final finalUrl = response.realUri.toString();
+      if (finalUrl != url) lines.add('Weitergeleitet zu: $finalUrl');
+      lines.add('Antwort: HTTP ${response.statusCode}');
+      for (final name in const ['server', 'content-type', 'cf-ray', 'cf-mitigated', 'location']) {
+        final value = response.headers.value(name);
+        if (value != null) lines.add('$name: $value');
+      }
+      final data = response.data;
+      final body = data is String ? data : jsonEncode(data);
+      final compact = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+      lines.add('Inhalt: ${compact.length > 200 ? '${compact.substring(0, 200)} …' : compact}');
+    } else if (failure != null) {
+      lines.add('Fehler: ${failure.type.name}${failure.error == null ? '' : ' – ${failure.error}'}');
+    }
+    return lines.join('\n');
   }
 
   static Future<LoginResult> login(String baseUrl, String username, String password, {String? deviceName}) async {

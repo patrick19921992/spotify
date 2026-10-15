@@ -13,6 +13,7 @@ import 'package:selfify/core/theme.dart';
 import 'package:selfify/data/api.dart';
 import 'package:selfify/data/models.dart';
 import 'package:selfify/player/player.dart';
+import 'package:selfify/state/app_update.dart';
 import 'package:selfify/state/auth.dart';
 import 'package:selfify/state/connectivity.dart';
 import 'package:selfify/state/downloads.dart';
@@ -450,6 +451,7 @@ Future<FakeApi> pumpScreen(
   double textScale = 1.0,
   FakeApi? api,
   SelfifyAudioHandler? handler,
+  AppUpdateSource? updates,
 }) async {
   final fakeApi = api ?? FakeApi(admin: admin);
   final audioHandler = handler ?? SelfifyAudioHandler();
@@ -482,6 +484,7 @@ Future<FakeApi> pumpScreen(
       ),
       offlineProvider.overrideWith(() => FakeOffline(offlineState ?? const OfflineState(loaded: true))),
       downloadsProvider.overrideWith(FakeDownloads.new),
+      if (updates != null) appUpdateSourceProvider.overrideWithValue(updates),
     ],
     child: MediaQuery(
       data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale)),

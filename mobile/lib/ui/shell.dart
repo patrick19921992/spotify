@@ -11,6 +11,7 @@ import '../state/auth.dart';
 import '../state/connectivity.dart';
 import '../state/downloads.dart';
 import '../state/settings.dart';
+import 'widgets/app_update.dart';
 import 'widgets/common.dart';
 import 'widgets/mini_player.dart';
 
@@ -93,6 +94,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               child: widget.shell,
             ),
           ),
+          const UpdateBanner(),
           const MiniPlayer(),
         ],
       ),

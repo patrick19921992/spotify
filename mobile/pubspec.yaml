@@ -55,6 +55,8 @@ dependencies:
   package_info_plus: ^10.2.2
   rxdart: ^0.28.0
   wakelock_plus: ^1.8.1
+  # Update-Hinweis: lädt die neue APK und öffnet den Android-Installer
+  ota_update: ^7.1.0
 
 dev_dependencies:
   flutter_test:
