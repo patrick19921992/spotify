@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../data/models.dart';
+import 'queue_shuffle_order.dart';
 
 /// Woher die Wiedergabe kommt (für Verlauf und "Zuletzt gehört").
 class PlayContext {
@@ -43,6 +45,22 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   /// Frühester Ablauf der Links in der Warteschlange – danach antwortet der Server mit 401.
   DateTime? _sourcesExpireAt;
+
+  /// Zufallsreihenfolge (neue Titel landen gezielt statt irgendwo).
+  QueueShuffleOrder _order = QueueShuffleOrder();
+
+  /// Während die Stream-Links neu aufgebaut werden, springt der Index kurz – das ist kein Titelwechsel.
+  bool _rebuilding = false;
+
+  String? _streamQuality;
+
+  /// Gewählte Stream-Qualität. Ändert sie sich (z. B. WLAN → mobil), bekommen die kommenden Titel neue
+  /// Links in der neuen Qualität; der laufende Titel spielt ohne Unterbrechung weiter.
+  set streamQuality(String value) {
+    final previous = _streamQuality;
+    _streamQuality = value;
+    if (previous != null && previous != value && _tracks.isNotEmpty) refreshUpcoming().ignore();
+  }
 
   final List<Track> _tracks = [];
   PlayContext? _context;
@@ -154,6 +172,7 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   void _onIndexChanged(int? index) {
+    if (_rebuilding) return;
     final previous = _lastIndex;
     if (previous != null && previous != index && previous < _tracks.length) {
       _report(_tracks[previous], _lastPosition);
@@ -184,6 +203,9 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     if (_sleepAfterTrack) {
       _sleepAfterTrack = false;
       _sleepController.add(null);
+      // Wie am normalen Ende: anhalten und zurück an den Anfang, sonst reagiert der Play-Knopf nicht mehr
+      await player.pause();
+      await player.seek(Duration.zero, index: 0);
       return;
     }
     final provider = autoplay;
@@ -196,7 +218,9 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
           await addTracks(more);
           _context = const PlayContext('radio');
           await player.seek(Duration.zero, index: start);
-          await player.play();
+          // play() endet erst beim nächsten Pausieren – nicht darauf warten, sonst bliebe Autoplay gesperrt
+          _fetchingAutoplay = false;
+          player.play().ignore();
           return;
         }
       } catch (_) {
@@ -226,16 +250,21 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       ..addAll(audio);
     _context = context;
     _publishQueue();
-    final initial = start < 0 ? 0 : start;
+    // Zufallswiedergabe ohne gewählten Titel: mit einem zufälligen Titel beginnen (shuffle() setzt den
+    // aktuellen Titel immer an den Anfang der Reihenfolge)
+    final initial = shuffle && index == 0 ? Random().nextInt(audio.length) : (start < 0 ? 0 : start);
     await player.setShuffleModeEnabled(false);
     _sourcesExpireAt = null;
-    await player.setAudioSources(audio.map(_sourceFor).toList(), initialIndex: initial, initialPosition: Duration.zero);
+    _order = QueueShuffleOrder();
+    await player.setAudioSources(
+      audio.map(_sourceFor).toList(),
+      initialIndex: initial,
+      initialPosition: Duration.zero,
+      shuffleOrder: _order,
+    );
     if (shuffle) {
       await player.shuffle();
       await player.setShuffleModeEnabled(true);
-      if (index == 0) {
-        await player.seek(Duration.zero, index: player.shuffleIndices.first);
-      }
     }
     await player.play();
   }
@@ -255,9 +284,11 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     final audio = tracks.where((t) => !t.isVideo).toList();
     if (audio.isEmpty) return;
     if (_tracks.isEmpty) return playTracks(audio, context: const PlayContext('queue'));
-    final at = (player.currentIndex ?? -1) + 1;
+    final current = player.currentIndex;
+    final at = (current ?? -1) + 1;
     _tracks.insertAll(at, audio);
     _publishQueue();
+    _order.insertAfter = current; // bei Zufallswiedergabe direkt hinter den aktuellen Titel
     await player.insertAudioSources(at, audio.map(_sourceFor).toList());
   }
 
@@ -404,9 +435,41 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     final playing = player.playing;
     final shuffle = player.shuffleModeEnabled;
     _sourcesExpireAt = null;
-    await player.setAudioSources(_tracks.map(_sourceFor).toList(), initialIndex: index, initialPosition: position);
+    _order.restore = List.of(_order.indices); // Zufallsreihenfolge beibehalten
+    await player.setAudioSources(
+      _tracks.map(_sourceFor).toList(),
+      initialIndex: index,
+      initialPosition: position,
+      shuffleOrder: _order,
+    );
     await player.setShuffleModeEnabled(shuffle);
     if (playing) await player.play();
+  }
+
+  /// Stream-Links aller Titel außer dem laufenden neu erzeugen (z. B. neue Qualität nach Wechsel WLAN/mobil).
+  /// Der laufende Titel spielt ohne Unterbrechung weiter, die Zufallsreihenfolge bleibt erhalten.
+  Future<void> refreshUpcoming() async {
+    final current = player.currentIndex;
+    final count = _tracks.length;
+    if (_rebuilding || current == null || current >= count || count <= 1) return;
+    _rebuilding = true;
+    try {
+      final saved = List.of(_order.indices);
+      _sourcesExpireAt = null;
+      if (current + 1 < count) {
+        await player.removeAudioSourceRange(current + 1, count);
+        if (current == 0) _order.restore = saved;
+        await player.insertAudioSources(current + 1, _tracks.sublist(current + 1).map(_sourceFor).toList());
+      }
+      if (current > 0) {
+        await player.removeAudioSourceRange(0, current);
+        _order.restore = saved;
+        await player.insertAudioSources(0, _tracks.sublist(0, current).map(_sourceFor).toList());
+      }
+    } finally {
+      _rebuilding = false;
+      _lastIndex = player.currentIndex;
+    }
   }
 
   @override

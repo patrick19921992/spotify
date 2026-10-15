@@ -105,6 +105,10 @@ class OfflineController extends Notifier<OfflineState> {
     ref.listen(connectivityProvider, (_, _) => _pump());
     // "Nur im WLAN" ausgeschaltet -> wartende Downloads sofort starten
     ref.listen(settingsProvider.select((s) => s.offlineWifiOnly), (_, _) => _pump());
+    // Die Anmeldung wird beim Start oft erst nach dem Index geladen: dann die Warteschlange fortsetzen
+    ref.listen(apiProvider, (_, api) {
+      if (api != null) _pump();
+    });
     return const OfflineState();
   }
 
@@ -258,6 +262,8 @@ class OfflineController extends Notifier<OfflineState> {
       } catch (_) {}
     }
     _queued.remove(trackId);
+    // Lädt der Titel gerade aufs Handy: abbrechen, er wird nicht mehr gebraucht
+    if (state.progress.containsKey(trackId)) _cancel?.cancel();
     state = state.copyWith(
       tracks: Map.of(state.tracks)..remove(trackId),
       pending: [...state.pending]..remove(trackId),
@@ -320,6 +326,14 @@ class OfflineController extends Notifier<OfflineState> {
       final extension = _extensionFor(type);
       final fileName = '${track.id}.$extension';
       final file = await File(tmpPath).rename('${dir.path}/$fileName');
+      if (!_queued.containsKey(track.id)) {
+        // Während des Ladens entfernt (Titel oder ganze Sammlung): nicht behalten
+        try {
+          await file.delete();
+        } catch (_) {}
+        state = state.copyWith(progress: Map.of(state.progress)..remove(track.id));
+        return;
+      }
       final item = OfflineTrack(track: track, fileName: fileName, size: await file.length(), savedAt: DateTime.now());
       _queued.remove(track.id);
       state = state.copyWith(

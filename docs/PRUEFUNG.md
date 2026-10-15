@@ -3,7 +3,7 @@
 Unabhängige Prüfung des ganzen Projekts in sieben Bereichen. Jeder Fund wird vor dem Beheben im Code
 nachvollzogen und bekommt einen Test, der ohne die Korrektur fehlschlägt.
 
-Stand: 15.10.2026
+Stand: 15.10.2026 (PR #1 ist zusammengeführt, weitere Korrekturen kommen in einen neuen PR)
 
 ## Bereiche
 
@@ -13,7 +13,7 @@ Stand: 15.10.2026
 | Server-Logik | ✅ fertig | 11 | 11 |
 | Schnittstelle App ↔ Server | ✅ fertig | 6 | 6 |
 | Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 7 |
-| App-Kern (Player, Offline, Downloads, Anmeldung) | ⏳ läuft | – | – |
+| App-Kern (Player, Offline, Downloads, Anmeldung) | ✅ fertig | 9 | 9 |
 | App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ✅ fertig | 5 | 5 |
 | App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ⏳ läuft | – | – |
 
@@ -86,6 +86,28 @@ Stand: 15.10.2026
 - [x] niedrig – Knopfleiste auf der Künstlerseite läuft bei großer Schrift über
       (`mobile/lib/ui/screens/artist_screen.dart:268`) – dazu neuer Test „kleines Handy mit großer Schrift“
       für alle Bildschirme; er fand drei weitere Überläufe (Geräte, Rubrik, leere Listen), alle behoben
+
+## App-Kern – alle behoben
+
+- [x] **hoch** – Zufallswiedergabe: „Als Nächstes spielen“, „Zur Warteschlange“ und Autoplay landen an
+      zufälligen Stellen, oft vor dem aktuellen Song – sie werden dann nie gespielt (`audio_handler.dart:254`)
+      – eigene Zufallsreihenfolge (`player/queue_shuffle_order.dart`)
+- [x] mittel – Knopf „Zufallswiedergabe“ startet immer mit dem ersten Titel (`audio_handler.dart:236`)
+- [x] mittel – Wechsel von WLAN zu mobilen Daten stellt die Warteschlange nicht auf die Mobil-Qualität um
+      (`player.dart:26`) – kommende Titel bekommen neue Links, der laufende spielt ohne Unterbrechung weiter
+- [x] mittel – Offline-Modus: Autoplay/Radio streamt trotzdem nicht heruntergeladene Songs (`player.dart:53`)
+- [x] mittel – Download-Liste: Aktualisieren überschreibt neuere Live-Meldungen (fertiger Download steht
+      ewig auf „lädt“), Fertig-Meldungen während Verbindungsabbruch gehen verloren (`downloads.dart:92`)
+- [x] niedrig – Offline-Warteschlange läuft nach dem Neustart nicht weiter, wenn die Anmeldung später geladen
+      wird (`offline.dart:294`)
+- [x] niedrig – Entfernen eines Songs, der gerade aufs Handy lädt, speichert ihn trotzdem (`offline.dart:252`)
+- [x] niedrig – Schlaf-Timer „Ende des Titels“ beim letzten Song: Play-Knopf reagiert danach nicht
+      (`audio_handler.dart:184`)
+- [x] niedrig – Autoplay hört nach einer Runde auf, wenn es per „Weiter“ im Pausenzustand ausgelöst wurde
+      (`audio_handler.dart:199`)
+
+Tests: `player_queue_test.dart` (nachgebautes just_audio), `downloads_refresh_test.dart` (echter WebSocket),
+`offline_queue_test.dart` (echtes Dateisystem) – jeder schlägt ohne die Korrektur fehl.
 
 ## Sonstiges
 

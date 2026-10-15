@@ -22,6 +22,7 @@ final playbackBridgeProvider = Provider<void>((ref) {
   final api = ref.watch(apiProvider);
   final settings = ref.watch(settingsProvider);
   final onWifi = ref.watch(isOnWifiProvider);
+  final noNetwork = ref.watch(isOfflineProvider);
   final offline = ref.read(offlineProvider.notifier);
   final quality = onWifi ? settings.wifiQuality : settings.mobileQuality;
 
@@ -50,7 +51,15 @@ final playbackBridgeProvider = Provider<void>((ref) {
   handler.reportHistory = (track, seconds, context) {
     api?.addHistory(track.id, seconds, contextType: context?.type, contextId: context?.id).ignore();
   };
-  handler.autoplay = (last) async => api == null ? <Track>[] : api.radio(last.id, limit: 30);
+  handler.autoplay = (last) async {
+    if (api == null) return <Track>[];
+    final tracks = await api.radio(last.id, limit: 30);
+    // Offline-Modus: nur weiterspielen, was auf dem Handy liegt
+    if (settings.offlineMode || noNetwork) return tracks.where((t) => offline.localPath(t.id) != null).toList();
+    return tracks;
+  };
+  // Zuletzt: neue Qualität (WLAN ↔ mobil) gilt sofort für die kommenden Titel
+  handler.streamQuality = quality;
 });
 
 final mediaItemProvider = StreamProvider<MediaItem?>((ref) => ref.watch(audioHandlerProvider).mediaItem);
@@ -140,6 +149,9 @@ class PlayerController {
   Future<void> startRadio(Track track) async {
     final api = _ref.read(apiProvider);
     if (api == null) return;
+    if (_ref.read(settingsProvider).offlineMode || _ref.read(isOfflineProvider)) {
+      throw StateError('Im Offline-Modus ist Radio nicht verfügbar.');
+    }
     final tracks = await api.radio(track.id);
     await handler.playTracks(tracks, context: PlayContext('radio', id: track.id, title: '${track.title}-Radio'));
   }
