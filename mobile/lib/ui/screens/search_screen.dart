@@ -14,6 +14,7 @@ import '../../state/offline.dart';
 import '../../state/settings.dart';
 import '../nav.dart';
 import '../shell.dart';
+import '../desktop/search_focus.dart';
 import '../widgets/cards.dart';
 import '../widgets/common.dart';
 import '../widgets/track_tile.dart';
@@ -60,7 +61,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   String _youtubeType = 'songs';
 
   @override
+  void initState() {
+    super.initState();
+    searchFocusRequests.addListener(_focusField); // Strg+F am Computer
+  }
+
+  void _focusField() {
+    if (mounted) _focus.requestFocus();
+  }
+
+  @override
   void dispose() {
+    searchFocusRequests.removeListener(_focusField);
     _debounce?.cancel();
     _controller.dispose();
     _focus.dispose();

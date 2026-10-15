@@ -12,9 +12,9 @@ von YouTube (Music)**, und die App zeigt dabei live an, wie lange es noch dauert
 | Teil | Ordner | Technik |
 |------|--------|---------|
 | Server (läuft auf Unraid) | `server/` | Python, FastAPI, SQLite, ffmpeg, yt-dlp + Deno, Docker |
-| Handy-App (Android + iOS) | `mobile/` | Flutter (just_audio, audio_service, Riverpod) |
+| App (Android, iOS, Windows) | `mobile/` | Flutter (just_audio, audio_service, Riverpod; Windows: libmpv) |
 | Unraid-Vorlage | `unraid/selfify.xml` | „Add Container“ mit allen Feldern vorbelegt |
-| Automatische Builds | `.github/workflows/` | Docker-Image (GHCR), Android-APK, iOS-IPA |
+| Automatische Builds | `.github/workflows/` | Docker-Image (GHCR), Android-APK, Windows-App, iOS-IPA |
 
 Den Funktionsumfang im Detail findest du in [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -116,9 +116,10 @@ Port 443 auf den Proxy weiterleiten.
 
 ## Die App installieren
 
-Die App baut GitHub automatisch. Die aktuelle Android-Version liegt nach jeder Änderung auf `main` unter
-**Releases → „App – aktuelle Version“** (`selfify.apk`). Bei Versions-Tags (`v1.0.0` …) gibt es zusätzlich
-feste Releases mit APK und IPA.
+Die App baut GitHub automatisch. Die aktuelle Android- und Windows-Version liegt nach jeder Änderung auf
+`main` unter **Releases → „App – aktuelle Version“** (`selfify.apk`, `selfify-windows-setup.exe`,
+`selfify-windows.zip`). Bei Versions-Tags (`v1.0.0` …) gibt es zusätzlich feste Releases mit APK, Windows-App
+und IPA.
 
 ### Android
 
@@ -149,6 +150,62 @@ Hinweis erscheint auch auf dem Anmeldebildschirm – falls die Anmeldung erst mi
 > `ANDROID_KEYSTORE_BASE64` (die base64-Ausgabe), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
 > (`selfify`) und `ANDROID_KEY_PASSWORD` (bei PKCS12 dasselbe Passwort). Ohne diese Secrets signiert GitHub jeden Build mit einem anderen
 > Test-Schlüssel. Updates gehen dann nur nach Deinstallation, und die App zeigt keinen Update-Hinweis.
+
+### Windows (PC/Laptop)
+
+Selfify gibt es auch als Desktop-App für **Windows 10 und 11 (64 Bit)**. Sie entsteht aus demselben Code wie
+die Handy-App und liegt ebenfalls unter **Releases → „App – aktuelle Version“**. Sie kommt ein paar Minuten
+nach der APK dazu, weil GitHub sie erst danach auf einem eigenen Windows-Rechner baut.
+
+| Datei | Wofür |
+|-------|-------|
+| `selfify-windows-setup.exe` | **Empfohlen.** Installiert Selfify mit Eintrag im Startmenü (auf Wunsch auch ein Desktop-Symbol) und lässt sich unter *Einstellungen → Apps* wieder entfernen. Keine Admin-Rechte nötig. |
+| `selfify-windows.zip` | Ohne Installation, z. B. zum Ausprobieren oder für einen USB-Stick. |
+
+**Installieren**
+
+1. `selfify-windows-setup.exe` herunterladen und starten.
+2. Windows zeigt beim Start **„Der Computer wurde durch Windows geschützt“** (Microsoft Defender SmartScreen).
+   Das liegt nur daran, dass die App nicht mit einem kostenpflichtigen Zertifikat signiert ist. Auf
+   **„Weitere Informationen“** klicken, dann auf **„Trotzdem ausführen“**.
+   Warnt schon der Browser beim Herunterladen („wird selten heruntergeladen“), in der Download-Liste bei der
+   Datei auf **…** → **Beibehalten** klicken (in Edge eventuell noch *Mehr anzeigen → Trotzdem beibehalten*).
+3. Den Assistenten durchklicken. Selfify landet ohne Admin-Rechte in `%LOCALAPPDATA%\Programs\Selfify`.
+4. Server-Adresse eintragen und anmelden, genau wie am Handy (siehe [Erste Anmeldung in der App](#erste-anmeldung-in-der-app)).
+
+**Ohne Installation (ZIP):** Vor dem Entpacken *Rechtsklick auf die ZIP → Eigenschaften → unten „Zulassen“
+anhaken → OK*. Sonst fragt SmartScreen bei jedem Start nach. Dann entpacken und im Ordner `Selfify` die Datei
+`selfify.exe` starten. Alle Dateien im Ordner gehören zusammen (DLLs und Ordner `data`). Die `.exe` allein
+funktioniert nicht.
+
+**Updates:** Die neue `selfify-windows-setup.exe` herunterladen und einfach darüber installieren. Läuft
+Selfify noch, schließt der Installer die App vorher. Anmeldung und Einstellungen bleiben erhalten.
+
+**Deinstallieren:** *Einstellungen → Apps → Installierte Apps → Selfify → Deinstallieren*. Anmeldung,
+Einstellungen und Offline-Titel bleiben dabei auf dem PC. Wer alles entfernen will, löscht danach noch die
+Ordner `%APPDATA%\Selfify` (Anmeldung, Einstellungen) und `%LOCALAPPDATA%\Selfify` (Offline-Musik).
+
+> **Warum die Warnung?** Ohne (kostenpflichtiges) Code-Signatur-Zertifikat kennt SmartScreen den Herausgeber
+> nicht und warnt bei jeder neuen Version. Die Dateien baut GitHub direkt aus diesem Repository.
+
+**Bedienung wie bei Spotify:** Links die Seitenleiste mit Start, Suche, Bibliothek und deinen Playlists, unten
+die Player-Leiste, rechts auf Wunsch Warteschlange oder Songtext. Ist das Fenster schmal (unter etwa 840
+Punkten), zeigt Selfify die Handy-Ansicht.
+
+| Taste | Wirkung |
+|-------|---------|
+| Leertaste | Abspielen/Pause (nicht beim Tippen im Suchfeld und nicht auf der Videoseite) |
+| Strg + F oder Strg + L | Suche |
+| Strg + → / Strg + ← | Nächster / vorheriger Titel |
+| Umschalt + → / Umschalt + ← | 5 Sekunden vor / zurück |
+| Strg + ↑ / Strg + ↓ | Lauter / leiser |
+| Alt + ← oder seitliche Maustaste | Zurück |
+| Medientasten der Tastatur | Abspielen/Pause, Weiter, Zurück (solange das Selfify-Fenster aktiv ist) |
+
+> **Windows „N“/„KN“-Editionen** (ohne Mediaplayer) brauchen zuerst das kostenlose *Media Feature Pack*
+> (*Einstellungen → Apps → Optionale Features → Feature hinzufügen → Media Feature Pack*), sonst startet die
+> App nicht. Videos im MKV/WebM-Format brauchen unter Windows oft die *VP9-Videoerweiterung* aus dem
+> Microsoft Store – am einfachsten Videos als MP4 laden.
 
 ### iPhone / iPad
 
@@ -398,6 +455,8 @@ flutter pub get
 flutter analyze
 flutter test
 flutter run            # Handy/Emulator angeschlossen
+flutter run -d windows # auf einem Windows-PC (Visual Studio mit „Desktopentwicklung mit C++“ und
+                       # unter Windows „Entwicklermodus“ eingeschaltet – nötig für die Plugins)
 ```
 
 Aufbau: `lib/data` (Modelle, Server-Client), `lib/state` (Anmeldung, Einstellungen, Downloads,

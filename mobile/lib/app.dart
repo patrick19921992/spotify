@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme.dart';
 import 'player/player.dart';
 import 'state/auth.dart';
+import 'ui/desktop/desktop_layout.dart';
+import 'ui/desktop/desktop_shortcuts.dart';
 import 'ui/router.dart';
 
 class SelfifyApp extends ConsumerWidget {
@@ -28,6 +30,10 @@ class SelfifyApp extends ConsumerWidget {
       darkTheme: buildTheme(),
       themeMode: ThemeMode.dark,
       routerConfig: router,
+      // Computer: Tastenkürzel, Ziehen mit der Maus, Desktop-Aktionen (Handy: unverändert)
+      shortcuts: isDesktopPlatform ? desktopShortcuts : null,
+      scrollBehavior: isDesktopPlatform ? const DesktopScrollBehavior() : null,
+      builder: isDesktopPlatform ? (context, child) => DesktopActions(child: child ?? const SizedBox.shrink()) : null,
       locale: const Locale('de'),
       supportedLocales: const [Locale('de'), Locale('en')],
       localizationsDelegates: const [

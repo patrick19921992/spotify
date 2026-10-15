@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../player/player.dart';
 import '../../state/likes.dart';
+import '../desktop/desktop_layout.dart';
+import '../desktop/desktop_player_bar.dart';
 import '../nav.dart';
 import 'common.dart';
 import 'cover.dart';
@@ -14,6 +16,8 @@ class MiniPlayer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Computer mit breitem Fenster (z. B. Downloads-Seite): die große Player-Leiste
+    if (useDesktopLayout(context)) return const DesktopPlayerBar();
     final track = ref.watch(currentTrackProvider);
     if (track == null) return const SizedBox.shrink();
     final playing = ref.watch(isPlayingProvider);

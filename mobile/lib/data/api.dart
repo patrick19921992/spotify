@@ -111,7 +111,9 @@ String normalizeBaseUrl(String input) {
 }
 
 String defaultDeviceName() {
-  final system = Platform.isIOS ? 'iPhone/iPad' : (Platform.isAndroid ? 'Android' : Platform.operatingSystem);
+  final system = Platform.isIOS
+      ? 'iPhone/iPad'
+      : (Platform.isAndroid ? 'Android' : (Platform.isWindows ? 'Windows' : Platform.operatingSystem));
   String host = '';
   try {
     host = Platform.localHostname;

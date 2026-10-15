@@ -10,6 +10,7 @@ import '../state/connectivity.dart';
 import '../state/offline.dart';
 import '../state/settings.dart';
 import 'audio_handler.dart';
+import 'windows_audio.dart' show windowsAudioError;
 
 export 'audio_handler.dart' show PlayContext, SelfifyAudioHandler;
 
@@ -104,6 +105,10 @@ class PlayerController {
 
   /// Spielt [tracks] ab Position [index]. Im Offline-Modus nur heruntergeladene Titel.
   Future<void> play(List<Track> tracks, {int index = 0, PlayContext? context, bool shuffle = false}) async {
+    if (windowsAudioError != null) {
+      throw StateError('Die Wiedergabe unter Windows konnte nicht gestartet werden (libmpv-2.dll fehlt oder wird '
+          'vom Virenschutz blockiert). Bitte Selfify neu installieren.');
+    }
     var list = tracks.where((t) => !t.isVideo).toList();
     // Nach Position, nicht nach Gleichheit: derselbe Titel kann mehrfach vorkommen (Playlist)
     var start = index >= 0 && index < tracks.length && !tracks[index].isVideo

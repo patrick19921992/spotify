@@ -11,6 +11,8 @@ import '../state/auth.dart';
 import '../state/connectivity.dart';
 import '../state/downloads.dart';
 import '../state/settings.dart';
+import 'desktop/desktop_layout.dart';
+import 'desktop/desktop_shell.dart';
 import 'widgets/app_update.dart';
 import 'widgets/common.dart';
 import 'widgets/mini_player.dart';
@@ -71,6 +73,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Computer mit breitem Fenster: Seitenleiste + Player-Leiste statt unterer Leiste
+    if (useDesktopLayout(context)) return DesktopShell(shell: widget.shell);
     final offline = ref.watch(isOfflineProvider);
     final offlineMode = ref.watch(settingsProvider.select((s) => s.offlineMode));
     return Scaffold(

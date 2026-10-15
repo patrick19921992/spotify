@@ -115,7 +115,8 @@ class OfflineController extends Notifier<OfflineState> {
   Future<Directory> _directory() async {
     final existing = _dir;
     if (existing != null) return existing;
-    final base = await getApplicationDocumentsDirectory();
+    // Windows: „Dokumente“ wird oft per OneDrive hochgeladen – Musik gehört nach AppData\Local
+    final base = Platform.isWindows ? await getApplicationCacheDirectory() : await getApplicationDocumentsDirectory();
     final dir = Directory('${base.path}/offline');
     await dir.create(recursive: true);
     _dir = dir;

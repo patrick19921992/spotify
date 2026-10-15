@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/platform.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../player/player.dart';
@@ -92,7 +93,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     // Im Hintergrund nicht ständig beim Server nachfragen
     if (!mounted) return;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    if (!isForeground(lifecycle)) return; // Computer: auch ohne Fokus, solange das Fenster sichtbar ist
     // Liegt eine andere Seite darüber (z. B. ein Album), reicht der nächste Takt danach.
     // Offene Details bleiben trotzdem live – sie hängen an der Live-Verbindung.
     final route = ModalRoute.of(context);

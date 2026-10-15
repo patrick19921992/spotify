@@ -57,12 +57,18 @@ dependencies:
   wakelock_plus: ^1.8.1
   # Update-Hinweis: lädt die neue APK und öffnet den Android-Installer
   ota_update: ^7.1.0
+  # --- Windows-App (nur Windows-Plugins; Android/iOS-Builds bleiben unverändert) ---
+  # Audio unter Windows: just_audio auf libmpv-Basis (spielt auch Opus/Ogg/WebM)
+  just_audio_media_kit: ^2.1.0
+  media_kit_libs_windows_audio: ^1.0.9
+  # Warteschlange für Windows in lib/player/windows_audio.dart (vorher nur in Tests)
+  just_audio_platform_interface: 4.6.0
+  # Video unter Windows (Media Foundation); chewie bleibt unverändert
+  video_player_win: ^3.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  # Für Tests mit nachgebautem Player (ohne echtes Audio-Gerät)
-  just_audio_platform_interface: 4.6.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
