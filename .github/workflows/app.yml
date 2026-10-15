@@ -101,7 +101,10 @@ jobs:
           done
           exit 1
       - name: APK bauen
-        run: flutter build apk --release --build-number=${{ github.run_number }}
+        # UPDATE_MANIFEST_URL: Dort schaut die App nach neueren Versionen (Update-Hinweis)
+        run: >-
+          flutter build apk --release --build-number=${{ github.run_number }}
+          --dart-define=UPDATE_MANIFEST_URL=https://github.com/${{ github.repository }}/releases/download/app-latest/version.json
       - run: mv build/app/outputs/flutter-apk/app-release.apk build/selfify.apk
       - name: APK als Artefakt (nur zum Testen, falls Speicher frei)
         uses: actions/upload-artifact@v7
@@ -117,8 +120,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # version.json: daran erkennt die App, dass es eine neuere Version gibt
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version: *([^+]*).*/\1/')
+          cat > build/version.json <<JSON
+          {
+            "build": ${{ github.run_number }},
+            "version": "$VERSION",
+            "commit": "${GITHUB_SHA::7}",
+            "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "android": {
+              "url": "https://github.com/$GITHUB_REPOSITORY/releases/download/app-latest/selfify.apk",
+              "sha256": "$(sha256sum build/selfify.apk | cut -d' ' -f1)"
+            }
+          }
+          JSON
+          cat build/version.json
           gh release delete app-latest --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
-          gh release create app-latest build/selfify.apk --repo "$GITHUB_REPOSITORY" --prerelease \
+          gh release create app-latest build/selfify.apk build/version.json --repo "$GITHUB_REPOSITORY" --prerelease \
             --target "$GITHUB_SHA" --title "App – aktuelle Version" \
             --notes "Automatisch gebaut aus ${GITHUB_SHA::7}. Installation siehe README."
       - name: Release mit APK (bei Tags v*)

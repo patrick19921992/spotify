@@ -6,12 +6,14 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
+import '../../state/app_update.dart';
 import '../../state/auth.dart';
 import '../../state/downloads.dart';
 import '../../state/library.dart';
 import '../../state/offline.dart';
 import '../../state/settings.dart';
 import '../nav.dart';
+import '../widgets/app_update.dart';
 import '../widgets/common.dart';
 import 'account_widgets.dart';
 import 'devices_screen.dart';
@@ -501,6 +503,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ];
 
+  /// „Nach Updates suchen“ – zeigt eine neuere Version an und installiert sie auf Tippen.
+  Widget _updateTile() {
+    final update = ref.watch(availableUpdateProvider);
+    final release = update.value;
+    return AccountTile(
+      icon: Icons.system_update_rounded,
+      title: release == null ? 'Nach Updates suchen' : 'Update installieren',
+      subtitle: switch (update) {
+        AsyncValue(isLoading: true) => 'Wird geprüft …',
+        AsyncValue(value: final r?) => 'Neu: ${r.label}',
+        _ => 'Du hast die neueste Version',
+      },
+      onTap: () async {
+        if (release != null) {
+          await showUpdateDialog(context, release);
+          return;
+        }
+        ref.invalidate(availableUpdateProvider);
+        final found = await ref.read(availableUpdateProvider.future);
+        if (!mounted) return;
+        if (found == null) {
+          showMessage(context, 'Du hast die neueste Version.');
+        } else {
+          await showUpdateDialog(context, found);
+        }
+      },
+    );
+  }
+
   List<Widget> _aboutSection(String? serverUrl) {
     final server = ref.watch(_serverInfoProvider);
     final package = ref.watch(_packageInfoProvider);
@@ -540,6 +571,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         title: 'App-Version',
         subtitle: appText,
       ),
+      if (ref.watch(appUpdateSourceProvider).supported) _updateTile(),
       AccountTile(
         icon: Icons.description_outlined,
         title: 'Open-Source-Lizenzen',

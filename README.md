@@ -126,17 +126,27 @@ feste Releases mit APK und IPA.
 2. Installieren. Android fragt einmalig, ob Apps aus dieser Quelle erlaubt sind.
 3. Bei der ersten Wiedergabe die Benachrichtigungen erlauben (für die Steuerung auf dem Sperrbildschirm).
 
+**Updates:** Die App schaut beim Start nach einer neueren Version (Datei `version.json` im Release) und zeigt
+dann „Neue App-Version verfügbar“. *Installieren* lädt die APK und öffnet den Android-Installer. Beim ersten
+Mal fragt Android, ob Selfify Apps installieren darf. Von Hand: *Einstellungen → Nach Updates suchen*.
+
 > **Wichtig für Updates:** Damit sich neue Versionen über die alte installieren lassen (und die Offline-Musik
-> erhalten bleibt), braucht der Build immer denselben Signaturschlüssel. Einmalig erzeugen:
+> erhalten bleibt), braucht der Build immer denselben Signaturschlüssel. Einmalig erzeugen – ohne Java auf dem
+> PC geht das im Unraid-Terminal per Docker (Passwort zweimal eingeben, Fragen mit Enter überspringen, am Ende
+> `yes`):
 >
 > ```bash
-> keytool -genkey -v -keystore selfify.keystore -alias selfify -keyalg RSA -keysize 2048 -validity 10000
-> base64 -w0 selfify.keystore    # Ausgabe kopieren
+> mkdir -p /mnt/user/appdata/selfify-signing
+> docker run --rm -it -v /mnt/user/appdata/selfify-signing:/out eclipse-temurin:21-jre keytool -genkeypair \
+>   -keystore /out/selfify.keystore -alias selfify -keyalg RSA -keysize 2048 -validity 10000 -storetype PKCS12
+> base64 -w0 /mnt/user/appdata/selfify-signing/selfify.keystore; echo    # Ausgabe kopieren
 > ```
+>
+> Die Datei `selfify.keystore` zusätzlich sichern – geht sie verloren, ist wieder eine Neuinstallation nötig.
 >
 > Dann im Repository unter *Settings → Secrets and variables → Actions* anlegen:
 > `ANDROID_KEYSTORE_BASE64` (die base64-Ausgabe), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
-> (`selfify`) und `ANDROID_KEY_PASSWORD`. Ohne diese Secrets signiert GitHub jeden Build mit einem anderen
+> (`selfify`) und `ANDROID_KEY_PASSWORD` (bei PKCS12 dasselbe Passwort). Ohne diese Secrets signiert GitHub jeden Build mit einem anderen
 > Test-Schlüssel. Updates gehen dann nur nach Deinstallation.
 
 ### iPhone / iPad
