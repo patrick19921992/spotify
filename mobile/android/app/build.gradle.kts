@@ -22,6 +22,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Vom Update-Plugin (ota_update) verlangt: neuere Java-APIs auch auf älteren Android-Versionen
+        isCoreLibraryDesugaringEnabled = true
     }
 
     signingConfigs {
@@ -62,4 +64,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Gleiche Version wie im Update-Plugin (ota_update 7.1.0)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
