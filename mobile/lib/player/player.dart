@@ -26,6 +26,15 @@ final playbackBridgeProvider = Provider<void>((ref) {
   final quality = onWifi ? settings.wifiQuality : settings.mobileQuality;
 
   handler.autoplayEnabled = settings.autoplay;
+  handler.sourceTokenExpiry = () => api?.tokens.mediaExpiresAt;
+  handler.renewMediaToken = () async {
+    final client = api;
+    if (client == null) return;
+    // Der Medien-Token im Link gilt einige Tage; nur erneuern, wenn auch der aktuelle bald abläuft
+    if (DateTime.now().isAfter(client.tokens.mediaExpiresAt.subtract(const Duration(days: 1)))) {
+      await client.refresh();
+    }
+  };
   handler.resolveArt = (track) =>
       api == null || track.coverId == null ? null : Uri.parse(api.coverUrl(track.coverId!, size: 600));
   handler.resolveSource = (track, item) {

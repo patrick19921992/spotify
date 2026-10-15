@@ -11,7 +11,7 @@ Stand: 15.10.2026
 |---|---|---|---|
 | Server-Sicherheit | ✅ fertig | 6 | 6 |
 | Server-Logik | ✅ fertig | 11 | 11 |
-| Schnittstelle App ↔ Server | ✅ fertig | 6 | 0 |
+| Schnittstelle App ↔ Server | ✅ fertig | 6 | 6 |
 | Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 7 |
 | App-Kern (Player, Offline, Downloads, Anmeldung) | ⏳ läuft | – | – |
 | App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ⏳ läuft | – | – |
@@ -46,17 +46,17 @@ Stand: 15.10.2026
       (`transcode.py:281`)
 - [x] niedrig – Selbst aktualisiertes yt-dlp bleibt aktiv, auch wenn YTDL_AUTO_UPDATE=false (`ytdlp.py:52`)
 
-## Schnittstelle App ↔ Server – offen
+## Schnittstelle App ↔ Server – alle behoben
 
-- [ ] mittel – Token-Erneuerung kann die Fehler-Warteschlange von dio blockieren: Anfragen hängen für immer
+- [x] mittel – Token-Erneuerung kann die Fehler-Warteschlange von dio blockieren: Anfragen hängen für immer
       (`mobile/lib/data/api.dart:144`)
-- [ ] mittel – Gespeicherte Ziel-Rubrik wird ungeprüft gesendet: alle Downloads scheitern mit
+- [x] mittel – Gespeicherte Ziel-Rubrik wird ungeprüft gesendet: alle Downloads scheitern mit
       „Rubrik nicht gefunden“ (`mobile/lib/state/downloads.dart:168`)
-- [ ] niedrig – Fertig-Meldungen enden nach Abmelden→Anmelden (`downloads.dart:67`)
-- [ ] niedrig – Download-Knopf verwechselt Song und Video mit gleicher YouTube-ID (`downloads.dart:36`)
-- [ ] niedrig – Verlorene Antwort bei Token-Erneuerung + über 60 s offline meldet das Gerät ab
+- [x] niedrig – Fertig-Meldungen enden nach Abmelden→Anmelden (`downloads.dart:67`)
+- [x] niedrig – Download-Knopf verwechselt Song und Video mit gleicher YouTube-ID (`downloads.dart:36`)
+- [x] niedrig – Verlorene Antwort bei Token-Erneuerung + über 60 s offline meldet das Gerät ab
       (`server/app/services/auth.py:94`)
-- [ ] niedrig – Medien-Token läuft nach 7 Tagen ab, eingereihte Titel spielen dann nicht mehr
+- [x] niedrig – Medien-Token läuft nach 7 Tagen ab, eingereihte Titel spielen dann nicht mehr
       (`mobile/lib/player/audio_handler.dart:202`)
 
 ## Docker, Unraid, CI, Anleitung – alle behoben

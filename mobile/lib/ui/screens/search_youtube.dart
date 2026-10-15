@@ -115,7 +115,9 @@ class _YouTubeItemSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final job = item.videoId == null ? null : ref.watch(jobForVideoProvider(item.videoId!));
+    final job = item.videoId == null
+        ? null
+        : ref.watch(jobForVideoProvider((item.videoId!, item.isVideo ? 'video' : 'audio')));
     final canDownload = ref.watch(currentUserProvider)?.canDownload ?? false;
     final trackId = job?.trackId ?? item.inLibraryTrackId;
     final failed = job != null && job.isFailed;
@@ -165,14 +167,20 @@ class _YouTubeItemSheet extends ConsumerWidget {
               ListTile(
                 leading: const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
                 title: const Text('Wird geholt …'),
-                subtitle: Padding(padding: const EdgeInsets.only(top: 6), child: JobProgress(job: job)),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: JobProgress(job: job),
+                ),
               ),
               ListTile(
                 leading: const Icon(Icons.cancel_outlined),
                 title: const Text('Download abbrechen'),
                 onTap: () async {
                   close();
-                  final downloads = ProviderScope.containerOf(parentContext, listen: false).read(downloadsProvider.notifier);
+                  final downloads = ProviderScope.containerOf(
+                    parentContext,
+                    listen: false,
+                  ).read(downloadsProvider.notifier);
                   try {
                     await downloads.cancel(job.id);
                   } catch (e) {
@@ -184,7 +192,10 @@ class _YouTubeItemSheet extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.block_rounded),
                 title: Text('Nicht verfügbar'),
-                subtitle: Text('Dieser Titel ist bei YouTube Music gerade nicht abrufbar.', style: AppText.tileSubtitle),
+                subtitle: Text(
+                  'Dieser Titel ist bei YouTube Music gerade nicht abrufbar.',
+                  style: AppText.tileSubtitle,
+                ),
               ),
             ] else ...[
               if (!canDownload)
@@ -203,8 +214,10 @@ class _YouTubeItemSheet extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         style: AppText.tileSubtitle.copyWith(color: AppColors.danger),
                       )
-                    : Text(item.isVideo ? 'Als Video in deine Bibliothek' : 'Als Song in deine Bibliothek',
-                        style: AppText.tileSubtitle),
+                    : Text(
+                        item.isVideo ? 'Als Video in deine Bibliothek' : 'Als Song in deine Bibliothek',
+                        style: AppText.tileSubtitle,
+                      ),
                 onTap: () {
                   close();
                   _startDownload(parentContext, item);
@@ -254,7 +267,10 @@ class ExplicitBadge extends StatelessWidget {
       margin: const EdgeInsets.only(right: 6),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(color: AppColors.textSecondary, borderRadius: BorderRadius.circular(2)),
-      child: const Text('E', style: TextStyle(color: Colors.black, fontSize: 9.5, fontWeight: FontWeight.w800)),
+      child: const Text(
+        'E',
+        style: TextStyle(color: Colors.black, fontSize: 9.5, fontWeight: FontWeight.w800),
+      ),
     );
   }
 }
@@ -264,6 +280,7 @@ class ExplicitBadge extends StatelessWidget {
 class YouTubeItemTile extends ConsumerWidget {
   final YouTubeItem item;
   final int? number;
+
   /// Wird aufgerufen, wenn der Treffer geöffnet wird (z. B. Suchbegriff merken).
   final VoidCallback? onOpen;
   final bool showAlbumLink;
@@ -277,7 +294,9 @@ class YouTubeItemTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final job = item.videoId == null ? null : ref.watch(jobForVideoProvider(item.videoId!));
+    final job = item.videoId == null
+        ? null
+        : ref.watch(jobForVideoProvider((item.videoId!, item.isVideo ? 'video' : 'audio')));
     final trackId = job?.trackId ?? item.inLibraryTrackId;
     final available = item.videoId != null || trackId != null;
     final albumMode = number != null;
@@ -351,7 +370,10 @@ class YouTubeItemTile extends ConsumerWidget {
                     ],
                   ),
                   if (job != null && job.isFailed && trackId == null)
-                    Padding(padding: const EdgeInsets.only(top: 2), child: JobProgress(job: job, compact: true)),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: JobProgress(job: job, compact: true),
+                    ),
                 ],
               ),
             ),
@@ -408,7 +430,12 @@ class YouTubeAlbumTile extends StatelessWidget {
                     children: [
                       if (item.explicit) const ExplicitBadge(),
                       Expanded(
-                        child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.tileSubtitle),
+                        child: Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.tileSubtitle,
+                        ),
                       ),
                     ],
                   ),
@@ -448,7 +475,10 @@ class YouTubeUnavailableView extends StatelessWidget {
               const Icon(Icons.cloud_off_rounded, color: AppColors.textSecondary),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
+                ),
               ),
             ],
           ),
@@ -520,14 +550,11 @@ class YouTubeSearchSection extends ConsumerWidget {
       body = SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            switch (type) {
-              'videos' => 'Keine Videos zu „$query“ bei YouTube Music gefunden.',
-              'albums' => 'Keine Alben zu „$query“ bei YouTube Music gefunden.',
-              _ => 'Keine Songs zu „$query“ bei YouTube Music gefunden.',
-            },
-            style: AppText.tileSubtitle,
-          ),
+          child: Text(switch (type) {
+            'videos' => 'Keine Videos zu „$query“ bei YouTube Music gefunden.',
+            'albums' => 'Keine Alben zu „$query“ bei YouTube Music gefunden.',
+            _ => 'Keine Songs zu „$query“ bei YouTube Music gefunden.',
+          }, style: AppText.tileSubtitle),
         ),
       );
     } else {
@@ -555,8 +582,12 @@ class YouTubeSearchSection extends ConsumerWidget {
                     Icon(Icons.smart_display_rounded, color: Color(0xFFFF0033), size: 24),
                     SizedBox(width: 10),
                     Expanded(
-                      child: Text('Nicht dabei? Von YouTube holen',
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.sectionTitle),
+                      child: Text(
+                        'Nicht dabei? Von YouTube holen',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.sectionTitle,
+                      ),
                     ),
                   ],
                 ),

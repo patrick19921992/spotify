@@ -3,7 +3,6 @@ from datetime import timedelta
 from fastapi.testclient import TestClient
 
 from app.models import UserSession
-from app.services import auth as auth_service
 
 from .conftest import ADMIN_PASSWORD, bearer, login
 
@@ -53,16 +52,33 @@ def test_old_refresh_token_within_grace_period(client: TestClient) -> None:
 def test_reused_old_refresh_token_revokes_session(client: TestClient) -> None:
     tokens = login(client, "admin", ADMIN_PASSWORD)
     new_tokens = client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}).json()
-    # Erneuerung künstlich in die Vergangenheit legen -> Gnadenfrist abgelaufen
-    with client.app.state.session_factory() as db:
-        session = db.query(UserSession).one()
-        session.rotated_at = session.rotated_at - auth_service.REFRESH_GRACE - timedelta(seconds=1)
-        db.commit()
+    # Das Gerät benutzt die neuen Token -> sie sind angekommen, der alte Refresh-Token ist verbraucht
+    assert client.get("/api/me", headers=bearer(new_tokens)).status_code == 200
     stolen = client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert stolen.status_code == 401
     # Zur Sicherheit ist das ganze Gerät abgemeldet
     assert client.post("/api/auth/refresh", json={"refresh_token": new_tokens["refresh_token"]}).status_code == 401
     assert client.get("/api/me", headers=bearer(new_tokens)).status_code == 401
+
+
+def test_lost_refresh_response_does_not_log_out(client: TestClient) -> None:
+    """Antwort der Erneuerung im Funkloch verloren, Handy erst Minuten später wieder online: kein Rauswurf."""
+    tokens = login(client, "admin", ADMIN_PASSWORD)
+    lost = client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert lost.status_code == 200  # ... kommt aber nie beim Handy an
+    with client.app.state.session_factory() as db:
+        session = db.query(UserSession).one()
+        session.rotated_at = session.rotated_at - timedelta(minutes=10)
+        db.commit()
+    again = client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert again.status_code == 200
+    assert client.get("/api/me", headers=bearer(again.json())).status_code == 200
+    # Nach einer Woche ohne Bestätigung gilt der alte Token nicht mehr
+    with client.app.state.session_factory() as db:
+        session = db.query(UserSession).one()
+        session.rotated_at = None
+        db.commit()
+    assert client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}).status_code == 401
 
 
 def test_logout_revokes_device(client: TestClient) -> None:

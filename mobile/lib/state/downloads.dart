@@ -21,7 +21,11 @@ class DownloadsState {
   /// Aktive zuerst (in Warteschlangen-Reihenfolge), danach die neuesten fertigen.
   List<DownloadJob> get sorted {
     final list = jobs.values.toList();
-    int rank(DownloadJob j) => switch (j.status) { 'downloading' || 'processing' => 0, 'queued' => 1, _ => 2 };
+    int rank(DownloadJob j) => switch (j.status) {
+      'downloading' || 'processing' => 0,
+      'queued' => 1,
+      _ => 2,
+    };
     list.sort((a, b) {
       final byRank = rank(a).compareTo(rank(b));
       if (byRank != 0) return byRank;
@@ -33,10 +37,11 @@ class DownloadsState {
 
   List<DownloadJob> get active => sorted.where((j) => j.isActive).toList();
 
-  DownloadJob? forVideo(String videoId) {
+  /// Download eines YouTube-Treffers – Song und Video mit derselben ID sind getrennte Aufträge.
+  DownloadJob? forVideo(String videoId, {required String mediaType}) {
     DownloadJob? best;
     for (final job in jobs.values) {
-      if (job.videoId != videoId) continue;
+      if (job.videoId != videoId || job.mediaType != mediaType) continue;
       if (best == null || job.isActive || job.createdAt.isAfter(best.createdAt)) best = job;
     }
     return best;
@@ -61,10 +66,11 @@ class DownloadsController extends Notifier<DownloadsState> {
   DownloadsState build() {
     final api = ref.watch(apiProvider);
     _disposed = false;
+    // _finished bleibt offen: Riverpod behält dieses Objekt bei einem Neuaufbau (z. B. nach erneuter
+    // Anmeldung) – ein geschlossener Stream würde danach keine Fertig-Meldungen mehr liefern.
     ref.onDispose(() {
       _disposed = true;
       _close();
-      _finished.close();
     });
     if (api == null) return const DownloadsState();
     Future.microtask(() => _start(api));
@@ -99,7 +105,10 @@ class DownloadsController extends Notifier<DownloadsState> {
     _close();
     try {
       if (api.tokens.accessExpiringSoon) await api.refresh();
-      final channel = IOWebSocketChannel.connect(api.downloadsWebSocketUri(), pingInterval: const Duration(seconds: 20));
+      final channel = IOWebSocketChannel.connect(
+        api.downloadsWebSocketUri(),
+        pingInterval: const Duration(seconds: 20),
+      );
       _channel = channel;
       await channel.ready;
       _attempt = 0;
@@ -165,27 +174,54 @@ class DownloadsController extends Notifier<DownloadsState> {
     return api;
   }
 
-  int? _categoryFor(bool video) {
+  /// Gewählte Ziel-Rubrik – gibt es sie nicht mehr, nimmt der Server seine Standard-Rubrik.
+  Future<int?> _categoryFor(bool video) async {
     final settings = ref.read(settingsProvider);
-    return video ? settings.videoCategoryId : settings.audioCategoryId;
+    final id = video ? settings.videoCategoryId : settings.audioCategoryId;
+    if (id == null) return null;
+    List<Category> categories;
+    try {
+      categories = await ref.read(categoriesProvider.future);
+    } catch (_) {
+      return id; // Liste gerade nicht ladbar: Auswahl unverändert schicken
+    }
+    final mediaType = video ? 'video' : 'audio';
+    if (categories.any((c) => c.id == id && c.mediaType == mediaType)) return id;
+    // Rubrik wurde gelöscht: Einstellung zurücksetzen, sonst schlägt jeder Download fehl
+    await ref
+        .read(settingsProvider.notifier)
+        .update((s) => video ? s.copyWith(videoCategoryId: () => null) : s.copyWith(audioCategoryId: () => null));
+    return null;
   }
 
   /// Song oder Video aus der YouTube-Suche holen.
   Future<DownloadJob> startItem(YouTubeItem item, {int? categoryId, int? playlistId}) async {
-    final job = await _api.downloadItem(item, categoryId: categoryId ?? _categoryFor(item.isVideo), playlistId: playlistId);
+    final job = await _api.downloadItem(
+      item,
+      categoryId: categoryId ?? await _categoryFor(item.isVideo),
+      playlistId: playlistId,
+    );
     _upsert(job);
     return job;
   }
 
   Future<List<DownloadJob>> startAlbum(String browseId, {int? categoryId, int? playlistId}) async {
-    final jobs = await _api.downloadAlbum(browseId, categoryId: categoryId ?? _categoryFor(false), playlistId: playlistId);
+    final jobs = await _api.downloadAlbum(
+      browseId,
+      categoryId: categoryId ?? await _categoryFor(false),
+      playlistId: playlistId,
+    );
     jobs.forEach(_upsert);
     return jobs;
   }
 
   Future<List<DownloadJob>> startUrl(String url, {bool video = false, int? categoryId, int? playlistId}) async {
-    final jobs = await _api.downloadUrl(url,
-        mediaType: video ? 'video' : 'audio', categoryId: categoryId ?? _categoryFor(video), playlistId: playlistId);
+    final jobs = await _api.downloadUrl(
+      url,
+      mediaType: video ? 'video' : 'audio',
+      categoryId: categoryId ?? await _categoryFor(video),
+      playlistId: playlistId,
+    );
     jobs.forEach(_upsert);
     return jobs;
   }
@@ -209,5 +245,7 @@ final downloadsProvider = NotifierProvider<DownloadsController, DownloadsState>(
 final activeDownloadCountProvider = Provider<int>((ref) => ref.watch(downloadsProvider).active.length);
 
 /// Laufender/letzter Download für eine YouTube-ID (für Fortschrittsbalken in Suchergebnissen).
-final jobForVideoProvider =
-    Provider.family<DownloadJob?, String>((ref, videoId) => ref.watch(downloadsProvider).forVideo(videoId));
+/// Download zu einem YouTube-Treffer: Schlüssel ist (YouTube-ID, 'audio' oder 'video').
+final jobForVideoProvider = Provider.family<DownloadJob?, (String, String)>(
+  (ref, key) => ref.watch(downloadsProvider).forVideo(key.$1, mediaType: key.$2),
+);

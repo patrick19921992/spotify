@@ -110,6 +110,9 @@ class ApiClient {
   final void Function() onSessionExpired;
   late final Dio _dio;
   late final Dio _refreshDio;
+  /// Für die Wiederholung nach erneuerter Anmeldung – bewusst ohne Interceptor: Über [_dio] würde ein
+  /// erneuter Fehler hinter dem noch laufenden Fehler-Handler warten, und alles bliebe für immer hängen.
+  late final Dio _retryDio;
   Completer<Tokens>? _refreshing;
 
   ApiClient({
@@ -120,6 +123,7 @@ class ApiClient {
   }) {
     _dio = _plainDio(baseUrl);
     _refreshDio = _plainDio(baseUrl);
+    _retryDio = _plainDio(baseUrl);
     _dio.interceptors.add(QueuedInterceptorsWrapper(
       onRequest: (options, handler) async {
         if (_tokens.accessExpiringSoon) {
@@ -139,10 +143,16 @@ class ApiClient {
         }
         try {
           await refresh();
-          request.extra['retried'] = true;
-          request.headers['Authorization'] = 'Bearer ${_tokens.accessToken}';
-          handler.resolve(await _dio.fetch(request));
-        } catch (e) {
+        } catch (_) {
+          return handler.next(error);
+        }
+        request.extra['retried'] = true;
+        request.headers['Authorization'] = 'Bearer ${_tokens.accessToken}';
+        try {
+          handler.resolve(await _retryDio.fetch(request));
+        } on DioException catch (retryError) {
+          handler.next(retryError);
+        } catch (_) {
           handler.next(error);
         }
       },

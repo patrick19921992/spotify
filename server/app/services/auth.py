@@ -11,7 +11,9 @@ from app.models import User, UserSession, utcnow
 from app.security import create_access_token, create_media_token, hash_token, new_refresh_token
 
 # So lange gilt der vorherige Refresh-Token nach dem Erneuern noch (Antwort ging verloren)
-REFRESH_GRACE = timedelta(seconds=60)
+# So lange gilt der vorige Refresh-Token noch, solange die neuen Token nicht beim Gerät angekommen sind
+# (Antwort im Funkloch verloren). Sobald das Gerät die neuen Token benutzt, gilt der alte als gestohlen.
+UNCONFIRMED_ROTATION_WINDOW = timedelta(days=7)
 
 
 @dataclass
@@ -89,9 +91,12 @@ def refresh_session(
     if session is None or session.revoked_at is not None or session.expires_at <= now:
         return None
 
-    # Alter Token: nur kurz nach dem Erneuern erlaubt, sonst wurde er evtl. gestohlen
+    # Alter Token: erlaubt, solange die neuen Token noch nicht benutzt wurden (rotated_at gesetzt) –
+    # danach wurde er vermutlich gestohlen: ganzes Gerät abmelden
     reused_old_token = session.token_hash != token_hash
-    if reused_old_token and (session.rotated_at is None or now - session.rotated_at > REFRESH_GRACE):
+    if reused_old_token and (
+        session.rotated_at is None or now - session.rotated_at > UNCONFIRMED_ROTATION_WINDOW
+    ):
         session.revoked_at = now
         db.commit()
         return None

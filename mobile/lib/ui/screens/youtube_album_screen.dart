@@ -82,8 +82,12 @@ class _YouTubeAlbumScreenState extends ConsumerState<YouTubeAlbumScreen> {
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverToBoxAdapter(child: _AlbumHeader(album: data, topInset: topInset)),
-            SliverToBoxAdapter(child: _AlbumActions(album: data, browseId: widget.browseId)),
+            SliverToBoxAdapter(
+              child: _AlbumHeader(album: data, topInset: topInset),
+            ),
+            SliverToBoxAdapter(
+              child: _AlbumActions(album: data, browseId: widget.browseId),
+            ),
             if (data.tracks.isEmpty)
               const SliverToBoxAdapter(
                 child: EmptyState(
@@ -190,7 +194,9 @@ class _AlbumHeader extends StatelessWidget {
               children: [
                 const Icon(Icons.smart_display_rounded, size: 14, color: Color(0xFFFF0033)),
                 const SizedBox(width: 6),
-                Expanded(child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.caption)),
+                Expanded(
+                  child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.caption),
+                ),
               ],
             ),
           ],
@@ -221,14 +227,11 @@ class _AlbumActionsState extends ConsumerState<_AlbumActions> {
       final jobs = await ref.read(downloadsProvider.notifier).startAlbum(widget.browseId);
       if (!mounted) return;
       final queued = jobs.where((j) => j.isActive).length;
-      showMessage(
-        context,
-        switch (queued) {
-          0 => 'Alle Songs sind schon in deiner Bibliothek',
-          1 => '1 Titel wird geholt',
-          _ => '$queued Titel werden geholt',
-        },
-      );
+      showMessage(context, switch (queued) {
+        0 => 'Alle Songs sind schon in deiner Bibliothek',
+        1 => '1 Titel wird geholt',
+        _ => '$queued Titel werden geholt',
+      });
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -267,7 +270,9 @@ class _AlbumActionsState extends ConsumerState<_AlbumActions> {
     var activeProgress = 0.0;
     int? firstTrackId;
     for (final track in widget.album.tracks) {
-      final job = track.videoId == null ? null : downloads.forVideo(track.videoId!);
+      final job = track.videoId == null
+          ? null
+          : downloads.forVideo(track.videoId!, mediaType: track.isVideo ? 'video' : 'audio');
       final done = job != null && job.isDone;
       if (track.videoId == null && track.inLibraryTrackId == null) continue; // bei YouTube nicht abrufbar
       total++;
@@ -347,10 +352,7 @@ class _AlbumActionsState extends ConsumerState<_AlbumActions> {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              active == 1 ? '1 Song wird geholt …' : '$active Songs werden geholt …',
-              style: AppText.caption,
-            ),
+            Text(active == 1 ? '1 Song wird geholt …' : '$active Songs werden geholt …', style: AppText.caption),
           ],
           const SizedBox(height: 16),
           button,

@@ -39,6 +39,13 @@ def _unauthorized(detail: str = "Nicht angemeldet.") -> HTTPException:
     return HTTPException(status.HTTP_401_UNAUTHORIZED, detail, headers={"WWW-Authenticate": "Bearer"})
 
 
+def _issued_at(payload: dict[str, object]) -> int:
+    try:
+        return int(str(payload.get("iat", 0)))
+    except ValueError:
+        return 0
+
+
 def auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
     try:
         user_id, session_id = int(str(payload["sub"])), int(str(payload["sid"]))
@@ -51,10 +58,17 @@ def auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
     session = active_session(db, session_id, user_id)
     if session is None:
         raise _unauthorized("Dieses Gerät wurde abgemeldet.")
-    # "Zuletzt aktiv" höchstens minütlich schreiben
     now = utcnow()
+    changed = False
+    # Token aus der letzten Erneuerung benutzt -> sie ist angekommen, der vorige Refresh-Token gilt nicht mehr
+    if session.rotated_at is not None and _issued_at(payload) >= int(session.rotated_at.timestamp()):
+        session.rotated_at = None
+        changed = True
+    # "Zuletzt aktiv" höchstens minütlich schreiben
     if (now - session.last_used_at).total_seconds() > 60:
         session.last_used_at = now
+        changed = True
+    if changed:
         db.commit()
     return AuthContext(user=user, session=session)
 

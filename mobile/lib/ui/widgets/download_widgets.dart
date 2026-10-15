@@ -26,7 +26,11 @@ class ThumbnailImage extends StatelessWidget {
       width: width,
       height: size,
       color: AppColors.surfaceHighest,
-      child: Icon(video ? Icons.movie_rounded : Icons.music_note_rounded, color: AppColors.textMuted, size: size * 0.45),
+      child: Icon(
+        video ? Icons.movie_rounded : Icons.music_note_rounded,
+        color: AppColors.textMuted,
+        size: size * 0.45,
+      ),
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
@@ -88,10 +92,12 @@ class JobProgress extends StatelessWidget {
           ),
         if (!compact || !job.isActive) ...[
           const SizedBox(height: 4),
-          Text(details,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.caption.copyWith(color: job.isFailed ? AppColors.danger : null)),
+          Text(
+            details,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.caption.copyWith(color: job.isFailed ? AppColors.danger : null),
+          ),
         ],
       ],
     );
@@ -126,7 +132,9 @@ class DownloadButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final job = item.videoId == null ? null : ref.watch(jobForVideoProvider(item.videoId!));
+    final job = item.videoId == null
+        ? null
+        : ref.watch(jobForVideoProvider((item.videoId!, item.isVideo ? 'video' : 'audio')));
     final canDownload = ref.watch(currentUserProvider)?.canDownload ?? false;
     final trackId = job?.trackId ?? item.inLibraryTrackId;
 
@@ -142,8 +150,10 @@ class DownloadButton extends ConsumerWidget {
               strokeWidth: 3,
               backgroundColor: AppColors.surfaceHighest,
             ),
-            Text(job.status == 'downloading' ? '${(job.progress * 100).floor()}' : '',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+            Text(
+              job.status == 'downloading' ? '${(job.progress * 100).floor()}' : '',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            ),
           ],
         ),
       );
@@ -171,14 +181,20 @@ class DownloadButton extends ConsumerWidget {
     if (!canDownload) {
       return const Tooltip(
         message: 'Downloads sind für dein Konto nicht freigeschaltet',
-        child: Padding(padding: EdgeInsets.all(10), child: Icon(Icons.lock_outline_rounded, color: AppColors.textMuted)),
+        child: Padding(
+          padding: EdgeInsets.all(10),
+          child: Icon(Icons.lock_outline_rounded, color: AppColors.textMuted),
+        ),
       );
     }
     return OutlinedButton.icon(
       onPressed: () => _start(context, ref),
       icon: const Icon(Icons.download_rounded, size: 18),
       label: const Text('Holen'),
-      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), visualDensity: VisualDensity.compact),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }

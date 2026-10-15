@@ -35,6 +35,15 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   AutoplayProvider? autoplay;
   bool autoplayEnabled = true;
 
+  /// Ablauf des Medien-Tokens, der gerade in neue Stream-Links geschrieben wird.
+  DateTime? Function()? sourceTokenExpiry;
+
+  /// Holt einen frischen Medien-Token (vor dem Neuaufbau abgelaufener Stream-Links).
+  Future<void> Function()? renewMediaToken;
+
+  /// Frühester Ablauf der Links in der Warteschlange – danach antwortet der Server mit 401.
+  DateTime? _sourcesExpireAt;
+
   final List<Track> _tracks = [];
   PlayContext? _context;
   int? _lastIndex;
@@ -93,7 +102,24 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     final item = mediaItemFor(track);
     final resolver = resolveSource;
     if (resolver == null) throw StateError('Wiedergabe ist noch nicht eingerichtet.');
+    final expiry = sourceTokenExpiry?.call();
+    if (expiry != null && (_sourcesExpireAt == null || expiry.isBefore(_sourcesExpireAt!))) {
+      _sourcesExpireAt = expiry;
+    }
     return resolver(track, item);
+  }
+
+  /// Läuft der Token in den Links bald ab (z. B. eine Woche pausiert), vor dem Weiterspielen erneuern.
+  Future<void> _renewExpiringSources() async {
+    final expires = _sourcesExpireAt;
+    if (expires == null || _tracks.isEmpty) return;
+    if (DateTime.now().isBefore(expires.subtract(const Duration(days: 1)))) return;
+    try {
+      await renewMediaToken?.call();
+      await refreshSources();
+    } catch (_) {
+      // Ohne Netz bleibt es beim Alten – lokal gespeicherte Titel spielen trotzdem
+    }
   }
 
   void _broadcastState(PlaybackEvent event) {
@@ -199,6 +225,7 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     _publishQueue();
     final initial = start < 0 ? 0 : start;
     await player.setShuffleModeEnabled(false);
+    _sourcesExpireAt = null;
     await player.setAudioSources(audio.map(_sourceFor).toList(), initialIndex: initial, initialPosition: Duration.zero);
     if (shuffle) {
       await player.shuffle();
@@ -283,7 +310,10 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   @override
-  Future<void> play() => player.play();
+  Future<void> play() async {
+    await _renewExpiringSources();
+    await player.play();
+  }
 
   @override
   Future<void> pause() => player.pause();
@@ -370,6 +400,7 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     final position = player.position;
     final playing = player.playing;
     final shuffle = player.shuffleModeEnabled;
+    _sourcesExpireAt = null;
     await player.setAudioSources(_tracks.map(_sourceFor).toList(), initialIndex: index, initialPosition: position);
     await player.setShuffleModeEnabled(shuffle);
     if (playing) await player.play();
@@ -388,6 +419,7 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   Future<void> reset() async {
     await stop();
     _tracks.clear();
+    _sourcesExpireAt = null;
     _context = null;
     _publishQueue();
     mediaItem.add(null);
