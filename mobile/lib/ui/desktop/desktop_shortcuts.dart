@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../player/player.dart';
+import '../../player/windows_media_controls.dart' show windowsMediaControlsActive;
 import '../../state/auth.dart';
 import '../router.dart';
 import '../screens/video_screen.dart' show openVideoPages;
@@ -60,11 +61,15 @@ Map<ShortcutActivator, Intent> get desktopShortcuts => <ShortcutActivator, Inten
         if (!_isSpace(entry.key)) entry.key: entry.value,
       // Gedrückt halten soll nicht dauernd umschalten
       const SingleActivator(LogicalKeyboardKey.space, includeRepeats: false): const PlayPauseIntent(),
-      const SingleActivator(LogicalKeyboardKey.mediaPlayPause, includeRepeats: false): const PlayPauseIntent(),
-      const SingleActivator(LogicalKeyboardKey.mediaTrackNext): const NextTrackIntent(),
-      const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious): const PreviousTrackIntent(),
-      const SingleActivator(_windowsMediaNext): const NextTrackIntent(),
-      const SingleActivator(_windowsMediaPrevious): const PreviousTrackIntent(),
+      // Medientasten nur hier, wenn die Windows-Medienübersicht fehlt – sonst kommen sie über Windows
+      // (auch ohne Fokus) und würden im Fenster doppelt umschalten
+      if (!windowsMediaControlsActive) ...{
+        const SingleActivator(LogicalKeyboardKey.mediaPlayPause, includeRepeats: false): const PlayPauseIntent(),
+        const SingleActivator(LogicalKeyboardKey.mediaTrackNext): const NextTrackIntent(),
+        const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious): const PreviousTrackIntent(),
+        const SingleActivator(_windowsMediaNext): const NextTrackIntent(),
+        const SingleActivator(_windowsMediaPrevious): const PreviousTrackIntent(),
+      },
       const SingleActivator(LogicalKeyboardKey.keyF, control: true): const FocusSearchIntent(),
       const SingleActivator(LogicalKeyboardKey.keyL, control: true): const FocusSearchIntent(),
       const SingleActivator(LogicalKeyboardKey.arrowRight, control: true): const NextTrackIntent(),

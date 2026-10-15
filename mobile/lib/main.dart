@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'player/player.dart';
 import 'player/windows_audio.dart';
+import 'player/windows_media_controls.dart';
 import 'state/auth.dart';
 
 Future<void> main() async {
@@ -35,6 +36,8 @@ Future<void> main() async {
       androidStopForegroundOnPause: true,
     ),
   );
+  // nur Windows: Medientasten (auch ohne Fokus) und Windows-Medienübersicht
+  await setupWindowsMediaControls(handler);
 
   runApp(ProviderScope(
     overrides: [

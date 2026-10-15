@@ -176,8 +176,11 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
       ohne Wirkung → ausgeblendet
 - [x] fehlende libmpv-2.dll verhinderte den Start → App startet, Abspielen meldet den Grund; CI prüft die DLL
 - [x] Installer: nur pro Benutzer, fester Ordner (kein Löschen von „data“ in fremden Ordnern)
-- [ ] offen (Folgeschritt): systemweite Medientasten/Windows-Medienübersicht (SMTC), Update-Hinweis für
-      Windows, Fenstergröße merken, lückenlose Übergänge zwischen Titeln
+- [x] Folgeschritt: systemweite Medientasten und Windows-Medienübersicht (smtc_windows, flutter_rust_bridge
+      exakt 2.11.1); Medientasten im Fenster nur ohne Medienübersicht (sonst doppelt)
+- [x] Folgeschritt: Update-Hinweis für Windows (version.json mit Windows-Installer, Prüfsumme, stilles Update
+      mit Neustart; ZIP-Variante bekommt den Assistenten)
+- [ ] offen: Fenstergröße merken, lückenlose Übergänge zwischen Titeln
 
 ## Weitermachen nach einer Unterbrechung
 

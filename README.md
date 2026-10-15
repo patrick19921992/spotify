@@ -178,8 +178,12 @@ anhaken → OK*. Sonst fragt SmartScreen bei jedem Start nach. Dann entpacken un
 `selfify.exe` starten. Alle Dateien im Ordner gehören zusammen (DLLs und Ordner `data`). Die `.exe` allein
 funktioniert nicht.
 
-**Updates:** Die neue `selfify-windows-setup.exe` herunterladen und einfach darüber installieren. Läuft
-Selfify noch, schließt der Installer die App vorher. Anmeldung und Einstellungen bleiben erhalten.
+**Updates:** Wie am Handy zeigt Selfify „Neue App-Version verfügbar“. *Installieren* lädt den neuen Installer,
+prüft ihn, schließt Selfify, aktualisiert im Hintergrund und startet Selfify wieder – ohne erneute
+SmartScreen-Warnung. Von Hand: *Einstellungen → Nach Updates suchen*, oder die neue
+`selfify-windows-setup.exe` einfach darüber installieren. Anmeldung, Einstellungen und Offline-Musik bleiben
+erhalten. Wer die ZIP-Version nutzt, bekommt beim ersten Update den normalen Installations-Assistenten; danach
+gibt es Selfify im Startmenü.
 
 **Deinstallieren:** *Einstellungen → Apps → Installierte Apps → Selfify → Deinstallieren*. Anmeldung,
 Einstellungen und Offline-Titel bleiben dabei auf dem PC. Wer alles entfernen will, löscht danach noch die
@@ -200,7 +204,7 @@ Punkten), zeigt Selfify die Handy-Ansicht.
 | Umschalt + → / Umschalt + ← | 5 Sekunden vor / zurück |
 | Strg + ↑ / Strg + ↓ | Lauter / leiser |
 | Alt + ← oder seitliche Maustaste | Zurück |
-| Medientasten der Tastatur | Abspielen/Pause, Weiter, Zurück (solange das Selfify-Fenster aktiv ist) |
+| Medientasten (Tastatur, Headset) | Abspielen/Pause, Weiter, Zurück – auch wenn Selfify im Hintergrund ist. Titel und Cover erscheinen zusätzlich in der Windows-Medienübersicht (Lautstärke-Popup bzw. Schnelleinstellungen) |
 
 > **Unterschied zum Handy:** Zwischen zwei Titeln gibt es unter Windows eine kurze Pause (der nächste Titel
 > wird erst am Ende des vorherigen geöffnet) – bei Live-Alben oder DJ-Mixen hörbar.

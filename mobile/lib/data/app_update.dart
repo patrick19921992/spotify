@@ -24,6 +24,9 @@ class AppDownload {
   }
 }
 
+/// Plattformen mit Update-Hinweis.
+enum UpdatePlatform { android, windows }
+
 /// Neueste veröffentlichte App-Version laut version.json.
 class AppRelease {
   /// Fortlaufende Build-Nummer – dieselbe Zahl wie die Build-Nummer der installierten App.
@@ -33,7 +36,10 @@ class AppRelease {
   final DateTime? date;
   final AppDownload? android;
 
-  const AppRelease({required this.build, required this.version, this.commit, this.date, this.android});
+  /// Windows-Installer (selfify-windows-setup.exe).
+  final AppDownload? windows;
+
+  const AppRelease({required this.build, required this.version, this.commit, this.date, this.android, this.windows});
 
   factory AppRelease.fromJson(Json j) => AppRelease(
         build: (j['build'] as num?)?.toInt() ?? 0,
@@ -41,7 +47,14 @@ class AppRelease {
         commit: j['commit'] as String?,
         date: DateTime.tryParse(j['date'] as String? ?? ''),
         android: AppDownload.fromJson(j['android']),
+        windows: AppDownload.fromJson(j['windows']),
       );
+
+  /// Datei für diese Plattform – null, wenn es für sie (noch) keine gibt.
+  AppDownload? downloadFor(UpdatePlatform platform) => switch (platform) {
+        UpdatePlatform.android => android,
+        UpdatePlatform.windows => windows,
+      };
 
   /// Anzeige wie in den Einstellungen: „Version 1.0.0 (Build 42)“.
   String get label => version.isEmpty ? 'Build $build' : 'Version $version (Build $build)';

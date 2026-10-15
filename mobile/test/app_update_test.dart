@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ import 'package:selfify/core/theme.dart';
 import 'package:selfify/data/app_update.dart';
 import 'package:selfify/state/app_update.dart';
 import 'package:selfify/state/auth.dart';
+import 'package:selfify/state/windows_update.dart';
 import 'package:selfify/ui/screens/login_screen.dart';
 import 'package:selfify/ui/screens/settings_screen.dart';
 import 'package:selfify/ui/widgets/app_update.dart';
@@ -37,8 +39,11 @@ class _FakeSource implements AppUpdateSource {
   int calls = 0;
   @override
   final bool supported;
+  @override
+  final UpdatePlatform platform;
 
-  _FakeSource({required this.installed, Object? latest, this.supported = true}) : available = latest;
+  _FakeSource({required this.installed, Object? latest, this.supported = true, this.platform = UpdatePlatform.android})
+      : available = latest;
 
   @override
   Future<int> installedBuild() async => installed;
@@ -419,5 +424,140 @@ void main() {
     );
     expect(find.text('Neue App-Version verfügbar'), findsOneWidget);
     expectNoErrors(tester);
+  });
+
+  // ------------------------------------------------------------------ Windows
+
+  test('Windows: Update nur, wenn die Versionsdatei einen Windows-Installer nennt', () async {
+    final withWindows = AppRelease.fromJson({
+      ...manifest(42),
+      'windows': {
+        'url': 'https://github.com/patrick19921992/spotify/releases/download/app-latest/selfify-windows-setup.exe',
+        'sha256': 'b' * 64,
+      },
+    });
+    expect(withWindows.downloadFor(UpdatePlatform.windows)?.sha256, 'b' * 64);
+    var container = await containerWith(
+      _FakeSource(installed: 41, latest: withWindows, platform: UpdatePlatform.windows),
+    );
+    expect((await container.read(availableUpdateProvider.future))?.build, 42);
+
+    // nur Android-APK veröffentlicht (z. B. Windows-Build fehlgeschlagen): kein Hinweis am PC
+    container = await containerWith(
+      _FakeSource(installed: 41, latest: AppRelease.fromJson(manifest(42)), platform: UpdatePlatform.windows),
+    );
+    expect(await container.read(availableUpdateProvider.future), isNull);
+  });
+
+  test('Windows-Installer: still mit Neustart, wenn installiert – sonst der normale Assistent', () {
+    expect(windowsInstallerArguments(installed: true), containsAll(['/SILENT', '/CLOSEAPPLICATIONS', '/autoupdate=1']));
+    expect(windowsInstallerArguments(installed: false), isEmpty);
+  });
+
+  group('Windows-Update laden und starten', () {
+    late HttpServer server;
+    late Directory temp;
+    final bytes = List<int>.generate(200000, (i) => i % 251);
+    final sha = sha256.convert(bytes).toString();
+
+    setUp(() async {
+      temp = await Directory.systemTemp.createTemp('selfify-update-test');
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        request.response.headers.contentLength = bytes.length;
+        // in Stücken, damit Fortschritt entsteht
+        for (var i = 0; i < bytes.length; i += 50000) {
+          request.response.add(bytes.sublist(i, (i + 50000).clamp(0, bytes.length)));
+          await request.response.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        await request.response.close();
+      });
+    });
+    tearDown(() async {
+      await server.close(force: true);
+      await temp.delete(recursive: true);
+    });
+
+    String url() => 'http://127.0.0.1:${server.port}/selfify-windows-setup.exe';
+
+    test('lädt mit Fortschritt, prüft die Prüfsumme, startet den Installer und beendet Selfify', () async {
+      String? launched;
+      List<String>? args;
+      var quit = false;
+      final steps = await installWindowsUpdate(
+        AppDownload(url: url(), sha256: sha),
+        directory: temp,
+        installed: true,
+        launch: (path, arguments) async {
+          launched = path;
+          args = arguments;
+        },
+        quit: () => quit = true,
+      ).toList();
+      expect(steps.where((s) => s.step == UpdateStep.downloading), isNotEmpty);
+      expect(steps.last.step, UpdateStep.installing);
+      expect(File(launched!).lengthSync(), bytes.length);
+      expect(args, contains('/autoupdate=1'));
+      await Future<void>.delayed(const Duration(milliseconds: 1700));
+      expect(quit, isTrue);
+    });
+
+    test('falsche Prüfsumme: Meldung, Installer wird nicht gestartet', () async {
+      var launched = false;
+      final steps = await installWindowsUpdate(
+        AppDownload(url: url(), sha256: 'c' * 64),
+        directory: temp,
+        installed: true,
+        launch: (_, _) async => launched = true,
+        quit: () {},
+      ).toList();
+      expect(steps.last.step, UpdateStep.failed);
+      expect(steps.last.message, contains('beschädigt'));
+      expect(launched, isFalse);
+    });
+
+    test('Abbrechen bricht den Download ab, nichts wird gestartet', () async {
+      var launched = false;
+      final subscription = installWindowsUpdate(
+        AppDownload(url: url(), sha256: sha),
+        directory: temp,
+        installed: true,
+        launch: (_, _) async => launched = true,
+        quit: () {},
+      ).listen((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await subscription.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(launched, isFalse);
+    });
+
+    test('Server nicht erreichbar: verständliche Meldung', () async {
+      final steps = await installWindowsUpdate(
+        const AppDownload(url: 'http://127.0.0.1:1/selfify-windows-setup.exe'),
+        directory: temp,
+        installed: true,
+        launch: (_, _) async {},
+        quit: () {},
+      ).toList();
+      expect(steps.last.message, contains('Bist du online'));
+    });
+  });
+
+  testWidgets('Windows: Hinweis im Dialog passt zum PC (kein Android-Text)', (tester) async {
+    final release = AppRelease.fromJson({
+      ...manifest(42),
+      'windows': {'url': 'https://example.de/selfify-windows-setup.exe', 'sha256': 'b' * 64},
+    });
+    await pumpBanner(
+      tester,
+      _FakeSource(installed: 41, latest: release, platform: UpdatePlatform.windows),
+      installer: (download) => Stream.value(const UpdateProgress(UpdateStep.installing)),
+    );
+    await tester.tap(find.text('Installieren'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('startet danach von selbst neu'), findsOneWidget);
+    expect(find.textContaining('Android'), findsNothing);
   });
 }
