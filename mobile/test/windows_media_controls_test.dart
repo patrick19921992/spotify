@@ -35,6 +35,31 @@ class FakeBackend implements MediaControlsBackend {
   Future<void> setTimeline(Duration position, Duration duration) async => timelines.add((position, duration));
 }
 
+/// Zeichnet die Reihenfolge auf; jeder Aufruf dauert unterschiedlich lange (wie parallele Rust-Aufgaben).
+class _OrderBackend implements MediaControlsBackend {
+  final List<String> order;
+  _OrderBackend(this.order);
+  var _delay = 12;
+
+  Future<void> _record(String what) async {
+    _delay = _delay == 12 ? 1 : 12;
+    await Future<void>.delayed(Duration(milliseconds: _delay));
+    order.add(what);
+  }
+
+  @override
+  Stream<PressedButton> get buttons => const Stream.empty();
+  @override
+  Future<void> showTrack({required String title, String? artist, String? album, String? cover}) =>
+      _record('track:$title');
+  @override
+  Future<void> clear() => _record('clear');
+  @override
+  Future<void> setStatus(PlaybackStatus status) async {}
+  @override
+  Future<void> setTimeline(Duration position, Duration duration) => _record('timeline');
+}
+
 class FakeHandler extends BaseAudioHandler {
   final calls = <String>[];
   bool failNext = false;
@@ -62,7 +87,7 @@ MediaItem item(String id, {String? art}) => MediaItem(
       artUri: art == null ? null : Uri.parse(art),
     );
 
-Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 10));
+Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 120));
 
 void main() {
   late FakeBackend backend;
@@ -77,11 +102,33 @@ void main() {
   tearDown(() => controls.stop());
 
   test('Medientasten und Knöpfe der Medienübersicht steuern den Player', () async {
+    handler.mediaItem.add(item('1'));
     for (final button in [PressedButton.play, PressedButton.pause, PressedButton.next, PressedButton.previous]) {
       backend.buttonsController.add(button);
     }
     await settle();
     expect(handler.calls, ['play', 'pause', 'next', 'previous']);
+  });
+
+  test('Abspielen ohne Titel (z. B. nach dem Abmelden) wird ignoriert', () async {
+    backend.buttonsController.add(PressedButton.play);
+    await settle();
+    expect(handler.calls, isEmpty);
+  });
+
+  test('Titelwechsel: erst leeren, dann neu setzen (kein Cover/Album des vorigen Titels) – in dieser Reihenfolge',
+      () async {
+    final order = <String>[];
+    final ordered = _OrderBackend(order);
+    final h = FakeHandler();
+    final c = WindowsMediaControls(h, ordered)..start();
+    addTearDown(c.stop);
+    await settle();
+    order.clear();
+    h.mediaItem.add(item('1', art: 'https://x/cover1'));
+    h.mediaItem.add(item('2'));
+    await settle();
+    expect(order, ['clear', 'track:Titel 1', 'timeline', 'clear', 'track:Titel 2', 'timeline']);
   });
 
   test('Fehler beim Weiterschalten (Ende der Warteschlange) bleiben still', () async {

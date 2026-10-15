@@ -86,14 +86,25 @@ Stream<UpdateProgress> installWindowsUpdate(
     }
     if (finished) return;
 
+    final withSetup = installed ?? isInstalledWindowsApp;
     try {
-      await (launch ?? _launchDetached)(file.path, windowsInstallerArguments(installed: installed ?? isInstalledWindowsApp));
+      await (launch ?? _launchDetached)(file.path, windowsInstallerArguments(installed: withSetup));
     } catch (e) {
       fail('Der Installer ließ sich nicht starten ($e).');
       return;
     }
     finished = true;
-    controller.add(const UpdateProgress(UpdateStep.installing));
+    controller.add(
+      UpdateProgress(
+        UpdateStep.installing,
+        message: withSetup
+            ? null
+            // ZIP-Variante: Der Assistent installiert Selfify fest – die alte ZIP-Kopie würde sonst immer wieder
+            // dasselbe Update anbieten
+            : 'Der Installations-Assistent öffnet sich. Danach Selfify über das Startmenü starten und den alten '
+                  'ZIP-Ordner löschen (Anmeldung, Einstellungen und Offline-Musik bleiben erhalten).',
+      ),
+    );
     await controller.close();
     // Kurz Zeit für die Meldung lassen, dann Platz machen – der Installer ersetzt die Programmdateien
     await Future<void>.delayed(const Duration(milliseconds: 1500));
@@ -101,10 +112,12 @@ Stream<UpdateProgress> installWindowsUpdate(
   }
 
   controller = StreamController<UpdateProgress>(
-    onListen: () => unawaited(run().catchError((Object e) {
-      debugPrint('Windows-Update: $e');
-      fail('Das Update ist fehlgeschlagen.');
-    })),
+    onListen: () => unawaited(
+      run().catchError((Object e) {
+        debugPrint('Windows-Update: $e');
+        fail('Das Update ist fehlgeschlagen.');
+      }),
+    ),
     onCancel: () {
       if (!finished) {
         finished = true;

@@ -185,13 +185,17 @@ class _UpdateDialogState extends ConsumerState<_UpdateDialog> {
           LinearProgressIndicator(value: progress.fraction),
         ],
       ),
-      UpdateStep.installing => Text(switch (ref.read(appUpdateSourceProvider).platform) {
-          UpdatePlatform.android =>
-            'Android fragt jetzt, ob Selfify aktualisiert werden soll – bitte „Aktualisieren“ bzw. „Installieren“ '
-                'tippen. Deine Musik und Anmeldung bleiben erhalten.',
-          UpdatePlatform.windows => 'Selfify wird jetzt aktualisiert und startet danach von selbst neu. '
-              'Deine Musik und Anmeldung bleiben erhalten.',
-        }),
+      UpdateStep.installing => Text(
+        progress.message ??
+            switch (ref.read(appUpdateSourceProvider).platform) {
+              UpdatePlatform.android =>
+                'Android fragt jetzt, ob Selfify aktualisiert werden soll – bitte „Aktualisieren“ bzw. „Installieren“ '
+                    'tippen. Deine Musik und Anmeldung bleiben erhalten.',
+              UpdatePlatform.windows =>
+                'Selfify wird jetzt aktualisiert und startet danach von selbst neu. '
+                    'Deine Musik und Anmeldung bleiben erhalten.',
+            },
+      ),
       UpdateStep.failed => Text(progress.message ?? 'Das Update ist fehlgeschlagen.'),
     };
     return AlertDialog(

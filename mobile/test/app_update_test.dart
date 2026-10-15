@@ -503,6 +503,20 @@ void main() {
       expect(quit, isTrue);
     });
 
+    test('ZIP-Variante: normaler Assistent, Hinweis auf Startmenü und alten ZIP-Ordner', () async {
+      List<String>? args;
+      final steps = await installWindowsUpdate(
+        AppDownload(url: url(), sha256: sha),
+        directory: temp,
+        installed: false,
+        launch: (_, arguments) async => args = arguments,
+        quit: () {},
+      ).toList();
+      expect(args, isEmpty);
+      expect(steps.last.step, UpdateStep.installing);
+      expect(steps.last.message, contains('ZIP-Ordner löschen'));
+    });
+
     test('falsche Prüfsumme: Meldung, Installer wird nicht gestartet', () async {
       var launched = false;
       final steps = await installWindowsUpdate(

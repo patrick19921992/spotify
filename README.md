@@ -183,7 +183,7 @@ prüft ihn, schließt Selfify, aktualisiert im Hintergrund und startet Selfify w
 SmartScreen-Warnung. Von Hand: *Einstellungen → Nach Updates suchen*, oder die neue
 `selfify-windows-setup.exe` einfach darüber installieren. Anmeldung, Einstellungen und Offline-Musik bleiben
 erhalten. Wer die ZIP-Version nutzt, bekommt beim ersten Update den normalen Installations-Assistenten; danach
-gibt es Selfify im Startmenü.
+Selfify über das Startmenü starten und den alten ZIP-Ordner löschen.
 
 **Deinstallieren:** *Einstellungen → Apps → Installierte Apps → Selfify → Deinstallieren*. Anmeldung,
 Einstellungen und Offline-Titel bleiben dabei auf dem PC. Wer alles entfernen will, löscht danach noch die

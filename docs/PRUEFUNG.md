@@ -182,6 +182,18 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
       mit Neustart; ZIP-Variante bekommt den Assistenten)
 - [ ] offen: Fenstergröße merken, lückenlose Übergänge zwischen Titeln
 
+### Gegenprüfung PR #6 (`wf_0d99c533-5a2`)
+
+- [x] mittel – Scheiterte im Windows-Job das Herunterladen von version.json kurz, wurde sie durch eine reine
+      Windows-Datei ersetzt (Handys ohne Update-Hinweis) → neu nur, wenn sie wirklich fehlt; gh-Fehler brechen ab
+- [x] niedrig – fehlgeschlagener Installer-Upload blieb unbemerkt → Schritt bricht ab, version.json bleibt
+- [x] niedrig – Medienübersicht behielt Cover/Album des vorigen Titels; Aufrufe an Windows konnten sich
+      überholen → bei Titelwechsel erst leeren, alle Aufrufe nacheinander
+- [x] niedrig – „Abspielen“ ohne Titel (nach dem Abmelden) zeigte „spielt“ → ignoriert
+- [x] niedrig – ZIP-Variante bot nach dem Assistenten immer wieder dasselbe Update an → Hinweis: Startmenü
+      nutzen, ZIP-Ordner löschen
+- [x] geprüft, kein Fehler: Medientaste auf der Videoseite (die Videoseite pausiert die Musik selbst)
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

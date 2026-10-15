@@ -91,6 +91,10 @@ class WindowsMediaControls {
   Duration? _sentPosition;
   DateTime? _sentAt;
 
+  /// Aufrufe nacheinander an Windows – smtc_windows führt sie sonst parallel aus, und ein älterer Stand
+  /// (z. B. die Länge des vorigen Titels) könnte einen neueren überschreiben.
+  Future<void> _queue = Future.value();
+
   void start() {
     _subscriptions
       ..add(backend.buttons.listen(_onButton, onError: (Object _) {}))
@@ -106,7 +110,8 @@ class WindowsMediaControls {
 
   void _onButton(PressedButton button) {
     final Future<void>? action = switch (button) {
-      PressedButton.play => handler.play(),
+      // Ohne Titel (z. B. nach dem Abmelden) gibt es nichts abzuspielen
+      PressedButton.play => handler.mediaItem.value == null ? null : handler.play(),
       PressedButton.pause => handler.pause(),
       PressedButton.next => handler.skipToNext(),
       PressedButton.previous => handler.skipToPrevious(),
@@ -120,17 +125,19 @@ class WindowsMediaControls {
   void _onItem(MediaItem? item) {
     if (item == null) {
       _itemId = null;
-      _ignore(backend.clear());
+      _send(backend.clear);
       return;
     }
     final art = item.artUri;
     // Windows lädt das Cover selbst – das geht nur mit http(s)-Adressen
     final cover = art != null && (art.scheme == 'http' || art.scheme == 'https') ? art.toString() : null;
-    _ignore(backend.showTrack(title: item.title, artist: item.artist, album: item.album, cover: cover));
     if (_itemId != item.id) {
       _itemId = item.id;
       _sentPosition = null; // neuer Titel: Zeitleiste sofort neu
+      // Windows behält Felder, die nicht neu gesetzt werden (z. B. das Cover des vorigen Titels) – erst leeren
+      _send(backend.clear);
     }
+    _send(() => backend.showTrack(title: item.title, artist: item.artist, album: item.album, cover: cover));
     _sendTimeline(handler.playbackState.value, force: true);
   }
 
@@ -144,7 +151,7 @@ class WindowsMediaControls {
     final changed = status != _status;
     if (changed) {
       _status = status;
-      _ignore(backend.setStatus(status));
+      _send(() => backend.setStatus(status));
     }
     _sendTimeline(state, force: changed);
   }
@@ -162,8 +169,11 @@ class WindowsMediaControls {
     }
     _sentPosition = position;
     _sentAt = DateTime.now();
-    _ignore(backend.setTimeline(position > duration ? duration : position, duration));
+    _send(() => backend.setTimeline(position > duration ? duration : position, duration));
   }
 
-  void _ignore(Future<void> future) => future.catchError((Object e) => debugPrint('Medienübersicht: $e'));
+  /// Hängt einen Aufruf an die Reihe an; Fehler (z. B. ungültige Cover-Adresse) stören die App nicht.
+  void _send(Future<void> Function() call) {
+    _queue = _queue.then((_) => call()).catchError((Object e) => debugPrint('Medienübersicht: $e'));
+  }
 }

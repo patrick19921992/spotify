@@ -203,7 +203,7 @@ jobs:
             'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll' |
               ForEach-Object { Copy-Item "$env:SystemRoot\System32\$_" $release }
           }
-          'selfify.exe', 'flutter_windows.dll', 'libmpv-2.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
+          'selfify.exe', 'flutter_windows.dll', 'libmpv-2.dll', 'smtc_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
           'data\app.so', 'data\icudtl.dat', 'data\flutter_assets' | ForEach-Object {
             if (-not (Test-Path (Join-Path $release $_))) { throw "Fehlt im Build: $_" }
           }
@@ -240,6 +240,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Jeder Fehler eines gh-Aufrufs bricht den Schritt ab (sonst ginge z. B. ein fehlgeschlagener Upload unter)
+          $PSNativeCommandUseErrorActionPreference = $true
           # Nur in das Release dieses Stands – ein später neu gestarteter alter Lauf darf neuere Dateien nicht ersetzen
           $target = gh release view app-latest --repo $env:GITHUB_REPOSITORY --json targetCommitish -q .targetCommitish
           if ($target -ne $env:GITHUB_SHA) {
@@ -255,8 +257,10 @@ jobs:
             sha256 = (Get-FileHash build/selfify-windows-setup.exe -Algorithm SHA256).Hash.ToLower()
           }
           New-Item -ItemType Directory -Force build/manifest | Out-Null
-          gh release download app-latest -p version.json -D build/manifest --clobber --repo $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -eq 0 -and (Test-Path build/manifest/version.json)) {
+          # Nur wenn es wirklich keine version.json gibt, eine neue anlegen – nie die des Android-Jobs ersetzen
+          $assets = gh release view app-latest --repo $env:GITHUB_REPOSITORY --json assets -q '.assets[].name'
+          if ($assets -contains 'version.json') {
+            gh release download app-latest -p version.json -D build/manifest --clobber --repo $env:GITHUB_REPOSITORY
             $manifest = Get-Content build/manifest/version.json -Raw | ConvertFrom-Json
             if ($manifest.build -ne $build) {
               Write-Host "::warning::version.json gehört zu Build $($manifest.build) - Windows-Eintrag wird nicht ergänzt."
