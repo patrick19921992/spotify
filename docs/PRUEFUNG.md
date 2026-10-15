@@ -128,6 +128,8 @@ Tests: `player_screens_test.dart`, `admin_screens_test.dart` – jeder schlägt 
 ## Sonstiges
 
 - [x] Android-Build: NDK-Download brach ab (CI rot bei 93f6c7c) → eigener Schritt mit 3 Versuchen
+- [x] „Stoppen“ direkt nach dem Start eines Downloads ging verloren (Abbruch-Signal entstand erst nach der
+      Vorbereitung; CI rot bei 0a0374a) → Signal wird schon beim Übernehmen angelegt (`downloads/manager.py`)
 
 ## Abschlussprüfung von PR #2
 

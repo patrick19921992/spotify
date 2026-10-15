@@ -264,7 +264,13 @@ class DownloadManager:
             if job is None:
                 return None
             job.status, job.started_at, job.progress = "downloading", utcnow(), 0.0
-            db.commit()
+            # Abbruch-Signal schon jetzt anlegen: Ab dem Commit sieht die App "lädt" und kann "Stoppen" tippen
+            self._cancel_flags[job.id] = threading.Event()
+            try:
+                db.commit()
+            except Exception:
+                self._cancel_flags.pop(job.id, None)
+                raise
             self.publish(db, job)
             self.publish_queue(db)
             return job.id
@@ -306,6 +312,13 @@ class DownloadManager:
             self._live.pop(job_id, None)
 
     def _process(self, job_id: int) -> None:
+        cancelled = self._cancel_flags.setdefault(job_id, threading.Event())
+        try:
+            self._run(job_id, cancelled)
+        finally:
+            self._cancel_flags.pop(job_id, None)
+
+    def _run(self, job_id: int, cancelled: threading.Event) -> None:
         if self._stop.is_set():  # zwischen Übernehmen und Start heruntergefahren: beim nächsten Start weiter
             self._requeue(job_id)
             return
@@ -339,11 +352,11 @@ class DownloadManager:
         workdir = self.settings.downloads_tmp_dir / f"job-{job_id}"
         shutil.rmtree(workdir, ignore_errors=True)
         workdir.mkdir(parents=True, exist_ok=True)
-        cancelled = threading.Event()
-        self._cancel_flags[job_id] = cancelled
         if self._stop.is_set():  # Server fährt gerade herunter (stop() hat diesen Auftrag nicht mehr erwischt)
             cancelled.set()
         try:
+            if cancelled.is_set():  # schon vor dem Start gestoppt
+                raise ytdlp.DownloadCancelledError
             result = self._download(job_id, snapshot, workdir, cancelled)
             if cancelled.is_set():  # zwischen Ende des Downloads und Verarbeitung abgebrochen
                 raise ytdlp.DownloadCancelledError
@@ -362,7 +375,6 @@ class DownloadManager:
             logger.warning("Download %s fehlgeschlagen: %s", snapshot["video_id"], exc)
             self._finish(job_id, "failed", error=str(exc)[:1000])
         finally:
-            self._cancel_flags.pop(job_id, None)
             self._processes.pop(job_id, None)
             shutil.rmtree(workdir, ignore_errors=True)
 
