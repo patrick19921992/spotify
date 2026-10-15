@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/format.dart';
 import '../../core/theme.dart';
+import '../../data/app_update.dart';
 import '../../data/models.dart';
 import '../../state/app_update.dart';
 import '../../state/auth.dart';
@@ -36,6 +37,9 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  /// Update-Prüfung läuft gerade (verhindert zwei Dialoge bei Doppeltipp).
+  bool _checkingUpdate = false;
+
   @override
   void initState() {
     super.initState();
@@ -513,20 +517,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       subtitle: switch (update) {
         AsyncValue(isLoading: true) => 'Wird geprüft …',
         AsyncValue(value: final r?) => 'Neu: ${r.label}',
+        AsyncValue(hasError: true) => 'Prüfung fehlgeschlagen – tippen, um es erneut zu versuchen',
         _ => 'Du hast die neueste Version',
       },
       onTap: () async {
-        if (release != null) {
-          await showUpdateDialog(context, release);
-          return;
-        }
-        ref.invalidate(availableUpdateProvider);
-        final found = await ref.read(availableUpdateProvider.future);
-        if (!mounted) return;
-        if (found == null) {
-          showMessage(context, 'Du hast die neueste Version.');
-        } else {
-          await showUpdateDialog(context, found);
+        if (_checkingUpdate) return; // Doppeltipp: nur ein Dialog
+        _checkingUpdate = true;
+        try {
+          // immer frisch prüfen – eine gemerkte Version kann inzwischen überholt sein
+          final AppRelease? found;
+          try {
+            found = await ref.read(availableUpdateProvider.notifier).refresh();
+          } catch (_) {
+            if (mounted) showMessage(context, 'Prüfung fehlgeschlagen – bist du online?');
+            return;
+          }
+          if (!mounted) return;
+          if (found == null) {
+            showMessage(context, 'Du hast die neueste Version.');
+          } else {
+            await showUpdateDialog(context, found);
+          }
+        } finally {
+          _checkingUpdate = false;
         }
       },
     );

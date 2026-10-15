@@ -7,6 +7,7 @@ import '../../data/api.dart';
 import '../../data/models.dart';
 import '../../state/auth.dart';
 import '../../state/library.dart';
+import '../widgets/app_update.dart';
 import '../widgets/common.dart';
 import 'account_widgets.dart';
 
@@ -191,6 +192,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final connected = _info != null;
 
     return Scaffold(
+      // Auch abgemeldet sichtbar: Klappt die Anmeldung mit dieser Version nicht, hilft oft die neue
+      bottomNavigationBar: const SafeArea(top: false, child: UpdateBanner()),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(

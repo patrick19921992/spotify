@@ -73,6 +73,13 @@ void main() {
     expect(error.details, contains('cf-mitigated: challenge'));
   });
 
+  test('https:// auf einen reinen HTTP-Port: Hinweis auf http:// statt angeblichem Zertifikatsfehler', () async {
+    final server = await serve(200, jsonEncode({'name': 'Selfify', 'api_version': 1}));
+    final error = await probeFails('https://127.0.0.1:${server.port}');
+    expect(error.message, contains('http://'));
+    expect(error.message, isNot(contains('Zertifikat')));
+  });
+
   test('Server aus: Netzwerkfehler (die Anmeldung probiert dann die nächste Variante)', () async {
     final server = await serve(200, '');
     final url = base(server);

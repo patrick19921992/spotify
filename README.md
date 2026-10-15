@@ -128,7 +128,8 @@ feste Releases mit APK und IPA.
 
 **Updates:** Die App schaut beim Start nach einer neueren Version (Datei `version.json` im Release) und zeigt
 dann „Neue App-Version verfügbar“. *Installieren* lädt die APK und öffnet den Android-Installer. Beim ersten
-Mal fragt Android, ob Selfify Apps installieren darf. Von Hand: *Einstellungen → Nach Updates suchen*.
+Mal fragt Android, ob Selfify Apps installieren darf. Von Hand: *Einstellungen → Nach Updates suchen*. Der
+Hinweis erscheint auch auf dem Anmeldebildschirm – falls die Anmeldung erst mit der neuen Version klappt.
 
 > **Wichtig für Updates:** Damit sich neue Versionen über die alte installieren lassen (und die Offline-Musik
 > erhalten bleibt), braucht der Build immer denselben Signaturschlüssel. Einmalig erzeugen – ohne Java auf dem
@@ -147,7 +148,7 @@ Mal fragt Android, ob Selfify Apps installieren darf. Von Hand: *Einstellungen �
 > Dann im Repository unter *Settings → Secrets and variables → Actions* anlegen:
 > `ANDROID_KEYSTORE_BASE64` (die base64-Ausgabe), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
 > (`selfify`) und `ANDROID_KEY_PASSWORD` (bei PKCS12 dasselbe Passwort). Ohne diese Secrets signiert GitHub jeden Build mit einem anderen
-> Test-Schlüssel. Updates gehen dann nur nach Deinstallation.
+> Test-Schlüssel. Updates gehen dann nur nach Deinstallation, und die App zeigt keinen Update-Hinweis.
 
 ### iPhone / iPad
 

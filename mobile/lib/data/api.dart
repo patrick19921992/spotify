@@ -36,7 +36,13 @@ ApiException toApiException(Object error) {
     if (response == null) {
       final cause = error.error;
       if (cause is HandshakeException || cause is TlsException) {
-        return const ApiException('Dieses Gerät vertraut dem HTTPS-Zertifikat des Servers nicht.');
+        // Zertifikatsfehler – oder der Port spricht gar kein HTTPS (z. B. https:// auf den Unraid-Port 8095)
+        if (cause.toString().toLowerCase().contains('certificate')) {
+          return const ApiException('Dieses Gerät vertraut dem HTTPS-Zertifikat des Servers nicht.');
+        }
+        return const ApiException(
+          'Unter dieser Adresse antwortet kein HTTPS. Versuche die Adresse mit http:// statt https://.',
+        );
       }
       return switch (error.type) {
         DioExceptionType.connectionTimeout ||

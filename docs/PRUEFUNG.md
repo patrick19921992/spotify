@@ -133,8 +133,30 @@ Tests: `player_screens_test.dart`, `admin_screens_test.dart` – jeder schlägt 
 
 ## Abschlussprüfung von PR #2
 
-- [ ] Unabhängige Gegenprüfung des ganzen PR-Stands auf Rückschritte (Workflow `wf_e930ef2d-137`, lässt sich
-      fortsetzen) – Ergebnisse hier eintragen, bestätigte Funde beheben
+- [ ] Unabhängige Gegenprüfung des ganzen PR-Stands auf Rückschritte (Workflow `wf_e930ef2d-137`) – ist
+      ohne Ergebnis abgebrochen; PR #2 ist inzwischen gemergt. Bei Bedarf neu starten.
+
+## Gegenprüfung von PR #4 (Anmelde-Diagnose + Update-Hinweis)
+
+Workflow `wf_0cfa73a2-740`: 11 Funde, 10 bestätigt (der Desugaring-Fund war schon behoben).
+
+- [x] hoch – Android-Build scheiterte: ota_update braucht Core Library Desugaring (`build.gradle.kts`)
+- [x] mittel – „Abbrechen“/Zurück stoppte den Download nicht, der Installer ging später trotzdem auf
+      → Abbrechen ruft jetzt `OtaUpdate().cancel()` (`state/app_update.dart`)
+- [x] mittel – ota_update 7.1.0 vertauscht „läuft schon“ und „Installationsfehler“ zwischen Java und Dart:
+      Die App riet fälschlich zum Deinstallieren (Offline-Musik weg) → beide heißen jetzt „läuft schon“
+- [x] mittel – Gemerkte Prüfsumme veraltet, sobald auf main neu gebaut wurde („Datei beschädigt“ in
+      Dauerschleife) → vor jedem Installieren und bei „Erneut versuchen“ wird `version.json` neu geholt
+- [x] mittel – Hinweis-Banner auf schmalen Handys/großer Schrift zerquetscht → Knöpfe in eigener Zeile
+- [x] niedrig/mittel – Ohne Signaturschlüssel wurden Updates angeboten, die Android ablehnen muss → CI
+      veröffentlicht `version.json` (und baut die Update-Adresse ein) nur noch mit festem Schlüssel
+- [x] niedrig – Einstellungen meldeten „neueste Version“, obwohl die Prüfung scheiterte (offline)
+- [x] niedrig – `https://` auf einen reinen HTTP-Port wurde als Zertifikatsfehler gemeldet → Hinweis auf
+      `http://` (`data/api.dart`)
+- [x] niedrig – Update-Hinweis fehlte auf dem Anmeldebildschirm → dort jetzt ebenfalls
+- [x] zusätzlich – Doppeltipp auf „Installieren“ öffnete zwei Dialoge (störte den laufenden Download)
+
+Tests: `app_update_test.dart` (u. a. mit nachgebildeter Android-Seite des Plugins), `server_probe_test.dart`.
 
 ## Weitermachen nach einer Unterbrechung
 
