@@ -340,13 +340,19 @@ class DownloadManager:
         self._cancel_flags[job_id] = cancelled
         try:
             result = self._download(job_id, snapshot, workdir, cancelled)
+            if cancelled.is_set():  # zwischen Ende des Downloads und Verarbeitung abgebrochen
+                raise ytdlp.DownloadCancelledError
             self._set_processing(job_id)
-            final_path = self._finalize_file(snapshot, workdir, result)
+            final_path = self._finalize_file(snapshot, workdir, result, cancelled)
             track_id = self._ingest(job_id, snapshot, final_path)
             self._finish(job_id, "done", progress=1.0, track_id=track_id, error=None)
             logger.info("Download fertig: %s -> %s", snapshot["video_id"], final_path)
         except ytdlp.DownloadCancelledError:
-            self._finish(job_id, "cancelled")
+            if self._stop.is_set():
+                # Server wird beendet (Neustart, Update): nicht als abgebrochen werten, sondern neu einreihen
+                self._requeue(job_id)
+            else:
+                self._finish(job_id, "cancelled")
         except (ytdlp.DownloadFailedError, OSError, ValueError) as exc:
             logger.warning("Download %s fehlgeschlagen: %s", snapshot["video_id"], exc)
             self._finish(job_id, "failed", error=str(exc)[:1000])
@@ -405,7 +411,24 @@ class DownloadManager:
 
     # ------------------------------------------------- Taggen & Einsortieren
 
-    def _finalize_file(self, snapshot: dict[str, Any], workdir: Path, result: ytdlp.DownloadResult) -> Path:
+    def _requeue(self, job_id: int) -> None:
+        with self.session_factory() as db:
+            db.execute(
+                update(DownloadJob)
+                .where(DownloadJob.id == job_id)
+                .values(status="queued", progress=0, downloaded_bytes=0, speed=None, eta=None, started_at=None)
+            )
+            db.commit()
+        with self._live_lock:
+            self._live.pop(job_id, None)
+
+    def _finalize_file(
+        self,
+        snapshot: dict[str, Any],
+        workdir: Path,
+        result: ytdlp.DownloadResult,
+        cancelled: threading.Event | None = None,
+    ) -> Path:
         media_file = result.filepath if result.filepath and result.filepath.is_file() else None
         if media_file is None:
             candidates = [p for p in workdir.iterdir() if p.suffix.lower() in MEDIA_SUFFIXES and p.is_file()]
@@ -445,6 +468,8 @@ class DownloadManager:
         target = tagging.unique_path(
             tagging.target_path(self.settings.media_dir, snapshot["folder"], media_type, meta, suffix)
         )
+        if cancelled is not None and cancelled.is_set():  # letzte Gelegenheit: danach ist der Titel in der Bibliothek
+            raise ytdlp.DownloadCancelledError
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(media_file), target)  # Datenordner und Medien-Share liegen oft auf verschiedenen Laufwerken
         if media_type == "video" and thumbnail is not None and thumbnail.exists():

@@ -71,6 +71,7 @@ else:
     subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=1.5:size=640x360:rate=10",
                     "-f", "lavfi", "-i", "sine=frequency=500:duration=1.5", "-c:v", "libx264", "-pix_fmt",
                     "yuv420p", "-c:a", "aac", "-shortest", str(target)], check=True)
+if "--write-thumbnail" in args:  # wie das echte yt-dlp: Vorschaubild neben der Datei
     from PIL import Image
 
     Image.new("RGB", (1280, 720), (10, 120, 200)).save(workdir / f"{video_id}.jpg", "JPEG")

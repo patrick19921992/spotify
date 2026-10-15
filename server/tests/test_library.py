@@ -1,6 +1,8 @@
 """Bibliothek: Einlesen, Künstler/Alben, Cover, Suche, Streaming."""
 
+import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -315,3 +317,75 @@ def test_cover_color_is_dominant_color(lib: Library) -> None:
     color = track["cover_color"]
     r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
     assert r > 150 and g < 80 and b < 80
+
+
+def test_stream_and_cover_release_database_connection(lib: Library, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Während eine Datei gesendet wird, darf keine Datenbank-Verbindung belegt sein (lange Streams)."""
+    from app.routers import media
+
+    engine = lib.client.app.state.engine
+    in_use: list[int] = []
+
+    class CheckingResponse(media.FileResponse):
+        async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
+            in_use.append(engine.pool.checkedout())
+            await super().__call__(scope, receive, send)
+
+    monkeypatch.setattr(media, "FileResponse", CheckingResponse)
+    track = lib.track_by_title("Get Lucky")
+    assert lib.client.get(f"/api/tracks/{track['id']}/stream", headers=lib.headers).status_code == 200
+    assert lib.client.get(f"/api/covers/{track['cover_id']}", headers=lib.headers).status_code == 200
+    assert in_use == [0, 0]
+
+
+def test_cover_image_added_later_is_picked_up(lib: Library) -> None:
+    """Ein später in den Ordner gelegtes cover.jpg wird beim nächsten Scan übernommen (auch fürs Album)."""
+    from .media_factory import cover_bytes
+
+    bare = [t for t in lib.get("/api/tracks", limit=500, media_type="audio")["items"] if t["cover_id"] is None]
+    assert len(bare) == 1, "In der Testbibliothek hat nur das Hörspiel kein Cover"
+    folder = (lib.settings.media_dir / lib.paths["hoerspiel"]).parent
+    (folder / "cover.jpg").write_bytes(cover_bytes((10, 160, 90)))
+    lib.scan()
+    track = lib.get(f"/api/tracks/{bare[0]['id']}")
+    assert track["cover_id"] is not None
+    if track["album"]:
+        assert lib.get(f"/api/albums/{track['album']['id']}")["cover_id"] == track["cover_id"]
+
+
+def test_transcode_decision_per_platform() -> None:
+    """Was umgewandelt wird: iPhone (compatible) kann kein Opus, Android kein WMA."""
+    from app.library.transcode import QUALITY_BITRATES, needs_transcode
+
+    high = QUALITY_BITRATES["high"]
+    assert needs_transcode("opus", ".opus", 160, "original", compatible=False) is None  # Android spielt Opus
+    assert needs_transcode("opus", ".opus", 160, "original", compatible=True) == high  # iPhone nicht
+    assert needs_transcode("wmav2", ".wma", 192, "original", compatible=False) == high  # Android kein WMA
+    assert needs_transcode("wmav2", ".wma", 64, "low", compatible=False) == QUALITY_BITRATES["low"]
+    assert needs_transcode("mp3", ".mp3", 320, "original", compatible=True) is None
+    assert needs_transcode("aac", ".m4a", QUALITY_BITRATES["normal"], "normal", compatible=True) is None
+    assert needs_transcode("flac", ".flac", 900, "normal", compatible=False) == QUALITY_BITRATES["normal"]
+
+
+def test_transcode_cleanup_tolerates_concurrent_deletes(tmp_path: Path) -> None:
+    """Verschwindet eine Datei, während aufgeräumt wird, darf das keinen Fehler auslösen."""
+    from app.library import transcode
+
+    cache = transcode.TranscodeCache(tmp_path, max_bytes=1, ffmpeg="ffmpeg")
+    for n in range(3):
+        (tmp_path / f"{n}.m4a").write_bytes(b"x" * 10)
+    original_stat = Path.stat
+    calls = {"n": 0}
+
+    def vanishing_stat(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if self.name == "1.m4a":
+            calls["n"] += 1
+            if calls["n"] == 2 and os.path.exists(self):
+                os.unlink(self)  # ein zweiter Aufräumer war schneller
+        return original_stat(self, *args, **kwargs)
+
+    import unittest.mock
+
+    with unittest.mock.patch.object(Path, "stat", vanishing_stat):
+        cache.cleanup()
+    assert not any(tmp_path.glob("*.m4a"))

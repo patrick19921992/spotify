@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -215,9 +215,11 @@ class LibraryScanner:
         scanned_ids = {c.id for c in categories}
         all_folders = {c.folder for c in all_categories}
 
-        existing: dict[str, tuple[int, int, float, int]] = {
-            row.path: (row.id, row.file_size, row.file_mtime, row.category_id)
-            for row in db.execute(select(Track.path, Track.id, Track.file_size, Track.file_mtime, Track.category_id))
+        existing: dict[str, tuple[int, int, float, int, str | None]] = {
+            row.path: (row.id, row.file_size, row.file_mtime, row.category_id, row.cover_id)
+            for row in db.execute(
+                select(Track.path, Track.id, Track.file_size, Track.file_mtime, Track.category_id, Track.cover_id)
+            )
         }
         seen: set[str] = set()
         caches = _ScanCaches()
@@ -226,7 +228,7 @@ class LibraryScanner:
         # Rubriken, deren Ordner fehlt oder plötzlich leer ist (Share nicht eingehängt, Ordner umbenannt):
         # Ihre Titel bleiben erhalten – sonst wären Playlists, Likes und Verlauf dazu für immer weg.
         unavailable: set[int] = set()
-        known_categories = {cat_id for _, _, _, cat_id in existing.values()}
+        known_categories = {values[3] for values in existing.values()}
 
         for category in categories:
             root = media_dir / category.folder
@@ -253,6 +255,14 @@ class LibraryScanner:
                     continue
                 known = existing.get(relative)
                 if known and known[1] == stat.st_size and known[2] == stat.st_mtime and known[3] == category.id:
+                    if known[4] is None and category.media_type == "audio" and self._late_cover(
+                        db, known[0], path, caches
+                    ):
+                        pending += 1
+                        if time.monotonic() - last_commit >= COMMIT_SECONDS:
+                            db.commit()
+                            pending = 0
+                            last_commit = time.monotonic()
                     continue
                 fingerprint = (stat.st_size, stat.st_mtime)
                 if self._known_failures.get(relative) == fingerprint:
@@ -284,7 +294,7 @@ class LibraryScanner:
 
         removed_ids = [
             track_id
-            for path, (track_id, _, _, cat_id) in existing.items()
+            for path, (track_id, _, _, cat_id, _) in existing.items()
             if cat_id in scanned_ids and cat_id not in unavailable and path not in seen
         ]
         for start in range(0, len(removed_ids), 500):
@@ -376,6 +386,19 @@ class LibraryScanner:
         for artist_id, position in wanted.items():
             track.artist_links.append(TrackArtist(artist_id=artist_id, position=position))
         db.flush()
+
+    def _late_cover(self, db: Session, track_id: int, path: Path, caches: "_ScanCaches") -> bool:
+        """Unveränderte Datei ohne Cover: später dazugelegtes Bild (Titel.jpg, cover.jpg, folder.jpg) übernehmen."""
+        image = find_sidecar_image(path) or find_folder_image(path.parent, caches.folder_images)
+        if image is None:
+            return False
+        if image not in caches.folder_covers:
+            caches.folder_covers[image] = self.covers.add_file(db, image)
+        cover_id = caches.folder_covers[image]
+        if cover_id is None:
+            return False
+        db.execute(update(Track).where(Track.id == track_id).values(cover_id=cover_id))
+        return True
 
     def _cover_for(
         self, db: Session, path: Path, info: MediaInfo, media_type: str, caches: "_ScanCaches"

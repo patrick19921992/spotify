@@ -4,9 +4,12 @@ Warum ein eigener Prozess? Abbrechen geht sauber (Prozess beenden), Aktualisieru
 wirken sofort ohne Server-Neustart, und ein Absturz von yt-dlp reißt den Server nicht mit.
 """
 
+import functools
+import importlib.metadata
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -45,11 +48,37 @@ def base_command(settings: Settings) -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def _version_key(version: str | None) -> tuple[int, ...]:
+    """'2026.08.19' und '2026.8.19' (pip schreibt Versionen ohne führende Nullen) vergleichbar machen."""
+    return tuple(int(part) for part in re.findall(r"\d+", version or ""))
+
+
+@functools.cache
+def bundled_version() -> str | None:
+    """yt-dlp-Version, die im Docker-Image installiert ist."""
+    try:
+        return importlib.metadata.version("yt-dlp")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def updated_version(update_dir: Path) -> str | None:
+    """Version der selbst aktualisierten Kopie in DATA_DIR/ytdlp (oder None)."""
+    try:
+        text = (update_dir / "yt_dlp" / "version.py").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)", text)
+    return match.group(1) if match else None
+
+
 def ytdlp_env(settings: Settings) -> dict[str, str]:
-    """Neuere, automatisch aktualisierte yt-dlp-Version (DATA_DIR/ytdlp) hat Vorrang vor der eingebauten."""
+    """Die selbst aktualisierte yt-dlp-Kopie (DATA_DIR/ytdlp) hat nur Vorrang, solange sie neuer ist als die im
+    Image – nach einem Container-Update mit neuerem yt-dlp gilt wieder die eingebaute Version."""
     env = dict(os.environ)
     update_dir = settings.ytdlp_update_dir
-    if (update_dir / "yt_dlp").is_dir():
+    updated = updated_version(update_dir)
+    if updated and _version_key(updated) > _version_key(bundled_version()):
         env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(update_dir), env.get("PYTHONPATH", "")]))
     env.setdefault("HOME", "/tmp")
     return env
@@ -62,14 +91,21 @@ def source_url(video_id: str, media_type: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+# Vorschaubild immer mitladen: Ersatz-Cover, wenn kein Album-Cover bekannt ist (z. B. Import per Link)
+THUMBNAIL_ARGS = ["--write-thumbnail", "--convert-thumbnails", "jpg"]
+
+
 def format_args(settings: Settings, media_type: str) -> list[str]:
     if media_type == "audio":
         if settings.ytdl_audio_format == "m4a":
-            return ["-f", "bestaudio[ext=m4a]/bestaudio/best", "-x", "--audio-format", "m4a"]
+            return ["-f", "bestaudio[ext=m4a]/bestaudio/best", "-x", "--audio-format", "m4a", *THUMBNAIL_ARGS]
         if settings.ytdl_audio_format == "mp3":
-            return ["-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "0"]
+            return ["-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "0", *THUMBNAIL_ARGS]
         # Originalspur ohne Umwandlung: meist Opus (~160 kbit/s), sonst AAC
-        return ["-f", "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio/best", "-x", "--audio-format", "best"]
+        return [
+            "-f", "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio/best", "-x", "--audio-format", "best",
+            *THUMBNAIL_ARGS,
+        ]
     height = settings.ytdl_video_max_height
     if settings.ytdl_video_codec == "best":
         selector = f"bv*[height<={height}]+ba/b[height<={height}]/bv*+ba/b"
@@ -81,10 +117,7 @@ def format_args(settings: Settings, media_type: str) -> list[str]:
             f"/bv*[height<={height}]+ba/b[height<={height}]/b"
         )
         merge = "mp4"
-    return [
-        "-f", selector, "--merge-output-format", merge,
-        "--write-thumbnail", "--convert-thumbnails", "jpg",
-    ]
+    return ["-f", selector, "--merge-output-format", merge, *THUMBNAIL_ARGS]
 
 
 def build_download_command(settings: Settings, video_id: str, media_type: str, workdir: Path) -> list[str]:

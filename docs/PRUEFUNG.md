@@ -10,9 +10,9 @@ Stand: 15.10.2026
 | Bereich | Prüfung | Funde | Behoben |
 |---|---|---|---|
 | Server-Sicherheit | ✅ fertig | 6 | 6 |
-| Server-Logik | ✅ fertig | 11 | 3 |
+| Server-Logik | ✅ fertig | 11 | 11 |
 | Schnittstelle App ↔ Server | ✅ fertig | 6 | 0 |
-| Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 0 |
+| Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 1 |
 | App-Kern (Player, Offline, Downloads, Anmeldung) | ⏳ läuft | – | – |
 | App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ⏳ läuft | – | – |
 | App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ⏳ läuft | – | – |
@@ -26,7 +26,7 @@ Stand: 15.10.2026
 - [x] Downloads überschrieben gleichnamige `.lrc`/`.jpg`, Löschen entfernte fremde Begleitdateien
 - [x] Live-Verbindung blieb nach Sperre/Abmeldung/Entzug der Admin-Rechte offen
 
-## Server-Logik – teilweise behoben
+## Server-Logik – alle behoben
 
 - [x] **kritisch** – Fehlender/nicht eingehängter Rubrik-Ordner löscht beim Scan alle Titel samt Playlists,
       Likes und Verlauf (`server/app/library/scanner.py:224`)
@@ -34,17 +34,17 @@ Stand: 15.10.2026
       Download-Worker sterben (`scanner.py:265`)
 - [x] mittel – Neu-Nummerierung nach Entfernen von Titeln verwürfelt Playlist-Reihenfolge
       (`services/playlists.py:238`)
-- [ ] mittel – Jeder laufende Stream/Cover hält eine DB-Verbindung bis zum letzten Byte: 15 Streams
+- [x] mittel – Jeder laufende Stream/Cover hält eine DB-Verbindung bis zum letzten Byte: 15 Streams
       blockieren die API (`routers/media.py:75`)
-- [ ] mittel – Später hinzugefügtes `cover.jpg`/`folder.jpg` wird nie übernommen (`scanner.py:243`)
-- [ ] mittel – Songs aus YouTube-Links (ohne thumbnail_url) bekommen kein Cover (`downloads/ytdlp.py:66`)
-- [ ] mittel – Container-Neustart markiert laufende Downloads als „abgebrochen“ statt sie neu einzureihen
+- [x] mittel – Später hinzugefügtes `cover.jpg`/`folder.jpg` wird nie übernommen (`scanner.py:243`)
+- [x] mittel – Songs aus YouTube-Links (ohne thumbnail_url) bekommen kein Cover (`downloads/ytdlp.py:66`)
+- [x] mittel – Container-Neustart markiert laufende Downloads als „abgebrochen“ statt sie neu einzureihen
       (`downloads/manager.py:341`)
-- [ ] mittel – WMA wird ungewandelt an Android geschickt, dort nicht abspielbar (`library/transcode.py:222`)
-- [ ] niedrig – Abbrechen während der Verarbeitung wird ignoriert (`manager.py:224`)
-- [ ] niedrig – Gleichzeitiges Aufräumen des Umwandlungs-Speichers kann Stream mit 500 abbrechen
+- [x] mittel – WMA wird ungewandelt an Android geschickt, dort nicht abspielbar (`library/transcode.py:222`)
+- [x] niedrig – Abbrechen während der Verarbeitung wird ignoriert (`manager.py:224`)
+- [x] niedrig – Gleichzeitiges Aufräumen des Umwandlungs-Speichers kann Stream mit 500 abbrechen
       (`transcode.py:281`)
-- [ ] niedrig – Selbst aktualisiertes yt-dlp bleibt aktiv, auch wenn YTDL_AUTO_UPDATE=false (`ytdlp.py:52`)
+- [x] niedrig – Selbst aktualisiertes yt-dlp bleibt aktiv, auch wenn YTDL_AUTO_UPDATE=false (`ytdlp.py:52`)
 
 ## Schnittstelle App ↔ Server – offen
 
@@ -66,7 +66,7 @@ Stand: 15.10.2026
 - [ ] mittel – PUID=0 lässt das Startskript endlos neu starten (`server/entrypoint.sh:10`)
 - [ ] mittel – Anleitung zum Reverse Proxy erwähnt keine Zeitlimits (lange Umwandlungen/Aufrufe)
       (`README.md:87`)
-- [ ] niedrig – Alte yt-dlp-Kopie in /data überdeckt neuere im Image (`ytdlp.py:52`, wie oben)
+- [x] niedrig – Alte yt-dlp-Kopie in /data überdeckt neuere im Image (`ytdlp.py:52`, wie oben)
 - [ ] niedrig – iOS: `NSAllowsLocalNetworking` hebt `NSAllowsArbitraryLoads` auf, http im Heimnetz
       per Hostname blockiert (`mobile/ios/Runner/Info.plist:79`)
 - [ ] niedrig – README: „best“ verspricht 4K, YTDL_VIDEO_MAX_HEIGHT begrenzt aber auf 1080 (`README.md:247`)

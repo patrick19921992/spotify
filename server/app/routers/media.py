@@ -61,20 +61,24 @@ def stream_track(
         request.app.state.scanner.request_scan([track.category_id])
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Datei nicht mehr vorhanden – die Bibliothek wird aktualisiert.")
 
+    kind, codec, track_bitrate = track.media_type, track.codec, track.bitrate
+    version = f"{track.file_size}-{track.file_mtime}"
+    # Datenbank-Verbindung sofort freigeben: Sonst bliebe sie bis zum letzten gesendeten Byte belegt –
+    # ein paar pausierte Videos oder Hörbücher würden alle Verbindungen blockieren.
+    db.close()
+
     headers = {"Cache-Control": "private, max-age=86400"}
-    if track.media_type == "audio":
-        bitrate = needs_transcode(track.codec, path.suffix, track.bitrate, quality, compatible)
+    if kind == "audio":
+        bitrate = needs_transcode(codec, path.suffix, track_bitrate, quality, compatible)
         if bitrate is not None:
             try:
-                converted = request.app.state.transcoder.get(path, f"{track.file_size}-{track.file_mtime}", bitrate)
+                converted = request.app.state.transcoder.get(path, version, bitrate)
             except TranscodeUnavailableError as exc:
                 raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from None
             return FileResponse(
                 converted, media_type="audio/mp4", headers=headers, content_disposition_type="inline"
             )
-    return FileResponse(
-        path, media_type=media_type_for(path, track.media_type), headers=headers, content_disposition_type="inline"
-    )
+    return FileResponse(path, media_type=media_type_for(path, kind), headers=headers, content_disposition_type="inline")
 
 
 @router.get("/covers/{cover_id}")
@@ -91,6 +95,7 @@ def get_cover(
         size = min(COVER_SIZES, key=lambda s: abs(s - size))
     if db.get(Cover, cover_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cover nicht gefunden.")
+    db.close()  # Verbindung nicht bis zum Ende der Übertragung belegen
     path = request.app.state.covers.path_for(cover_id, size or None)
     if path is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cover nicht gefunden.")

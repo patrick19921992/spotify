@@ -19,6 +19,9 @@ QUALITY_BITRATES = {"high": 256, "normal": 160, "low": 96}
 # Diese Codecs spielen Android UND iOS ohne Umwandlung ab
 UNIVERSAL_CODECS = {"aac", "mp3", "alac", "flac", "pcm", "pcm_s16le", "pcm_s24le"}
 UNIVERSAL_EXTENSIONS = {".mp3", ".m4a", ".m4b", ".aac", ".flac", ".wav"}
+# Spielt die Android-App (ExoPlayer) zusätzlich ohne Umwandlung ab – WMA dagegen nicht
+ANDROID_CODECS = UNIVERSAL_CODECS | {"opus", "vorbis"}
+ANDROID_EXTENSIONS = UNIVERSAL_EXTENSIONS | {".opus", ".ogg", ".oga", ".webm"}
 
 
 class TranscodeUnavailableError(RuntimeError):
@@ -28,12 +31,19 @@ class TranscodeUnavailableError(RuntimeError):
 def needs_transcode(
     codec: str | None, extension: str, bitrate: int | None, quality: str, compatible: bool
 ) -> int | None:
-    """Gibt die Ziel-Bitrate zurück, falls umgewandelt werden muss – sonst None (Original ausliefern)."""
-    playable_everywhere = (codec or "").lower() in UNIVERSAL_CODECS and extension.lower() in UNIVERSAL_EXTENSIONS
+    """Gibt die Ziel-Bitrate zurück, falls umgewandelt werden muss – sonst None (Original ausliefern).
+
+    compatible=true: nur Formate, die auch iPhones abspielen; sonst alles, was die Android-App abspielt.
+    """
+    codec, extension = (codec or "").lower(), extension.lower()
+    if compatible:
+        playable = codec in UNIVERSAL_CODECS and extension in UNIVERSAL_EXTENSIONS
+    else:
+        playable = codec in ANDROID_CODECS and extension in ANDROID_EXTENSIONS
     if quality == "original" or quality not in QUALITY_BITRATES:
-        return QUALITY_BITRATES["high"] if compatible and not playable_everywhere else None
+        return None if playable else QUALITY_BITRATES["high"]
     target = QUALITY_BITRATES[quality]
-    if bitrate and bitrate <= target * 1.15 and (playable_everywhere or not compatible):
+    if bitrate and bitrate <= target * 1.15 and playable:
         return None
     return target
 
@@ -45,6 +55,7 @@ class TranscodeCache:
         self.ffmpeg = ffmpeg
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
+        self._cleanup_lock = threading.Lock()
 
     @property
     def available(self) -> bool:
@@ -88,12 +99,19 @@ class TranscodeCache:
         """Hält den Zwischenspeicher unter TRANSCODE_CACHE_MB (älteste Dateien zuerst weg)."""
         if not self.root.exists():
             return
-        files = [(p.stat().st_mtime, p.stat().st_size, p) for p in self.root.rglob("*.m4a") if p.is_file()]
-        total = sum(size for _, size, _ in files)
-        for _, size, path in sorted(files):
-            if total <= self.max_bytes:
-                break
-            if path == keep:
-                continue
-            path.unlink(missing_ok=True)
-            total -= size
+        with self._cleanup_lock:  # zwei Aufräumer gleichzeitig würden sich die Dateien wegnehmen
+            files: list[tuple[float, int, Path]] = []
+            for path in self.root.rglob("*.m4a"):
+                try:
+                    info = path.stat()
+                except FileNotFoundError:
+                    continue
+                files.append((info.st_mtime, info.st_size, path))
+            total = sum(size for _, size, _ in files)
+            for _, size, path in sorted(files):
+                if total <= self.max_bytes:
+                    break
+                if path == keep:
+                    continue
+                path.unlink(missing_ok=True)
+                total -= size

@@ -433,6 +433,51 @@ def test_worker_survives_locked_database(env: Env, monkeypatch: pytest.MonkeyPat
     assert failures["left"] == 0
 
 
+def test_download_without_thumbnail_url_gets_cover(env: Env) -> None:
+    """Import per Link kennt kein Album-Cover: dann wird das YouTube-Vorschaubild zum Cover."""
+    job = env.post("/api/downloads", {"video_id": "ttttttttttt", "title": "Ohne Bild", "artists": ["Band"]})
+    done = env.wait(job["id"])
+    assert done["status"] == "done", done
+    track = env.client.get(f"/api/tracks/{done['track_id']}", headers=env.headers).json()
+    assert track["cover_id"] is not None
+
+
+def test_server_restart_requeues_running_download(env: Env) -> None:
+    """Container-Neustart/Update: ein laufender Download wird beim nächsten Start fortgesetzt, nicht abgebrochen."""
+    job = env.post("/api/downloads", {"video_id": "hangrestart", "title": "Lang"})
+    env.wait(job["id"], states=("downloading",), timeout=15)
+    env.client.app.state.downloads.stop()
+    assert env.client.get(f"/api/downloads/{job['id']}", headers=env.headers).json()["status"] == "queued"
+
+
+def test_cancel_during_processing_is_respected(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Abbrechen, während der Server die Datei verarbeitet: Der Titel landet nicht in der Bibliothek."""
+    manager = env.client.app.state.downloads
+    original = tagging.write_tags
+
+    def tag_and_cancel(path, meta, cover):  # type: ignore[no-untyped-def]
+        original(path, meta, cover)
+        for flag in list(manager._cancel_flags.values()):  # Benutzer tippt jetzt auf "Abbrechen"
+            flag.set()
+
+    monkeypatch.setattr(tagging, "write_tags", tag_and_cancel)
+    job = env.post("/api/downloads", {"video_id": "ppppppppppp", "title": "Doch nicht"})
+    assert env.wait(job["id"])["status"] == "cancelled"
+    assert not list((env.settings.media_dir / "Musik").rglob("Doch nicht*"))
+
+
+def test_self_updated_ytdlp_only_wins_when_newer(settings: Settings) -> None:
+    """Eine alte Kopie in DATA_DIR/ytdlp darf das neuere yt-dlp aus dem Image nicht überdecken."""
+    from app.downloads import ytdlp
+
+    package = settings.ytdlp_update_dir / "yt_dlp"
+    package.mkdir(parents=True)
+    (package / "version.py").write_text("__version__ = '2000.01.01'\n", encoding="utf-8")
+    assert str(settings.ytdlp_update_dir) not in ytdlp.ytdlp_env(settings).get("PYTHONPATH", "")
+    (package / "version.py").write_text("__version__ = '2999.01.01'\n", encoding="utf-8")
+    assert str(settings.ytdlp_update_dir) in ytdlp.ytdlp_env(settings)["PYTHONPATH"]
+
+
 def test_websocket_requires_login(env: Env) -> None:
     from starlette.websockets import WebSocketDisconnect
 
