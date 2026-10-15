@@ -3,7 +3,7 @@
 Unabhängige Prüfung des ganzen Projekts in sieben Bereichen. Jeder Fund wird vor dem Beheben im Code
 nachvollzogen und bekommt einen Test, der ohne die Korrektur fehlschlägt.
 
-Stand: 15.10.2026 (PR #1 ist zusammengeführt, weitere Korrekturen kommen in einen neuen PR)
+Stand: 15.10.2026 (PR #1 ist zusammengeführt, App-Kern und Teil B kommen in PR #2)
 
 ## Bereiche
 
@@ -15,7 +15,7 @@ Stand: 15.10.2026 (PR #1 ist zusammengeführt, weitere Korrekturen kommen in ein
 | Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 7 |
 | App-Kern (Player, Offline, Downloads, Anmeldung) | ✅ fertig | 9 | 9 |
 | App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ✅ fertig | 5 | 5 |
-| App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ⏳ läuft | – | – |
+| App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ✅ fertig | 5 | 0 |
 
 ## Server-Sicherheit – alle behoben (Commit 19f3d3c)
 
@@ -108,6 +108,18 @@ Stand: 15.10.2026 (PR #1 ist zusammengeführt, weitere Korrekturen kommen in ein
 
 Tests: `player_queue_test.dart` (nachgebautes just_audio), `downloads_refresh_test.dart` (echter WebSocket),
 `offline_queue_test.dart` (echtes Dateisystem) – jeder schlägt ohne die Korrektur fehl.
+
+## App-Bildschirme Teil B – offen
+
+- [ ] **hoch** – Rubrik löschen entfernt die Titel aus allen Playlists, Lieblingssongs und Verläufen der
+      Familie, die Abfrage behauptet aber, es gehe nichts verloren (`mobile/lib/ui/screens/admin_categories.dart:17`)
+- [ ] mittel – Warteschlange: Wischt man eine von zwei direkt aufeinanderfolgenden Kopien desselben Songs weg,
+      verschwindet die andere unsichtbar mit (`mobile/lib/ui/screens/queue_screen.dart:49`)
+- [ ] mittel – Verwaltung „Alle“ Downloads: Für ein anderes Familienmitglied wiederholter/abgebrochener Auftrag
+      friert ein und zählt beim Admin als „läuft“ (`mobile/lib/ui/screens/downloads_screen.dart:144`)
+- [ ] niedrig – Mini-Player-Herz: Fehler beim Liken (z. B. offline) werden verschluckt
+      (`mobile/lib/ui/widgets/mini_player.dart:58`)
+- [ ] niedrig – Verwaltung: „Alle Downloads ansehen“ öffnet nur die eigenen (`admin_downloader.dart:118`)
 
 ## Sonstiges
 

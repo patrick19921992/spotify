@@ -19,7 +19,10 @@ import 'downloads_widgets.dart';
 /// YouTube-Downloads auf dem Server – mit Live-Fortschritt.
 /// Admins können zwischen den eigenen und allen Downloads der Familie umschalten.
 class DownloadsScreen extends ConsumerStatefulWidget {
-  const DownloadsScreen({super.key});
+  const DownloadsScreen({super.key, this.showAll = false});
+
+  /// Gleich mit „Alle“ öffnen (aus der Verwaltung, nur für Admins).
+  final bool showAll;
 
   @override
   ConsumerState<DownloadsScreen> createState() => _DownloadsScreenState();
@@ -48,6 +51,17 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.showAll) {
+      // Aus der Verwaltung: gleich „Alle“ zeigen, sobald feststeht, dass ein Admin angemeldet ist
+      var shown = false;
+      ref.listenManual<User?>(currentUserProvider, (_, user) {
+        if (shown || !(user?.isAdmin ?? false)) return;
+        shown = true;
+        Future.microtask(() {
+          if (mounted) _setShowAll(true);
+        });
+      }, fireImmediately: true);
+    }
     Future.microtask(() async {
       await ref.read(downloadsProvider.notifier).refresh();
       if (mounted) setState(() => _loaded = true);
@@ -137,11 +151,12 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
   }
 
   /// Abgefragte Liste aller Benutzer, ergänzt um den Live-Stand.
-  List<DownloadJob> _everyone(DownloadsState state) {
+  List<DownloadJob> _everyone(DownloadsState state, User? user) {
     final byId = <int, DownloadJob>{for (final job in _allJobs ?? const <DownloadJob>[]) job.id: job};
     for (final job in state.jobs.values) {
-      // Live-Werte sind aktueller – solange die Verbindung steht
-      if (!byId.containsKey(job.id) || state.connected) byId[job.id] = job;
+      // Live-Werte sind aktueller – solange die Verbindung steht. Live kommen aber nur die eigenen Aufträge.
+      final own = job.user == null || job.user!.id == user?.id;
+      if (!byId.containsKey(job.id) || (state.connected && own)) byId[job.id] = job;
     }
     return byId.values.toList();
   }
@@ -177,7 +192,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
 
   void _replaceInAll(DownloadJob job) {
     final all = _allJobs;
-    if (all == null) return;
+    if (all == null || !mounted) return;
     setState(() => _allJobs = [for (final j in all) j.id == job.id ? job : j]);
   }
 
@@ -194,18 +209,14 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     );
     if (!ok || !mounted) return;
     await _run(job, () async {
-      await ref.read(downloadsProvider.notifier).cancel(job.id);
-      final updated = ref.read(downloadsProvider).jobs[job.id];
-      if (updated != null) _replaceInAll(updated);
+      _replaceInAll(await ref.read(downloadsProvider.notifier).cancel(job.id));
       if (_showAll) unawaited(_loadAll());
     });
   }
 
   Future<void> _retry(DownloadJob job) async {
     await _run(job, () async {
-      await ref.read(downloadsProvider.notifier).retry(job.id);
-      final updated = ref.read(downloadsProvider).jobs[job.id];
-      if (updated != null) _replaceInAll(updated);
+      _replaceInAll(await ref.read(downloadsProvider.notifier).retry(job.id));
       if (mounted) showMessage(context, '„${job.title}“ wird erneut geladen');
       if (_showAll) unawaited(_loadAll());
     });
@@ -320,7 +331,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     final showAll = isAdmin && _showAll;
 
     final mine = _mine(state, user);
-    final jobs = showAll ? _everyone(state) : mine;
+    final jobs = showAll ? _everyone(state, user) : mine;
     final hasOwnFinished = mine.any((job) => !job.isActive);
 
     late final DownloadJobHandlers handlers;

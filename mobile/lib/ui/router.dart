@@ -95,7 +95,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/video/:id',
         builder: (_, s) => VideoScreen(trackId: int.parse(s.pathParameters['id']!), track: s.extra as Track?),
       ),
-      GoRoute(path: '/downloads', builder: (_, _) => const DownloadsScreen()),
+      GoRoute(
+        path: '/downloads',
+        builder: (_, s) => DownloadsScreen(showAll: s.uri.queryParameters['scope'] == 'all'),
+      ),
       GoRoute(path: '/offline', builder: (_, _) => const OfflineScreen()),
       GoRoute(
         path: '/settings',

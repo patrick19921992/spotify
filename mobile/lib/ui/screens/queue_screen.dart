@@ -30,6 +30,10 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
   /// Zuletzt gültiger Titel – überbrückt den Moment, in dem der Player nach dem Entfernen umsortiert.
   Track? _lastCurrent;
 
+  /// Zählt das Entfernen mit: Neue Schlüssel danach verhindern, dass eine weggewischte Zeile ihren Zustand
+  /// an eine gleiche Kopie desselben Songs vererbt (die wäre sonst unsichtbar, spielt aber trotzdem).
+  int _removals = 0;
+
   SelfifyAudioHandler get _handler => ref.read(audioHandlerProvider);
 
   /// Kommende Titel in Abspiel-Reihenfolge (berücksichtigt die Zufallswiedergabe).
@@ -46,7 +50,7 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
     for (final index in order.skip(position + 1)) {
       final identity = identityHashCode(tracks[index]);
       final occurrence = seen[identity] = (seen[identity] ?? -1) + 1;
-      entries.add(_Entry(index, tracks[index], ValueKey('queue-$identity-$occurrence')));
+      entries.add(_Entry(index, tracks[index], ValueKey('queue-$_removals-$identity-$occurrence')));
     }
     return entries;
   }
@@ -63,7 +67,10 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
     if (mounted) setState(() {});
   }
 
-  void _remove(_Entry entry) => _apply(_handler.removeQueueItemAt(entry.index));
+  void _remove(_Entry entry) {
+    _removals++;
+    _apply(_handler.removeQueueItemAt(entry.index));
+  }
 
   void _move(List<_Entry> upcoming, int from, int to) {
     if (from == to || from < 0 || to < 0 || from >= upcoming.length || to >= upcoming.length) return;

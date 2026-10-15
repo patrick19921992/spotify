@@ -103,6 +103,27 @@ void main() {
     expect(condition(), isTrue, reason: what);
   }
 
+  /// Wartet, bis der Index gespeichert ist und die Warteschlange ruht – erst dann darf der Test enden
+  /// (sonst arbeitet der Controller beim Aufräumen noch).
+  Future<void> idle(ProviderContainer c) async {
+    final index = File('${dir.path}/offline/index.json');
+    Set<String> saved() {
+      try {
+        return ((jsonDecode(index.readAsStringSync()) as Map)['tracks'] as Map).keys.cast<String>().toSet();
+      } catch (_) {
+        return const {};
+      }
+    }
+
+    await waitFor(() {
+      final state = c.read(offlineProvider);
+      final expected = state.tracks.keys.map((id) => '$id').toSet();
+      return state.pending.isEmpty && state.progress.isEmpty && saved().length == expected.length &&
+          saved().containsAll(expected);
+    }, 'Warteschlange ruht, Index gespeichert');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+
   List<String> files() => Directory('${dir.path}/offline').listSync().map((f) => f.path.split('/').last).toList()
     ..sort();
 
@@ -117,6 +138,7 @@ void main() {
     final c = await container(slowAuth: true);
 
     await waitFor(() => c.read(offlineProvider).tracks.length == 3, 'alle drei Titel geladen');
+    await idle(c);
     expect(c.read(offlineProvider).pending, isEmpty);
     expect(files(), ['1.opus', '2.opus', '3.opus', 'index.json']);
   });
@@ -133,6 +155,7 @@ void main() {
     await offline.releaseCollection('album:7');
     api.held[1]!.complete();
     await Future<void>.delayed(const Duration(milliseconds: 200));
+    await idle(c);
 
     final state = c.read(offlineProvider);
     expect(state.tracks, isEmpty);
@@ -155,6 +178,7 @@ void main() {
     await offline.removeTrack(1);
     api.held[1]!.complete();
     await waitFor(() => c.read(offlineProvider).tracks.containsKey(2), 'Titel 2 wird danach geladen');
+    await idle(c);
 
     expect(c.read(offlineProvider).tracks.keys, [2]);
     expect(files(), ['2.opus', 'index.json']);

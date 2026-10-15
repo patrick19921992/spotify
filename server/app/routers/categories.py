@@ -85,7 +85,10 @@ def update_category(category_id: int, body: CategoryUpdateIn, _: AdminUser, db: 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_category(category_id: int, request: Request, _: AdminUser, db: DbSession) -> Response:
-    """Entfernt nur die Rubrik aus der App. Der Ordner und alle Dateien bleiben auf dem Unraid."""
+    """Entfernt die Rubrik samt ihrer Titel (und damit deren Playlist-Einträge, Likes und Verlauf) aus der App.
+
+    Der Ordner und alle Dateien bleiben auf dem Unraid.
+    """
     delete_category(db, _get_category(db, category_id))
     db.commit()
     # Titel der Rubrik sind mit gelöscht -> leere Alben/Künstler/Cover aufräumen

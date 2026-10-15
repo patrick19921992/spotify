@@ -263,8 +263,16 @@ class DownloadsController extends Notifier<DownloadsState> {
     return jobs;
   }
 
-  Future<void> cancel(int id) async => _upsert(await _api.cancelDownload(id));
-  Future<void> retry(int id) async => _upsert(await _api.retryDownload(id));
+  Future<DownloadJob> cancel(int id) async => _keepIfOwn(await _api.cancelDownload(id));
+  Future<DownloadJob> retry(int id) async => _keepIfOwn(await _api.retryDownload(id));
+
+  /// Admins bedienen in „Alle“ auch Aufträge anderer. Die gehören nicht in die eigene Liste: Dafür kommen
+  /// keine Live-Meldungen, sie würden mit altem Stand einfrieren und als eigener Download zählen.
+  DownloadJob _keepIfOwn(DownloadJob job) {
+    final user = ref.read(currentUserProvider);
+    if (job.user == null || user == null || job.user!.id == user.id) _upsert(job);
+    return job;
+  }
 
   Future<void> remove(int id) async {
     await _api.removeDownload(id);
