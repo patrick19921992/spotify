@@ -221,10 +221,12 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                     ? null
                     : Row(
                         children: [
-                          OutlinedButton.icon(
-                            onPressed: () => Nav.mix(context, 'category:${category.id}'),
-                            icon: const Icon(Icons.shuffle_rounded, size: 20),
-                            label: const Text('Zufallsmix'),
+                          Flexible(
+                            child: OutlinedButton.icon(
+                              onPressed: () => Nav.mix(context, 'category:${category.id}'),
+                              icon: const Icon(Icons.shuffle_rounded, size: 20),
+                              label: const Text('Zufallsmix', maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
                           ),
                           const Spacer(),
                           _CategoryPlayButton(categoryId: category.id, name: category.name, tracks: _tracks),

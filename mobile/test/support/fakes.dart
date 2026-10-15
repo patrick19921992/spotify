@@ -171,6 +171,8 @@ Tokens get fakeTokens => Tokens(
 class FakeApi extends ApiClient {
   final calls = <String>[];
   final bool admin;
+  /// Antwortzeit für Änderungen (langsamer Server/Mobilfunk)
+  Duration writeDelay = Duration.zero;
 
   FakeApi({this.admin = true})
       : super(baseUrl: 'https://musik.test', tokens: fakeTokens, onTokens: (_) {}, onSessionExpired: () {});
@@ -350,6 +352,17 @@ class FakeApi extends ApiClient {
       }));
   @override
   Future<ScanStatus> scanStatus() async => (await libraryStats()).scan;
+  @override
+  Future<void> deleteTrack(int id, {bool deleteFile = false}) async {
+    await Future<void>.delayed(writeDelay);
+    _log('deleteTrack:$id', null);
+  }
+  @override
+  Future<PlaylistDetail> addToPlaylist(int id, List<int> trackIds, {int? position}) async {
+    await Future<void>.delayed(writeDelay);
+    _log('addToPlaylist:$id:$trackIds', null);
+    return playlist(id);
+  }
   @override
   Future<DownloaderStatus> downloaderStatus() async => _log(
       'downloaderStatus',

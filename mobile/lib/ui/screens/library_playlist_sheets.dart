@@ -248,10 +248,12 @@ class _AddSongsSheetState extends ConsumerState<_AddSongsSheet> {
       if (!again || !mounted) return;
     }
     setState(() => _adding.add(track.id));
+    // Das Blatt kann während der Anfrage geschlossen werden ("Fertig") – dann gibt es ref nicht mehr
+    final container = ProviderScope.containerOf(context, listen: false);
     try {
-      await ref.read(apiProvider)!.addToPlaylist(widget.playlistId, [track.id]);
-      ref.invalidate(playlistProvider(widget.playlistId));
-      ref.invalidate(libraryOverviewProvider);
+      await container.read(apiProvider)!.addToPlaylist(widget.playlistId, [track.id]);
+      container.invalidate(playlistProvider(widget.playlistId));
+      container.invalidate(libraryOverviewProvider);
       if (!mounted) return;
       setState(() {
         _inPlaylist.add(track.id);

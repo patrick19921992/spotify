@@ -267,7 +267,10 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          _FollowButton(following: following, onPressed: () => _toggleFollow(artist, following)),
+                          // Flexible: bei großer Schrift wird "Folgen" gekürzt statt die Leiste zu sprengen
+                          Flexible(
+                            child: _FollowButton(following: following, onPressed: () => _toggleFollow(artist, following)),
+                          ),
                           const SizedBox(width: 4),
                           IconButton(
                             tooltip: 'Mehr',
@@ -541,7 +544,7 @@ class _FollowButton extends StatelessWidget {
         visualDensity: VisualDensity.compact,
         textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 0.3),
       ),
-      child: Text(following ? 'Gefolgt' : 'Folgen'),
+      child: Text(following ? 'Gefolgt' : 'Folgen', maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }

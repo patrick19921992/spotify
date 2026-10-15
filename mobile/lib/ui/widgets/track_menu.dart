@@ -47,6 +47,8 @@ class _TrackMenu extends ConsumerWidget {
     final player = ref.read(playerProvider);
 
     void close() => Navigator.of(context).pop();
+    // Bleibt gültig, wenn das Menü schon geschlossen ist (ref gehört zum Menü und ist dann weg)
+    final container = ProviderScope.containerOf(context, listen: false);
 
     Future<void> run(Future<void> Function() action, {String? done}) async {
       close();
@@ -142,9 +144,9 @@ class _TrackMenu extends ConsumerWidget {
                       danger: true);
                   if (!ok) return;
                   try {
-                    await ref.read(apiProvider)!.deleteTrack(track.id, deleteFile: true);
-                    ref.invalidate(homeProvider);
-                    ref.invalidate(libraryOverviewProvider);
+                    await container.read(apiProvider)!.deleteTrack(track.id, deleteFile: true);
+                    container.invalidate(homeProvider);
+                    container.invalidate(libraryOverviewProvider);
                     if (parentContext.mounted) showMessage(parentContext, 'Gelöscht');
                   } catch (e) {
                     if (parentContext.mounted) showError(parentContext, e);

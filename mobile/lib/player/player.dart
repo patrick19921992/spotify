@@ -96,13 +96,17 @@ class PlayerController {
   /// Spielt [tracks] ab Position [index]. Im Offline-Modus nur heruntergeladene Titel.
   Future<void> play(List<Track> tracks, {int index = 0, PlayContext? context, bool shuffle = false}) async {
     var list = tracks.where((t) => !t.isVideo).toList();
-    var start = index < tracks.length ? list.indexOf(tracks[index]) : 0;
+    // Nach Position, nicht nach Gleichheit: derselbe Titel kann mehrfach vorkommen (Playlist)
+    var start = index >= 0 && index < tracks.length && !tracks[index].isVideo
+        ? tracks.take(index).where((t) => !t.isVideo).length
+        : 0;
     if (_ref.read(settingsProvider).offlineMode || _ref.read(isOfflineProvider)) {
       final offline = _ref.read(offlineProvider);
-      final startTrack = start >= 0 && start < list.length ? list[start] : null;
+      // Fehlt der gewählte Titel offline, geht es mit dem nächsten heruntergeladenen weiter
+      final before = list.take(start).where((t) => offline.isDownloaded(t.id)).length;
       list = list.where((t) => offline.isDownloaded(t.id)).toList();
-      start = startTrack == null ? 0 : list.indexOf(startTrack);
       if (list.isEmpty) throw StateError('Keiner dieser Titel ist offline verfügbar.');
+      start = before < list.length ? before : 0;
     }
     await handler.playTracks(list, index: start < 0 ? 0 : start, context: context, shuffle: shuffle);
   }

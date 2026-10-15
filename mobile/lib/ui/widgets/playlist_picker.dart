@@ -52,11 +52,13 @@ class _PlaylistPicker extends ConsumerWidget {
       Navigator.of(context).pop(playlist.id);
       return;
     }
+    // Nach dem Schließen gibt es ref nicht mehr – die App-weite Ablage bleibt gültig
+    final container = ProviderScope.containerOf(context, listen: false);
     Navigator.of(context).pop();
     try {
-      await ref.read(apiProvider)!.addToPlaylist(playlist.id, tracks.map((t) => t.id).toList());
-      ref.invalidate(playlistProvider(playlist.id));
-      ref.invalidate(libraryOverviewProvider);
+      await container.read(apiProvider)!.addToPlaylist(playlist.id, tracks.map((t) => t.id).toList());
+      container.invalidate(playlistProvider(playlist.id));
+      container.invalidate(libraryOverviewProvider);
       if (parentContext.mounted) showMessage(parentContext, 'Zu „${playlist.name}“ hinzugefügt');
     } catch (e) {
       if (parentContext.mounted) showError(parentContext, e);
@@ -65,11 +67,13 @@ class _PlaylistPicker extends ConsumerWidget {
 
   Future<void> _create(BuildContext context, WidgetRef ref) async {
     final name = await promptText(context, title: 'Neue Playlist', hint: 'Name der Playlist', confirmLabel: 'Erstellen');
-    if (name == null || name.isEmpty) return;
+    if (name == null || name.isEmpty || !context.mounted) return;
+    final container = ProviderScope.containerOf(context, listen: false);
     try {
-      final created = await ref.read(apiProvider)!.createPlaylist(name: name, trackIds: tracks.map((t) => t.id).toList());
-      ref.invalidate(libraryOverviewProvider);
-      ref.invalidate(myPlaylistsProvider);
+      final created =
+          await container.read(apiProvider)!.createPlaylist(name: name, trackIds: tracks.map((t) => t.id).toList());
+      container.invalidate(libraryOverviewProvider);
+      container.invalidate(myPlaylistsProvider);
       if (!context.mounted) return;
       Navigator.of(context).pop(_pickOnly ? created.playlist.id : null);
       if (!_pickOnly && parentContext.mounted) showMessage(parentContext, 'Playlist „$name“ erstellt');

@@ -472,11 +472,15 @@ class LibraryTrackRow extends ConsumerWidget {
     super.key,
     required this.track,
     required this.queue,
+    this.queueIndex,
     this.playContext,
     this.extraActions = const [],
     this.caption,
     this.captionIcon = Icons.person_outline_rounded,
   });
+
+  /// Position in [queue] (derselbe Titel kann in einer Playlist mehrfach vorkommen).
+  final int? queueIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -486,6 +490,7 @@ class LibraryTrackRow extends ConsumerWidget {
     Widget tile = TrackTile(
       track: track,
       queue: queue,
+      queueIndex: queueIndex,
       context_: playContext,
       extraActions: extraActions,
       onTap: available

@@ -14,7 +14,7 @@ Stand: 15.10.2026
 | Schnittstelle App ↔ Server | ✅ fertig | 6 | 6 |
 | Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 7 |
 | App-Kern (Player, Offline, Downloads, Anmeldung) | ⏳ läuft | – | – |
-| App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ⏳ läuft | – | – |
+| App-Bildschirme Teil A (Start, Suche, Bibliothek, Details) | ✅ fertig | 5 | 5 |
 | App-Bildschirme Teil B (Player, Downloads, Konto, Verwaltung) | ⏳ läuft | – | – |
 
 ## Server-Sicherheit – alle behoben (Commit 19f3d3c)
@@ -72,6 +72,20 @@ Stand: 15.10.2026
 - [x] niedrig – README: „best“ verspricht 4K, YTDL_VIDEO_MAX_HEIGHT begrenzt aber auf 1080 (`README.md:247`)
 - [x] niedrig – README: Konsolen-Befehle funktionieren so nicht in „Container-Symbol → Console“
       (`README.md:303`)
+
+## App-Bildschirme Teil A – alle behoben
+
+- [x] **hoch** – Admin: „Datei vom Server löschen“ im Song-Menü löscht nie und zeigt einen Fehler
+      (`mobile/lib/ui/widgets/track_menu.dart:145`)
+- [x] mittel – „Zu Playlist hinzufügen“ meldet einen Fehler, wenn der Server länger als 200 ms braucht
+      (`mobile/lib/ui/widgets/playlist_picker.dart:58`)
+- [x] niedrig – Playlist mit doppeltem Song: Tippen auf die zweite Kopie spielt ab der ersten
+      (`mobile/lib/ui/widgets/track_tile.dart:47`)
+- [x] niedrig – Kurz vor „Fertig“ hinzugefügte Songs fehlen auf der Playlist-Seite
+      (`mobile/lib/ui/screens/library_playlist_sheets.dart:253`)
+- [x] niedrig – Knopfleiste auf der Künstlerseite läuft bei großer Schrift über
+      (`mobile/lib/ui/screens/artist_screen.dart:268`) – dazu neuer Test „kleines Handy mit großer Schrift“
+      für alle Bildschirme; er fand drei weitere Überläufe (Geräte, Rubrik, leere Listen), alle behoben
 
 ## Sonstiges
 

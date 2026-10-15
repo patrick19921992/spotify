@@ -24,6 +24,8 @@ class TrackTile extends ConsumerWidget {
   final VoidCallback? onTap;
   /// Zusätzliche Einträge im Menü (z. B. "Aus Playlist entfernen").
   final List<TrackMenuAction> extraActions;
+  /// Position in [queue] – nötig, wenn derselbe Titel mehrfach vorkommt (Playlist).
+  final int? queueIndex;
 
   const TrackTile({
     super.key,
@@ -35,6 +37,7 @@ class TrackTile extends ConsumerWidget {
     this.trailing,
     this.onTap,
     this.extraActions = const [],
+    this.queueIndex,
   });
 
   Future<void> _play(BuildContext context, WidgetRef ref) async {
@@ -44,7 +47,8 @@ class TrackTile extends ConsumerWidget {
       return;
     }
     final list = queue.isEmpty ? [track] : queue;
-    final index = list.indexOf(track);
+    final position = queueIndex;
+    final index = position != null && position < list.length ? position : list.indexOf(track);
     try {
       await ref.read(playerProvider).play(list, index: index < 0 ? 0 : index, context: context_);
     } catch (e) {

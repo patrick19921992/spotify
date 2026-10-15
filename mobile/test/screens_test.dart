@@ -113,6 +113,11 @@ void main() {
         await pumpScreen(tester, screen.build(), textScale: 1.6);
         expectNoErrors(tester);
       });
+      // Typisches Handy (360 Punkte breit) mit sehr großer Systemschrift
+      testWidgets('kleines Handy mit großer Schrift', (tester) async {
+        await pumpScreen(tester, screen.build(), size: const Size(360, 780), textScale: 2.0);
+        expectNoErrors(tester);
+      });
       testWidgets('ohne Netz', (tester) async {
         await pumpScreen(tester, screen.build(), offline: true, offlineState: offlineWithTracks());
         expectNoErrors(tester);

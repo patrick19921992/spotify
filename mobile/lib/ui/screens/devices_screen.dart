@@ -317,20 +317,19 @@ class _DeviceCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                // Wrap: bei großer Schrift rutscht "Dieses Gerät" in die nächste Zeile
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Flexible(
-                      child: Text(
-                        _deviceName(session),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-                      ),
+                    Text(
+                      _deviceName(session),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
                     ),
-                    if (current) ...[
-                      const SizedBox(width: 8),
-                      const _CurrentBadge(),
-                    ],
+                    if (current) const _CurrentBadge(),
                   ],
                 ),
                 const SizedBox(height: 8),

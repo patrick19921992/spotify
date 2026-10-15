@@ -214,7 +214,10 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   Future<void> playTracks(List<Track> tracks, {int index = 0, PlayContext? context, bool shuffle = false}) async {
     final audio = tracks.where((t) => !t.isVideo).toList();
     if (audio.isEmpty) return;
-    final start = index < tracks.length ? audio.indexOf(tracks[index]) : 0;
+    // Nach Position, nicht nach Gleichheit: derselbe Titel kann mehrfach vorkommen
+    final start = index >= 0 && index < tracks.length && !tracks[index].isVideo
+        ? tracks.take(index).where((t) => !t.isVideo).length
+        : 0;
     final current = currentTrack;
     if (current != null) _report(current, _lastPosition);
     _lastIndex = null;

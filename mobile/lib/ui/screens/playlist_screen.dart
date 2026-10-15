@@ -640,6 +640,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
                     key: ValueKey(item.itemId),
                     track: item.track,
                     queue: tracks,
+                    queueIndex: index,
                     playContext: playContext,
                     caption: playlist.isCollaborative
                         ? [
