@@ -306,6 +306,9 @@ class DownloadManager:
             self._live.pop(job_id, None)
 
     def _process(self, job_id: int) -> None:
+        if self._stop.is_set():  # zwischen Übernehmen und Start heruntergefahren: beim nächsten Start weiter
+            self._requeue(job_id)
+            return
         with self.session_factory() as db:
             job = db.get(DownloadJob, job_id)
             if job is None:
@@ -338,6 +341,8 @@ class DownloadManager:
         workdir.mkdir(parents=True, exist_ok=True)
         cancelled = threading.Event()
         self._cancel_flags[job_id] = cancelled
+        if self._stop.is_set():  # Server fährt gerade herunter (stop() hat diesen Auftrag nicht mehr erwischt)
+            cancelled.set()
         try:
             result = self._download(job_id, snapshot, workdir, cancelled)
             if cancelled.is_set():  # zwischen Ende des Downloads und Verarbeitung abgebrochen

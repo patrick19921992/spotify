@@ -444,9 +444,10 @@ def test_download_without_thumbnail_url_gets_cover(env: Env) -> None:
 
 def test_server_restart_requeues_running_download(env: Env) -> None:
     """Container-Neustart/Update: ein laufender Download wird beim nächsten Start fortgesetzt, nicht abgebrochen."""
+    manager = env.client.app.state.downloads
     job = env.post("/api/downloads", {"video_id": "hangrestart", "title": "Lang"})
     env.wait(job["id"], states=("downloading",), timeout=15)
-    env.client.app.state.downloads.stop()
+    manager.stop()
     assert env.client.get(f"/api/downloads/{job['id']}", headers=env.headers).json()["status"] == "queued"
 
 
