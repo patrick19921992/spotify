@@ -157,6 +157,56 @@ def test_cover_upload_rejects_decompression_bomb(lib: Library) -> None:
     )
     assert response.status_code == 400
 
+def test_missing_or_empty_category_folder_keeps_playlists_and_likes(lib: Library) -> None:
+    """Share nicht eingehängt oder Ordner umbenannt: Titel, Playlists und Likes dürfen nicht verloren gehen."""
+    import shutil
+
+    ids = _ids(lib)
+    track_ids = list(ids.values())
+    playlist = _create(lib, track_ids=track_ids)
+    for track_id in track_ids:
+        assert lib.client.put(f"/api/me/likes/{track_id}", headers=lib.headers).status_code == 204
+    media = lib.settings.media_dir
+    backup = media.parent / "media-weg"
+    shutil.move(str(media), str(backup))
+    # 1. Ordner fehlen ganz
+    media.mkdir()
+    lib.scan()
+    assert lib.get(f"/api/playlists/{playlist['id']}")["track_count"] == len(track_ids)
+    # 2. Rubrik-Ordner wieder angelegt, aber leer (wie nach dem Start ohne eingehängtes Share)
+    for category in lib.get("/api/categories"):
+        (media / category["folder"]).mkdir(parents=True, exist_ok=True)
+    status = lib.scan()
+    assert "bleiben vorerst erhalten" in (status.get("last_error") or "")
+    assert lib.get("/api/me/likes")["total"] == len(track_ids)
+    # 3. Share ist zurück: alles noch da, nichts doppelt
+    shutil.rmtree(media)
+    shutil.move(str(backup), str(media))
+    lib.scan()
+    assert lib.get(f"/api/playlists/{playlist['id']}")["track_count"] == len(track_ids)
+    assert lib.get("/api/me/likes")["total"] == len(track_ids)
+    assert sorted(_ids(lib).values()) == sorted(track_ids)
+
+def test_playlist_order_survives_removed_tracks(lib: Library) -> None:
+    """Nach dem Verschieben und dem Wegfall eines Titels bleibt die Reihenfolge der übrigen erhalten."""
+    ids = _ids(lib)
+    titles = [t for t in ids if t != "Bohemian Rhapsody"][:3] + ["Bohemian Rhapsody"]
+    playlist = _create(lib, track_ids=[ids[t] for t in titles])
+    items = lib.get(f"/api/playlists/{playlist['id']}")["items"]
+    # Ersten Eintrag ans Ende: der älteste Eintrag steht jetzt hinten
+    moved = lib.client.post(f"/api/playlists/{playlist['id']}/items/move", headers=lib.headers,
+                            json={"item_id": items[0]["item_id"], "position": len(items) - 1})
+    assert moved.status_code == 200, moved.text
+    expected = [i["track"]["title"] for i in moved.json()["items"]]
+    # Den jetzt ersten Titel samt Datei löschen -> Lücke vor allen anderen
+    gone = expected[0]
+    track = lib.track_by_title(gone)
+    assert lib.client.delete(f"/api/tracks/{track['id']}", headers=lib.headers,
+                             params={"delete_file": True}).status_code == 204
+    after = lib.get(f"/api/playlists/{playlist['id']}")["items"]
+    assert [i["track"]["title"] for i in after] == expected[1:]
+    assert [i["position"] for i in after] == list(range(len(after)))
+
 def test_removed_files_disappear_from_playlists(lib: Library) -> None:
     ids = _ids(lib)
     playlist = _create(lib, track_ids=[ids["Get Lucky"], ids["Bohemian Rhapsody"]])

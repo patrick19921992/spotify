@@ -8,6 +8,7 @@
 import logging
 import os
 import threading
+import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -34,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 UNKNOWN_ARTIST = "Unbekannter Künstler"
 COMMIT_EVERY = 100
+# Spätestens nach dieser Zeit wird gespeichert: Solange der Scan schreibt, müssen alle anderen
+# (Anmelden, Likes, Downloads) auf die Datenbank warten.
+COMMIT_SECONDS = 0.5
 SKIPPED_DIRS = {"@eadir", "#recycle", "lost+found", "$recycle.bin"}
 
 
@@ -218,20 +222,28 @@ class LibraryScanner:
         seen: set[str] = set()
         caches = _ScanCaches()
         pending = 0
+        last_commit = time.monotonic()
+        # Rubriken, deren Ordner fehlt oder plötzlich leer ist (Share nicht eingehängt, Ordner umbenannt):
+        # Ihre Titel bleiben erhalten – sonst wären Playlists, Likes und Verlauf dazu für immer weg.
+        unavailable: set[int] = set()
+        known_categories = {cat_id for _, _, _, cat_id in existing.values()}
 
         for category in categories:
             root = media_dir / category.folder
             if not root.is_dir():
-                logger.warning("Rubrik-Ordner fehlt: %s", root)
+                unavailable.add(category.id)
+                self._warn_unavailable(category, f"Der Ordner {root} fehlt")
                 continue
             nested = {
                 media_dir / folder for folder in all_folders if folder.startswith(category.folder + "/")
             }
             extensions = AUDIO_EXTENSIONS if category.media_type == "audio" else VIDEO_EXTENSIONS
+            found = 0
             for path in _walk(root, extensions, nested):
                 if self._stop.is_set():
                     db.commit()
                     return
+                found += 1
                 relative = path.relative_to(media_dir).as_posix()
                 seen.add(relative)
                 self._count("files_seen")
@@ -262,20 +274,33 @@ class LibraryScanner:
                     continue
                 self._count("added" if known is None else "updated")
                 pending += 1
-                if pending >= COMMIT_EVERY:
+                if pending >= COMMIT_EVERY or time.monotonic() - last_commit >= COMMIT_SECONDS:
                     db.commit()
                     pending = 0
+                    last_commit = time.monotonic()
+            if found == 0 and category.id in known_categories:
+                unavailable.add(category.id)
+                self._warn_unavailable(category, f"Der Ordner {root} ist leer")
 
         removed_ids = [
             track_id
             for path, (track_id, _, _, cat_id) in existing.items()
-            if cat_id in scanned_ids and path not in seen
+            if cat_id in scanned_ids and cat_id not in unavailable and path not in seen
         ]
         for start in range(0, len(removed_ids), 500):
             db.execute(delete(Track).where(Track.id.in_(removed_ids[start : start + 500])))
         self._count("removed", len(removed_ids))
         db.commit()
         self.finalize(db)
+
+    def _warn_unavailable(self, category: Category, reason: str) -> None:
+        message = (
+            f"Rubrik „{category.name}“: {reason} – die Titel bleiben vorerst erhalten. "
+            "Ist das Unraid-Share eingehängt? Sollen die Titel wirklich weg, die Rubrik in der Verwaltung löschen."
+        )
+        logger.warning(message)
+        with self._status_lock:
+            self._status.last_error = message
 
     def _record_error(self, relative: str, exc: Exception | None) -> None:
         """exc=None: schon bekannter Fehler – zählen, aber nicht erneut ins Log schreiben."""

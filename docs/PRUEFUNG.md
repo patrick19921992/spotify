@@ -3,14 +3,14 @@
 Unabhängige Prüfung des ganzen Projekts in sieben Bereichen. Jeder Fund wird vor dem Beheben im Code
 nachvollzogen und bekommt einen Test, der ohne die Korrektur fehlschlägt.
 
-Stand: 14.10.2026
+Stand: 15.10.2026
 
 ## Bereiche
 
 | Bereich | Prüfung | Funde | Behoben |
 |---|---|---|---|
 | Server-Sicherheit | ✅ fertig | 6 | 6 |
-| Server-Logik | ✅ fertig | 11 | 0 |
+| Server-Logik | ✅ fertig | 11 | 3 |
 | Schnittstelle App ↔ Server | ✅ fertig | 6 | 0 |
 | Docker, Unraid, CI, Anleitung | ✅ fertig | 7 | 0 |
 | App-Kern (Player, Offline, Downloads, Anmeldung) | ⏳ läuft | – | – |
@@ -26,13 +26,13 @@ Stand: 14.10.2026
 - [x] Downloads überschrieben gleichnamige `.lrc`/`.jpg`, Löschen entfernte fremde Begleitdateien
 - [x] Live-Verbindung blieb nach Sperre/Abmeldung/Entzug der Admin-Rechte offen
 
-## Server-Logik – offen
+## Server-Logik – teilweise behoben
 
-- [ ] **kritisch** – Fehlender/nicht eingehängter Rubrik-Ordner löscht beim Scan alle Titel samt Playlists,
+- [x] **kritisch** – Fehlender/nicht eingehängter Rubrik-Ordner löscht beim Scan alle Titel samt Playlists,
       Likes und Verlauf (`server/app/library/scanner.py:224`)
-- [ ] **hoch** – Scanner hält die SQLite-Schreibsperre über langsame Dateizugriffe: API-Fehler 500,
+- [x] **hoch** – Scanner hält die SQLite-Schreibsperre über langsame Dateizugriffe: API-Fehler 500,
       Download-Worker sterben (`scanner.py:265`)
-- [ ] mittel – Neu-Nummerierung nach Entfernen von Titeln verwürfelt Playlist-Reihenfolge
+- [x] mittel – Neu-Nummerierung nach Entfernen von Titeln verwürfelt Playlist-Reihenfolge
       (`services/playlists.py:238`)
 - [ ] mittel – Jeder laufende Stream/Cover hält eine DB-Verbindung bis zum letzten Byte: 15 Streams
       blockieren die API (`routers/media.py:75`)
@@ -72,6 +72,10 @@ Stand: 14.10.2026
 - [ ] niedrig – README: „best“ verspricht 4K, YTDL_VIDEO_MAX_HEIGHT begrenzt aber auf 1080 (`README.md:247`)
 - [ ] niedrig – README: Konsolen-Befehle funktionieren so nicht in „Container-Symbol → Console“
       (`README.md:303`)
+
+## Sonstiges
+
+- [x] Android-Build: NDK-Download brach ab (CI rot bei 93f6c7c) → eigener Schritt mit 3 Versuchen
 
 ## Weitermachen nach einer Unterbrechung
 

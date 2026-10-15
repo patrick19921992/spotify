@@ -232,15 +232,17 @@ def refresh_all_stats(db: Session) -> None:
             """
         )
     )
+    # Lücken schließen: Reihenfolge erst vollständig berechnen (Fensterfunktion), dann schreiben –
+    # eine Unterabfrage je Zeile würde schon umnummerierte Zeilen sehen und die Reihenfolge verwürfeln.
     db.execute(
         text(
             """
-            UPDATE playlist_items SET position = (
-              SELECT COUNT(*) FROM playlist_items other
-              WHERE other.playlist_id = playlist_items.playlist_id
-                AND (other.position < playlist_items.position
-                     OR (other.position = playlist_items.position AND other.id < playlist_items.id))
-            )
+            UPDATE playlist_items SET position = ranked.rn
+            FROM (
+              SELECT id, ROW_NUMBER() OVER (PARTITION BY playlist_id ORDER BY position, id) - 1 AS rn
+              FROM playlist_items
+            ) AS ranked
+            WHERE ranked.id = playlist_items.id AND playlist_items.position <> ranked.rn
             """
         )
     )

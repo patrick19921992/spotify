@@ -80,6 +80,26 @@ jobs:
           keyPassword=$KEY_PASSWORD
           PROPS
       - run: flutter pub get
+      # Flutter braucht ein NDK, das auf den GitHub-Rechnern fehlt. Gradle würde es beim Bauen ohne
+      # Wiederholung laden – ein abgebrochener Download ließ dann den ganzen Build scheitern.
+      - name: Android-NDK laden (mit Wiederholung)
+        run: |
+          NDK_VERSION=$(grep -oP 'val ndkVersion: String = "\K[^"]+' \
+            "$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt" || true)
+          if [ -z "$NDK_VERSION" ]; then
+            echo "::warning::NDK-Version nicht gefunden – Gradle lädt das NDK selbst."
+            exit 0
+          fi
+          echo "NDK $NDK_VERSION"
+          for attempt in 1 2 3; do
+            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null; then
+              exit 0
+            fi
+            echo "::warning::NDK-Download fehlgeschlagen (Versuch $attempt), neuer Versuch …"
+            rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION"
+            sleep 15
+          done
+          exit 1
       - name: APK bauen
         run: flutter build apk --release --build-number=${{ github.run_number }}
       - run: mv build/app/outputs/flutter-apk/app-release.apk build/selfify.apk

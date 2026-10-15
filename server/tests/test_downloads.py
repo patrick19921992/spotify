@@ -413,6 +413,26 @@ def test_download_does_not_overwrite_or_delete_other_sidecars(env: Env) -> None:
     assert (song.parent / "Weg.jpg").exists()
 
 
+def test_worker_survives_locked_database(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ist die Datenbank kurz gesperrt (z. B. großer Scan), darf der Download-Worker nicht sterben."""
+    from sqlalchemy.exc import OperationalError
+
+    manager = env.client.app.state.downloads
+    original = manager._claim
+    failures = {"left": 2}
+
+    def flaky_claim():  # type: ignore[no-untyped-def]
+        if failures["left"] > 0:
+            failures["left"] -= 1
+            raise OperationalError("UPDATE download_jobs", {}, Exception("database is locked"))
+        return original()
+
+    monkeypatch.setattr(manager, "_claim", flaky_claim)
+    job = env.post("/api/downloads", {"video_id": "lllllllllll", "title": "Trotzdem"})
+    assert env.wait(job["id"])["status"] == "done"
+    assert failures["left"] == 0
+
+
 def test_websocket_requires_login(env: Env) -> None:
     from starlette.websockets import WebSocketDisconnect
 

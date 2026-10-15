@@ -271,7 +271,12 @@ class DownloadManager:
 
     def _worker(self) -> None:
         while not self._stop.is_set():
-            job_id = self._claim()
+            try:
+                job_id = self._claim()
+            except Exception:  # noqa: BLE001 – z. B. Datenbank kurz gesperrt: später erneut versuchen
+                logger.exception("Download-Warteschlange konnte nicht gelesen werden")
+                self._stop.wait(5)
+                continue
             if job_id is None:
                 with self._wakeup:
                     self._wakeup.wait(timeout=5)
@@ -280,7 +285,10 @@ class DownloadManager:
                 self._process(job_id)
             except Exception:  # noqa: BLE001 – ein Fehler darf den Worker nicht beenden
                 logger.exception("Download %s: unerwarteter Fehler", job_id)
-                self._finish(job_id, "failed", error="Unerwarteter Fehler – Details im Server-Log.")
+                try:
+                    self._finish(job_id, "failed", error="Unerwarteter Fehler – Details im Server-Log.")
+                except Exception:  # noqa: BLE001
+                    logger.exception("Download %s: Status konnte nicht gespeichert werden", job_id)
 
     def _finish(self, job_id: int, status: str, **values: Any) -> None:
         with self.session_factory() as db:
