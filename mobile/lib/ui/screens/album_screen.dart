@@ -204,8 +204,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
         onRefresh: _refresh,
         notice: DetailNotice(
           text: noNetwork
-              ? 'Keine Verbindung – du siehst die heruntergeladene Version.'
-              : 'Server nicht erreichbar – du siehst die heruntergeladene Version.',
+              ? 'Keine Verbindung – du siehst die Version auf diesem Gerät.'
+              : 'Server nicht erreichbar – du siehst die Version auf diesem Gerät.',
           onRetry: noNetwork ? null : () => ref.invalidate(albumProvider(_id)),
         ),
       );
@@ -216,8 +216,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
       body = EmptyState(
         icon: Icons.cloud_off_rounded,
         title: 'Du bist offline',
-        message: 'Dieses Album ist nicht auf deinem Handy. Ohne Verbindung kannst du nur heruntergeladene Musik hören.',
-        action: OutlinedButton(onPressed: () => Nav.offline(context), child: const Text('Heruntergeladene Musik')),
+        message: 'Dieses Album ist nicht auf deinem Handy. Ohne Verbindung kannst du nur Musik auf diesem Gerät hören.',
+        action: OutlinedButton(onPressed: () => Nav.offline(context), child: const Text('Auf diesem Gerät')),
       );
     } else if (async.hasError && !noNetwork) {
       body = ErrorView(message: errorText(async.error!), onRetry: () => ref.invalidate(albumProvider(_id)));

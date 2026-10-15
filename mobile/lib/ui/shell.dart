@@ -86,7 +86,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               color: AppColors.surfaceHighest,
               padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 4, bottom: 6),
               child: Text(
-                offline ? 'Keine Verbindung – nur heruntergeladene Musik' : 'Offline-Modus ist an',
+                offline ? 'Keine Verbindung – nur Musik auf diesem Gerät' : 'Offline-Modus ist an',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),

@@ -19,7 +19,7 @@ import '../widgets/track_tile.dart';
 import 'downloads_widgets.dart';
 
 /// Wiedergabe-Quelle für "Alle Titel" auf dem Handy.
-const _offlineContext = PlayContext('queue', title: 'Heruntergeladen');
+const _offlineContext = PlayContext('queue', title: 'Auf diesem Gerät');
 
 /// Qualitätsstufen, die für Offline-Downloads angeboten werden.
 const _offlineQualities = ['original', 'high', 'normal'];
@@ -41,7 +41,7 @@ String _kindLabel(String kind) => switch (kind) {
       _ => 'Sammlung',
     };
 
-/// "Heruntergeladene Musik": alles, was auf diesem Handy gespeichert ist.
+/// "Auf diesem Gerät": alles, was auf diesem Gerät gespeichert ist.
 class OfflineScreen extends ConsumerStatefulWidget {
   const OfflineScreen({super.key});
 
@@ -182,9 +182,9 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
     final count = offline.tracks.length;
     final ok = await confirm(
       context,
-      title: 'Alle Downloads löschen?',
+      title: 'Alles von diesem Gerät löschen?',
       message: count == 0
-          ? 'Alle gespeicherten Sammlungen und wartenden Downloads werden entfernt.'
+          ? 'Alle gespeicherten Sammlungen und Titel in der Warteschlange werden entfernt.'
           : '${pluralSongs(count)} (${formatBytes(offline.totalBytes)}) werden vom Handy gelöscht. '
               'Gespeicherte Sammlungen werden nicht mehr offline gehalten.',
       confirmLabel: 'Alles löschen',
@@ -193,7 +193,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
     if (!ok) return;
     try {
       await ref.read(offlineProvider.notifier).removeAll();
-      if (mounted) showMessage(context, 'Alle Downloads wurden vom Handy gelöscht');
+      if (mounted) showMessage(context, 'Alles wurde von diesem Gerät gelöscht');
     } catch (e) {
       if (mounted) showError(context, e);
     }
@@ -240,7 +240,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                'Gilt für neue Downloads. Bereits heruntergeladene Titel bleiben, wie sie sind. '
+                'Gilt für Titel, die neu aufs Gerät geladen werden. Titel auf diesem Gerät bleiben, wie sie sind. '
                 'Höhere Qualität braucht mehr Speicherplatz.',
                 style: AppText.caption,
               ),
@@ -280,7 +280,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
     final error = offline.lastError;
 
     final appBar = AppBar(
-      title: const Text('Heruntergeladene Musik'),
+      title: const Text('Auf diesem Gerät'),
       actions: [
         if (offline.loaded)
           PopupMenuButton<String>(
@@ -316,7 +316,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
       if (noNetwork) {
         waitingReason = 'Wartet auf eine Internetverbindung';
       } else if (settings.offlineWifiOnly && !onWifi) {
-        waitingReason = 'Wartet auf WLAN – oder schalte unten „Nur im WLAN herunterladen“ aus.';
+        waitingReason = 'Wartet auf WLAN – oder schalte unten „Nur im WLAN aufs Gerät laden“ aus.';
       } else {
         waitingReason = 'Startet gleich …';
       }
@@ -365,7 +365,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
                   padding: const EdgeInsets.only(top: 24),
                   child: EmptyState(
                     icon: Icons.download_for_offline_outlined,
-                    title: 'Noch nichts heruntergeladen',
+                    title: 'Noch nichts auf diesem Gerät',
                     message: 'Tippe auf einer Playlist, einem Album oder bei deinen Lieblingssongs auf den '
                         'Download-Pfeil. Die Musik wird dann aufs Handy geladen und spielt auch ohne Internet.',
                     action: OutlinedButton.icon(
@@ -386,7 +386,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
                     secondary: const Icon(Icons.cloud_off_rounded, color: AppColors.textSecondary),
                     title: const Text('Offline-Modus', style: AppText.tileTitle),
                     subtitle: const Text(
-                      'Nur heruntergeladene Musik anzeigen und abspielen',
+                      'Nur Musik auf diesem Gerät anzeigen und abspielen',
                       style: AppText.tileSubtitle,
                     ),
                     value: settings.offlineMode,
@@ -395,7 +395,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
                   ),
                   SwitchListTile(
                     secondary: const Icon(Icons.network_wifi_rounded, color: AppColors.textSecondary),
-                    title: const Text('Nur im WLAN herunterladen', style: AppText.tileTitle),
+                    title: const Text('Nur im WLAN aufs Gerät laden', style: AppText.tileTitle),
                     subtitle: const Text('Spart dein mobiles Datenvolumen', style: AppText.tileSubtitle),
                     value: settings.offlineWifiOnly,
                     onChanged: (value) =>

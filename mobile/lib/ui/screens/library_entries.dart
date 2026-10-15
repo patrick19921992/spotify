@@ -234,7 +234,7 @@ class LibraryEntryCell extends StatelessWidget {
   }
 }
 
-/// Quadratisches Symbol-Cover (z. B. „Alle heruntergeladenen Titel“, „Playlist erstellen“).
+/// Quadratisches Symbol-Cover (z. B. „Alle Titel auf diesem Gerät“, „Playlist erstellen“).
 class SymbolCover extends StatelessWidget {
   final IconData icon;
   final double size;

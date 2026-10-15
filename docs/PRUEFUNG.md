@@ -194,6 +194,15 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
       nutzen, ZIP-Ordner löschen
 - [x] geprüft, kein Fehler: Medientaste auf der Videoseite (die Videoseite pausiert die Musik selbst)
 
+### Begriffe: Server-Bibliothek vs. Gerätespeicher
+
+- [x] „Heruntergeladen“ (Musik, die auf dem Gerät gespeichert ist) hieß fast wie „Downloads“ (YouTube-Downloads
+      auf den Server) → umbenannt in „Auf diesem Gerät“ (Bibliothek-Filter, Startseite, Gerätespeicher-Seite,
+      Einstellungen, Offline-Hinweise); „Download entfernen“ → „Vom Gerät entfernen“, „Herunterladen“ (Pfeil an
+      Playlist/Album) → „Aufs Gerät laden“. Server-Texte (Downloads-Seite, Verwaltung) bleiben unverändert
+- [ ] offen (Vorschlag): Einzelne Texte sagen noch „Handy“ (z. B. „wird aufs Handy geladen“) – unter Windows
+      wäre „Gerät“ passender
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

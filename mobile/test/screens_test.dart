@@ -49,7 +49,7 @@ final cases = <ScreenCase>[
   // Im Test gibt es kein Video-Plugin: der Bildschirm muss die Fehlermeldung zeigen
   (name: 'Video', build: () => const VideoScreen(trackId: 2), expectTexts: []),
   (name: 'Downloads', build: () => const DownloadsScreen(), expectTexts: ['Läuft gerade', 'Warteschlange', 'Fertig']),
-  (name: 'Heruntergeladen', build: () => const OfflineScreen(), expectTexts: []),
+  (name: 'Auf diesem Gerät', build: () => const OfflineScreen(), expectTexts: []),
   (name: 'Verwaltung', build: () => const AdminScreen(), expectTexts: ['Verwaltung', 'Benutzer']),
 ];
 
@@ -84,7 +84,7 @@ void main() {
     });
   });
 
-  group('Heruntergeladen mit Titeln', () {
+  group('Auf diesem Gerät mit Titeln', () {
     testWidgets('normal', (tester) async {
       await pumpScreen(tester, const OfflineScreen(), offlineState: offlineWithTracks());
       expectNoErrors(tester);
