@@ -45,6 +45,9 @@ class GoBackIntent extends Intent {
   const GoBackIntent();
 }
 
+bool _isSpace(ShortcutActivator activator) =>
+    activator is SingleActivator && activator.trigger == LogicalKeyboardKey.space;
+
 /// Windows meldet „Nächster/Vorheriger Titel“ nicht als eigene Flutter-Taste, sondern mit dem
 /// Windows-Tastencode (VK_MEDIA_NEXT_TRACK 0xB0 / VK_MEDIA_PREV_TRACK 0xB1) in der Windows-Ebene.
 const _windowsPlane = 0x01600000000;
@@ -52,9 +55,12 @@ const _windowsMediaNext = LogicalKeyboardKey(_windowsPlane | 0xB0);
 const _windowsMediaPrevious = LogicalKeyboardKey(_windowsPlane | 0xB1);
 
 Map<ShortcutActivator, Intent> get desktopShortcuts => <ShortcutActivator, Intent>{
-      ...WidgetsApp.defaultShortcuts,
-      const SingleActivator(LogicalKeyboardKey.space): const PlayPauseIntent(),
-      const SingleActivator(LogicalKeyboardKey.mediaPlayPause): const PlayPauseIntent(),
+      // Standard-Kürzel ohne „Leertaste = Knopf betätigen“ – das übernimmt PlayPauseIntent (siehe _PlayPauseAction)
+      for (final entry in WidgetsApp.defaultShortcuts.entries)
+        if (!_isSpace(entry.key)) entry.key: entry.value,
+      // Gedrückt halten soll nicht dauernd umschalten
+      const SingleActivator(LogicalKeyboardKey.space, includeRepeats: false): const PlayPauseIntent(),
+      const SingleActivator(LogicalKeyboardKey.mediaPlayPause, includeRepeats: false): const PlayPauseIntent(),
       const SingleActivator(LogicalKeyboardKey.mediaTrackNext): const NextTrackIntent(),
       const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious): const PreviousTrackIntent(),
       const SingleActivator(_windowsMediaNext): const NextTrackIntent(),
@@ -112,10 +118,8 @@ class _DesktopActionsState extends ConsumerState<DesktopActions> {
     }
   }
 
-  void _goBack() {
-    final router = ref.read(routerProvider);
-    if (router.canPop()) router.pop();
-  }
+  // Wie die Zurück-Taste am Handy: beachtet PopScope (z. B. „Reihenfolge ändern“ beenden statt Seite schließen)
+  void _goBack() => ref.read(routerProvider).routerDelegate.popRoute().ignore();
 
   @override
   Widget build(BuildContext context) {
@@ -127,8 +131,9 @@ class _DesktopActionsState extends ConsumerState<DesktopActions> {
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
-          // Nur wenn etwas geladen ist – sonst geht die Taste normal weiter
-          PlayPauseIntent: _WhenTrackLoaded<PlayPauseIntent>(ref, (_) => _run(player.togglePlay)),
+          // Hat ein Knopf/Schalter den Tastaturfokus, betätigt die Leertaste ihn (wie überall unter Windows);
+          // sonst Abspielen/Pause, sofern etwas geladen ist
+          PlayPauseIntent: _PlayPauseAction(ref, () => _run(player.togglePlay)),
           NextTrackIntent: CallbackAction<NextTrackIntent>(onInvoke: (_) => _run(player.next)),
           PreviousTrackIntent: CallbackAction<PreviousTrackIntent>(onInvoke: (_) => _run(player.previous)),
           SeekByIntent: CallbackAction<SeekByIntent>(
@@ -142,8 +147,8 @@ class _DesktopActionsState extends ConsumerState<DesktopActions> {
           VolumeByIntent: CallbackAction<VolumeByIntent>(
             onInvoke: (intent) => setDesktopVolume(ref, ref.read(audioHandlerProvider).player.volume + intent.delta),
           ),
-          FocusSearchIntent: CallbackAction<FocusSearchIntent>(
-            onInvoke: (_) {
+          FocusSearchIntent: _WhenNoPopup<FocusSearchIntent>(
+            (_) {
               ref.read(routerProvider).go('/search');
               // Erst nach dem Umschalten existiert das Suchfeld sicher
               WidgetsBinding.instance.addPostFrameCallback((_) => searchFocusRequests.value++);
@@ -158,19 +163,43 @@ class _DesktopActionsState extends ConsumerState<DesktopActions> {
   }
 }
 
-class _WhenTrackLoaded<T extends Intent> extends CallbackAction<T> {
+/// Leertaste/Medientaste: betätigt den fokussierten Knopf – sonst Abspielen/Pause.
+class _PlayPauseAction extends Action<PlayPauseIntent> {
   final WidgetRef ref;
-  _WhenTrackLoaded(this.ref, Object? Function(T intent) onInvoke) : super(onInvoke: onInvoke);
+  final VoidCallback togglePlay;
+  _PlayPauseAction(this.ref, this.togglePlay);
+
+  /// Kontext des Knopfs/Schalters mit Tastaturfokus, der sich per Leertaste betätigen lässt – sonst null.
+  BuildContext? _focusedControl() {
+    final focus = FocusManager.instance.primaryFocus;
+    final context = focus?.context;
+    if (focus == null || focus is FocusScopeNode || context == null) return null;
+    final action = Actions.maybeFind<ActivateIntent>(context);
+    return action != null && action.isActionEnabled ? context : null;
+  }
 
   // Auf der Videoseite gehört die Leertaste dem Video – sonst liefe zusätzlich die Musik los
+  bool get _canToggle => ref.read(audioHandlerProvider).currentTrack != null && openVideoPages.value == 0;
+
   @override
-  bool isEnabled(T intent) => ref.read(audioHandlerProvider).currentTrack != null && openVideoPages.value == 0;
+  bool isEnabled(PlayPauseIntent intent) => _focusedControl() != null || _canToggle;
+
+  @override
+  Object? invoke(PlayPauseIntent intent) {
+    final control = _focusedControl();
+    if (control != null) return Actions.invoke(control, const ActivateIntent());
+    if (_canToggle) togglePlay();
+    return null;
+  }
 }
 
-/// Auf dem Computer lassen sich Listen (z. B. die Kartenreihen der Startseite) auch mit gedrückter Maus ziehen.
-class DesktopScrollBehavior extends MaterialScrollBehavior {
-  const DesktopScrollBehavior();
+/// Nur, wenn kein Dialog/Menü offen ist (sonst landete z. B. getippter Text unsichtbar im Suchfeld dahinter).
+class _WhenNoPopup<T extends Intent> extends CallbackAction<T> {
+  _WhenNoPopup(Object? Function(T intent) onInvoke) : super(onInvoke: onInvoke);
 
   @override
-  Set<PointerDeviceKind> get dragDevices => {...super.dragDevices, PointerDeviceKind.mouse};
+  bool isEnabled(T intent) {
+    final context = FocusManager.instance.primaryFocus?.context;
+    return context == null || ModalRoute.of(context) is! PopupRoute;
+  }
 }

@@ -157,6 +157,13 @@ List<Track> tracks(int count, {int from = 1}) =>
 
 Future<void> settle([int ms = 40]) => Future<void>.delayed(Duration(milliseconds: ms));
 
+/// Wartet (höchstens 3 s), bis [done] stimmt – robuster als eine feste Wartezeit, z. B. beim ersten, „kalten“ Test.
+Future<void> until(bool Function() done) async {
+  for (var i = 0; i < 300 && !done(); i++) {
+    await settle(10);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late SingleTrackPlatform inner;
@@ -190,6 +197,7 @@ void main() {
   test('Titelende: nächster Titel spielt, Index und gespielter Titel stimmen überein', () async {
     final h = handler();
     unawaited(h.playTracks(tracks(4)));
+    await until(() => h.player.processingState == ProcessingState.ready && h.player.playing);
     await settle();
     expect(h.currentTrack!.id, 1);
     expect(playingId(), 1);
@@ -373,6 +381,38 @@ void main() {
     expect(h.currentTrack!.id, 2);
     expect(playingId(), 2);
     expect(inner.last!.playing, isTrue);
+    await h.player.dispose();
+  });
+
+  test('Weiter, Warteschlangen-Klick und Spulen, während der nächste Titel noch öffnet, gehen nicht verloren', () async {
+    final h = handler();
+    unawaited(h.playTracks(tracks(6)));
+    await settle();
+    inner.last!.openDelay = const Duration(milliseconds: 300);
+
+    // Doppeltes „Weiter“: landet bei Titel 3
+    unawaited(h.skipToNext());
+    await settle(30);
+    await h.skipToNext().timeout(const Duration(seconds: 2));
+    await settle(700);
+    expect(h.currentTrack!.id, 3);
+    expect(playingId(), 3);
+
+    // Klick in die Warteschlange, während der nächste Titel öffnet
+    unawaited(h.skipToNext());
+    await settle(30);
+    await h.skipToQueueItem(5).timeout(const Duration(seconds: 2));
+    await settle(700);
+    expect(h.currentTrack!.id, 6);
+    expect(playingId(), 6);
+
+    // Spulen, während der Titel öffnet: wirkt, sobald er offen ist
+    unawaited(h.skipToPrevious());
+    await settle(30);
+    await h.seek(const Duration(seconds: 30)).timeout(const Duration(seconds: 2));
+    await settle(700);
+    expect(playingId(), 5);
+    expect(inner.last!.pos, const Duration(seconds: 30));
     await h.player.dispose();
   });
 

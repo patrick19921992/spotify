@@ -95,6 +95,13 @@ class QueueingAudioPlayer extends AudioPlayerPlatform {
 
   /// Wird erfüllt, sobald ein neuerer Ladevorgang beginnt: just_audio_media_kit beendet den älteren dann nie.
   Completer<void>? _superseded;
+
+  /// Lädt die Hülle gerade selbst einen Titel (Weiter, Titelende, Klick in die Warteschlange)? Dann meldet sie
+  /// „puffert“ statt „lädt“ – wie Android. Bei „lädt“ ignoriert just_audio Weiter/Zurück und Spulen.
+  bool _ownLoad = false;
+
+  /// Spulen, während der Titel noch öffnet – wird nachgeholt, sobald er offen ist.
+  Duration? _pendingSeek;
   PlaybackEventMessage? _last;
 
   List<AudioSourceMessage> get children => List.unmodifiable(_children);
@@ -124,8 +131,9 @@ class QueueingAudioPlayer extends AudioPlayerPlatform {
 
   void _emit(PlaybackEventMessage event) {
     if (_events.isClosed) return;
+    final state = event.processingState;
     _events.add(PlaybackEventMessage(
-      processingState: event.processingState,
+      processingState: state == ProcessingStateMessage.loading && _ownLoad ? ProcessingStateMessage.buffering : state,
       updateTime: event.updateTime,
       updatePosition: event.updatePosition,
       bufferedPosition: event.bufferedPosition,
@@ -176,11 +184,14 @@ class QueueingAudioPlayer extends AudioPlayerPlatform {
   }
 
   /// Den aktuellen Titel in den inneren Player laden. Spielt weiter, wenn vorher gespielt wurde.
-  Future<Duration?> _loadCurrent(Duration? position) async {
+  /// [own]: von der Hülle selbst ausgelöst (nicht von just_audios load()).
+  Future<Duration?> _loadCurrent(Duration? position, {bool own = true}) async {
     final index = _index;
     if (index == null || index >= _children.length) return null;
     final generation = ++_generation;
     _loading = true;
+    _ownLoad = own;
+    _pendingSeek = null;
     _supersede();
     final superseded = _superseded = Completer<void>();
     final failed = Completer<Duration?>();
@@ -198,6 +209,9 @@ class QueueingAudioPlayer extends AudioPlayerPlatform {
       final duration = await Future.any([load, failed.future, superseded.future.then((_) => null)]);
       // just_audio_media_kit übergeht play/pause, solange die Datei noch geöffnet wird – nachholen
       if (generation == _generation) {
+        final pending = _pendingSeek;
+        _pendingSeek = null;
+        if (pending != null) await inner.seek(SeekRequest(position: pending));
         await (_wantPlaying ? inner.play(PlayRequest()) : inner.pause(PauseRequest()));
       }
       return duration;
@@ -233,7 +247,7 @@ class QueueingAudioPlayer extends AudioPlayerPlatform {
       _emitIndex();
       return LoadResponse(duration: null);
     }
-    return LoadResponse(duration: await _loadCurrent(request.initialPosition));
+    return LoadResponse(duration: await _loadCurrent(request.initialPosition, own: false));
   }
 
   @override
@@ -243,6 +257,11 @@ class QueueingAudioPlayer extends AudioPlayerPlatform {
     if (index != null && index < _children.length && (index != _index || finished)) {
       _index = index;
       await _loadCurrent(request.position);
+      return SeekResponse();
+    }
+    if (_loading) {
+      // Die Datei öffnet noch – libmpv würde das Spulen jetzt übergehen
+      _pendingSeek = request.position ?? Duration.zero;
       return SeekResponse();
     }
     return inner.seek(SeekRequest(position: request.position));

@@ -24,6 +24,8 @@ VersionInfoVersion={#AppVersion}
 ; (so gibt es nie zwei Installationen nebeneinander).
 PrivilegesRequired=lowest
 DefaultDirName={autopf}\Selfify
+; Fester Ordner: [InstallDelete] räumt dort „data“ auf – in einem fremden Ordner wäre das gefährlich
+DisableDirPage=yes
 DisableProgramGroupPage=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

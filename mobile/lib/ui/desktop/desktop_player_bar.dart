@@ -8,6 +8,7 @@ import '../nav.dart';
 import '../screens/player_widgets.dart';
 import '../widgets/cover.dart';
 import 'desktop_layout.dart';
+import 'desktop_shell.dart';
 import 'desktop_shortcuts.dart';
 
 /// Player-Leiste über die ganze Fensterbreite (Desktop): Titel · Steuerung mit Fortschritt · Extras.
@@ -17,10 +18,12 @@ class DesktopPlayerBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final track = ref.watch(currentTrackProvider);
+    // Größere Schrift (Windows: Einstellungen → Barrierefreiheit → Textgröße) macht die Zeitangaben höher
+    final textExtra = (MediaQuery.textScalerOf(context).scale(17) - 17).clamp(0.0, 40.0);
     return Material(
       color: Colors.black,
       child: SizedBox(
-        height: kPlayerBarHeight,
+        height: kPlayerBarHeight + textExtra,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -150,21 +153,25 @@ class _Extras extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final panel = ref.watch(desktopPanelProvider);
     final panels = ref.read(desktopPanelProvider.notifier);
+    // Die rechte Spalte gibt es nur in der Hauptansicht – auf Vollbildseiten (z. B. Downloads) nicht
+    final inShell = context.findAncestorWidgetOfExactType<DesktopShell>() != null;
     Color colorFor(DesktopPanel p) => panel == p ? AppColors.accent : Colors.white;
     return LayoutBuilder(
       builder: (context, constraints) => Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          IconButton(
-            tooltip: 'Songtext',
-            icon: Icon(Icons.lyrics_outlined, color: colorFor(DesktopPanel.lyrics)),
-            onPressed: () => panels.toggle(DesktopPanel.lyrics),
-          ),
-          IconButton(
-            tooltip: 'Warteschlange',
-            icon: Icon(Icons.queue_music_rounded, color: colorFor(DesktopPanel.queue)),
-            onPressed: () => panels.toggle(DesktopPanel.queue),
-          ),
+          if (inShell) ...[
+            IconButton(
+              tooltip: 'Songtext',
+              icon: Icon(Icons.lyrics_outlined, color: colorFor(DesktopPanel.lyrics)),
+              onPressed: () => panels.toggle(DesktopPanel.lyrics),
+            ),
+            IconButton(
+              tooltip: 'Warteschlange',
+              icon: Icon(Icons.queue_music_rounded, color: colorFor(DesktopPanel.queue)),
+              onPressed: () => panels.toggle(DesktopPanel.queue),
+            ),
+          ],
           _Volume(showSlider: constraints.maxWidth >= 290),
           IconButton(
             tooltip: 'Vollbild',

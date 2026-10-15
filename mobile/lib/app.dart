@@ -30,9 +30,9 @@ class SelfifyApp extends ConsumerWidget {
       darkTheme: buildTheme(),
       themeMode: ThemeMode.dark,
       routerConfig: router,
-      // Computer: Tastenkürzel, Ziehen mit der Maus, Desktop-Aktionen (Handy: unverändert)
+      // Computer: Tastenkürzel und Desktop-Aktionen (Handy: unverändert). Scrollen per Mausrad/Scrollleiste –
+      // Ziehen mit der Maus würde Klicks verschlucken, sobald sich die Maus dabei 1–2 Pixel bewegt.
       shortcuts: isDesktopPlatform ? desktopShortcuts : null,
-      scrollBehavior: isDesktopPlatform ? const DesktopScrollBehavior() : null,
       builder: isDesktopPlatform ? (context, child) => DesktopActions(child: child ?? const SizedBox.shrink()) : null,
       locale: const Locale('de'),
       supportedLocales: const [Locale('de'), Locale('en')],

@@ -202,6 +202,9 @@ Punkten), zeigt Selfify die Handy-Ansicht.
 | Alt + ← oder seitliche Maustaste | Zurück |
 | Medientasten der Tastatur | Abspielen/Pause, Weiter, Zurück (solange das Selfify-Fenster aktiv ist) |
 
+> **Unterschied zum Handy:** Zwischen zwei Titeln gibt es unter Windows eine kurze Pause (der nächste Titel
+> wird erst am Ende des vorherigen geöffnet) – bei Live-Alben oder DJ-Mixen hörbar.
+>
 > **Windows „N“/„KN“-Editionen** (ohne Mediaplayer) brauchen zuerst das kostenlose *Media Feature Pack*
 > (*Einstellungen → Apps → Optionale Features → Feature hinzufügen → Media Feature Pack*), sonst startet die
 > App nicht. Videos im MKV/WebM-Format brauchen unter Windows oft die *VP9-Videoerweiterung* aus dem

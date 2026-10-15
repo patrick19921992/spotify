@@ -198,7 +198,7 @@ jobs:
             'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll' |
               ForEach-Object { Copy-Item "$env:SystemRoot\System32\$_" $release }
           }
-          'selfify.exe', 'flutter_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
+          'selfify.exe', 'flutter_windows.dll', 'libmpv-2.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
           'data\app.so', 'data\icudtl.dat', 'data\flutter_assets' | ForEach-Object {
             if (-not (Test-Path (Join-Path $release $_))) { throw "Fehlt im Build: $_" }
           }

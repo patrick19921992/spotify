@@ -1,4 +1,6 @@
-// Scratch verification of the desktop prototype (whole app, real router, fake server/player).
+// Desktop-Ansicht der ganzen App (echter Router, nachgebauter Server und Player).
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,11 +25,14 @@ import 'desktop_sizes_test.dart' show QueueHandlerX;
 class CountingHandler extends QueueHandlerX {
   int plays = 0;
   int pauses = 0;
+  int nexts = 0;
   CountingHandler(super.tracks, {super.index});
   @override
   Future<void> play() async => plays++;
   @override
   Future<void> pause() async => pauses++;
+  @override
+  Future<void> skipToNext() async => nexts++;
 }
 
 final windows = TargetPlatformVariant.only(TargetPlatform.windows);
@@ -161,6 +166,50 @@ void main() {
     await tester.pump();
     expect(handler.plays, 0, reason: 'space on the video page must not start the music');
     expect(handler.pauses, 0);
+  }, variant: windows);
+
+  testWidgets('Space on a keyboard-focused button presses the button instead of toggling playback', (tester) async {
+    final handler = CountingHandler(sampleTracks(3), index: 0);
+    await pumpApp(tester, const Size(1280, 800), handler: handler);
+    final next = find.descendant(of: find.byTooltip('Weiter'), matching: find.byIcon(Icons.skip_next_rounded));
+    Focus.of(tester.element(next)).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(handler.nexts, 1, reason: 'the focused "Weiter" button is pressed');
+    expect(handler.plays + handler.pauses, 0, reason: 'playback is not toggled as well');
+  }, variant: windows);
+
+  testWidgets('Ctrl+F while a dialog is open keeps the focus in the dialog', (tester) async {
+    final handler = CountingHandler(sampleTracks(3), index: 0);
+    await pumpApp(tester, const Size(1280, 800), handler: handler);
+    final context = tester.element(find.byType(DesktopShell));
+    unawaited(showDialog<void>(
+      context: context,
+      builder: (_) => const AlertDialog(content: TextField(autofocus: true)),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final focused = FocusManager.instance.primaryFocus?.context;
+    expect(focused?.findAncestorWidgetOfExactType<AlertDialog>(), isNotNull, reason: 'focus stays in the dialog');
+  }, variant: windows);
+
+  testWidgets('Holding Space toggles playback only once', (tester) async {
+    final handler = CountingHandler(sampleTracks(3), index: 0);
+    await pumpApp(tester, const Size(1280, 800), handler: handler);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    for (var i = 0; i < 5; i++) {
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space);
+    }
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(handler.plays + handler.pauses, 1);
   }, variant: windows);
 
   testWidgets('Space without loaded track does nothing', (tester) async {
