@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>selfify</Name>
+  <Repository>ghcr.io/patrick19921992/selfify-server:latest</Repository>
+  <Registry>https://github.com/patrick19921992/spotify/pkgs/container/selfify-server</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/patrick19921992/spotify</Support>
+  <Project>https://github.com/patrick19921992/spotify</Project>
+  <Overview>Selfify – dein eigenes Spotify: Musik, Hörspiele und Videos vom Unraid streamen, mit Playlists, Lieblingssongs, Offline-Modus und mehreren Konten. Fehlt ein Song, holt der Server ihn in bester Qualität von YouTube (Music) – mit Live-Fortschritt in der App.</Overview>
+  <Category>MediaServer:Music MediaServer:Video Downloaders:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/api/docs</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/patrick19921992/spotify/main/unraid/selfify.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/patrick19921992/spotify/main/docs/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Für den Zugriff von unterwegs: Reverse Proxy (z. B. Nginx Proxy Manager) mit eigener Domain und HTTPS. Websockets-Unterstützung einschalten.</Requires>
+  <Config Name="Web-Port" Target="8080" Default="8080" Mode="tcp" Description="Port des Servers. Im Reverse Proxy auf diesen Port weiterleiten." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Daten (appdata)" Target="/data" Default="/mnt/user/appdata/selfify" Mode="rw" Description="Datenbank, Cover, Zwischenspeicher, yt-dlp-Updates. Optional: youtube-cookies.txt für Premium-Qualität." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/selfify</Config>
+  <Config Name="Medien (eigener Share)" Target="/media" Default="/mnt/user/selfify" Mode="rw" Description="Eigener Share für Musik, Hörspiele und Videos. Jede Rubrik bekommt hier einen Unterordner (Musik, Musikvideos, Hoerspiele, Videos …)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/selfify</Config>
+  <Config Name="Öffentliche Adresse" Target="PUBLIC_URL" Default="" Mode="" Description="Adresse über deine Domain, z. B. https://musik.example.de" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Admin-Benutzername" Target="ADMIN_USERNAME" Default="admin" Mode="" Description="Erster Admin – wird nur beim allerersten Start angelegt." Type="Variable" Display="always" Required="false" Mask="false">admin</Config>
+  <Config Name="Admin-Passwort" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Leer lassen = sicheres Passwort wird erzeugt und einmalig im Log angezeigt." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Servername" Target="SERVER_NAME" Default="Selfify" Mode="" Description="Name, der in der App angezeigt wird." Type="Variable" Display="always" Required="false" Mask="false">Selfify</Config>
+  <Config Name="Zeitzone" Target="TZ" Default="Europe/Berlin" Mode="" Description="Zeitzone für Logs." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Berlin</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Benutzer für Dateien (Unraid: 99 = nobody)." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Gruppe für Dateien (Unraid: 100 = users)." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="Audio-Format" Target="YTDL_AUDIO_FORMAT" Default="best|m4a|mp3" Mode="" Description="best = Originalspur ohne Umwandlung (Opus, beste Qualität), m4a = AAC, mp3 = MP3 320k." Type="Variable" Display="advanced" Required="false" Mask="false">best</Config>
+  <Config Name="Video-Format" Target="YTDL_VIDEO_CODEC" Default="compatible|best" Mode="" Description="compatible = H.264/MP4 (läuft auf jedem Handy), best = VP9/AV1 (höher, nicht auf jedem iPhone)." Type="Variable" Display="advanced" Required="false" Mask="false">compatible</Config>
+  <Config Name="Max. Video-Auflösung" Target="YTDL_VIDEO_MAX_HEIGHT" Default="1080" Mode="" Description="Höchste Auflösung für Video-Downloads (z. B. 720, 1080, 2160)." Type="Variable" Display="advanced" Required="false" Mask="false">1080</Config>
+  <Config Name="Gleichzeitige Downloads" Target="DOWNLOAD_WORKERS" Default="2" Mode="" Description="Wie viele YouTube-Downloads gleichzeitig laufen (1–8)." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
+  <Config Name="yt-dlp automatisch aktualisieren" Target="YTDL_AUTO_UPDATE" Default="true|false" Mode="" Description="Täglich die neueste yt-dlp-Version holen (YouTube ändert häufig etwas)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Songtexte laden" Target="LYRICS_ENABLED" Default="true|false" Mode="" Description="Beim Download Songtexte (zeitsynchron) mitladen." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Scan-Intervall (Minuten)" Target="SCAN_INTERVAL_MINUTES" Default="30" Mode="" Description="Regelmäßiger Sicherheits-Scan der Medienordner (0 = aus). Neue Dateien werden zusätzlich sofort erkannt." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="Zwischenspeicher iPhone/Datensparen (MB)" Target="TRANSCODE_CACHE_MB" Default="2048" Mode="" Description="Platz für umgewandelte Titel (Opus → AAC fürs iPhone, Datensparmodus)." Type="Variable" Display="advanced" Required="false" Mask="false">2048</Config>
+  <Config Name="API-Testseite" Target="ENABLE_API_DOCS" Default="true|false" Mode="" Description="Testoberfläche unter /api/docs (ohne Login nutzlos)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+</Container>

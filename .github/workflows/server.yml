@@ -1,0 +1,110 @@
+# Server: Tests + Docker-Image (GitHub Container Registry) für Unraid
+name: Server
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: ["server/**", ".github/workflows/server.yml"]
+  pull_request:
+    paths: ["server/**", ".github/workflows/server.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: server/requirements*.txt
+      - name: ffmpeg installieren
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Abhängigkeiten
+        run: pip install -r requirements-dev.txt
+      - name: Code-Prüfung (ruff)
+        run: ruff check app tests
+      - name: Tests (pytest)
+        run: pytest
+
+  docker:
+    name: Docker-Image
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/selfify-server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Image bauen (zum Testen lokal laden)
+        uses: docker/build-push-action@v7
+        with:
+          context: server
+          load: true
+          tags: selfify-server:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Startet der Container?
+        run: |
+          mkdir -p /tmp/selfify/data /tmp/selfify/media
+          sudo chown -R 99:100 /tmp/selfify
+          docker run -d --name selfify -p 8080:8080 -e ADMIN_PASSWORD=ci-passwort-123 \
+            -v /tmp/selfify/data:/data -v /tmp/selfify/media:/media selfify-server:ci
+          for i in $(seq 1 40); do curl -fs http://localhost:8080/api/health && break; sleep 2; done
+          curl -fs http://localhost:8080/api/server
+          docker exec selfify python -m yt_dlp --version
+          docker exec selfify sh -c 'ffmpeg -version | head -1 && deno --version | head -1'
+          docker logs selfify
+          test -d /tmp/selfify/media/Musik
+      - name: Bei GitHub Container Registry anmelden
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        if: github.event_name != 'pull_request'
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha,format=short
+      - name: Image veröffentlichen
+        id: publish
+        if: github.event_name != 'pull_request'
+        # Private Repositories im kostenlosen GitHub-Tarif: 500 MB für Images + Artefakte.
+        # Ist das voll, bleibt der Build grün – siehe Hinweis unten und README ("selbst bauen").
+        continue-on-error: true
+        uses: docker/build-push-action@v7
+        with:
+          context: server
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+      - name: Hinweis, falls die Veröffentlichung nicht ging
+        if: github.event_name != 'pull_request' && steps.publish.outcome == 'failure'
+        run: |
+          echo "::warning::Das Docker-Image konnte nicht in der GitHub Container Registry veröffentlicht werden (meist: Speicher des privaten Repositories voll). Auf dem Unraid lässt sich das Image mit unraid/selfify-update.sh selbst bauen – siehe README."
+          {
+            echo "### Docker-Image nicht veröffentlicht"
+            echo "Meist ist der Speicher (500 MB bei privaten Repositories) voll."
+            echo "Lösung: Repository öffentlich machen **oder** auf dem Unraid selbst bauen (unraid/selfify-update.sh)."
+          } >> "$GITHUB_STEP_SUMMARY"

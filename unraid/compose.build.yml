@@ -1,0 +1,7 @@
+# Ergänzung zu docker-compose.yml: Image auf dem Unraid selbst bauen statt herunterladen.
+# Wird von unraid/selfify-update.sh verwendet.
+services:
+  selfify:
+    image: selfify-server:local
+    build: ./server
+    pull_policy: build

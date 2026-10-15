@@ -1,0 +1,113 @@
+"""Einstiegspunkt des Servers: baut die FastAPI-App zusammen.
+
+Start: uvicorn app.main:create_app --factory
+"""
+
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import __version__
+from app.config import Settings, get_settings
+from app.database import create_db_engine, create_session_factory, run_migrations
+from app.downloads.events import EventHub
+from app.downloads.manager import DownloadManager
+from app.downloads.youtube import YouTubeMusic
+from app.library.covers import CoverStore
+from app.library.scanner import LibraryScanner
+from app.library.transcode import TranscodeCache
+from app.ratelimit import LoginRateLimiter
+from app.routers import auth, categories, downloads, library, me, media, personal, playlists, system, users
+from app.security import load_or_create_secret_key
+from app.services.bootstrap import run_bootstrap
+
+logger = logging.getLogger("app")
+
+
+def configure_logging(level: str) -> None:
+    logging.basicConfig(
+        level=level.upper(),
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    logging.getLogger("app").setLevel(level.upper())
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    configure_logging(settings.log_level)
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        logger.info("Selfify %s startet – Daten: %s, Medien: %s", __version__, settings.data_dir, settings.media_dir)
+        run_migrations(settings.database_url)
+        with app.state.session_factory() as db:
+            run_bootstrap(db, settings)
+        if not app.state.transcoder.available:
+            logger.warning(
+                "ffmpeg nicht gefunden – Umwandlung (iPhone/Datensparmodus) und Video-Vorschaubilder sind aus."
+            )
+        app.state.scanner.start()
+        app.state.downloads.start()
+        yield
+        app.state.downloads.stop()
+        app.state.scanner.stop()
+        app.state.engine.dispose()
+
+    docs = settings.enable_api_docs
+    app = FastAPI(
+        title=settings.server_name,
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/api/docs" if docs else None,
+        redoc_url=None,
+        openapi_url="/api/openapi.json" if docs else None,
+    )
+
+    engine = create_db_engine(settings.database_url)
+    app.state.settings = settings
+    app.state.engine = engine
+    app.state.session_factory = create_session_factory(engine)
+    app.state.secret_key = load_or_create_secret_key(settings.secret_key, settings.data_dir)
+    app.state.covers = CoverStore(settings.covers_dir)
+    app.state.transcoder = TranscodeCache(
+        settings.transcode_dir, settings.transcode_cache_mb * 1024 * 1024, settings.ffmpeg_path
+    )
+    app.state.scanner = LibraryScanner(settings, app.state.session_factory, app.state.covers)
+    app.state.youtube = YouTubeMusic(settings.ytmusic_language, settings.ytmusic_location)
+    app.state.download_events = EventHub()
+    app.state.downloads = DownloadManager(
+        settings, app.state.session_factory, app.state.scanner, app.state.youtube, app.state.download_events
+    )
+    app.state.login_limiter = LoginRateLimiter(
+        max_per_user=settings.login_max_failures_per_user,
+        max_per_ip=settings.login_max_failures_per_ip,
+        window_seconds=settings.login_window_minutes * 60,
+    )
+
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    for router in (
+        system.router,
+        auth.router,
+        me.router,
+        users.router,
+        categories.router,
+        library.router,
+        media.router,
+        playlists.router,
+        personal.router,
+        downloads.router,
+    ):
+        app.include_router(router, prefix="/api")
+    return app

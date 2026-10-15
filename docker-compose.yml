@@ -1,0 +1,31 @@
+# Selfify-Server – Alternative zur Unraid-Vorlage (unraid/selfify.xml),
+# z. B. mit dem Unraid-Plugin "Docker Compose Manager" oder per Konsole: docker compose up -d
+services:
+  selfify:
+    image: ghcr.io/patrick19921992/selfify-server:latest
+    # Selbst bauen statt fertiges Image: die nächste Zeile einkommentieren und "docker compose up -d --build"
+    # build: ./server
+    container_name: selfify
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Europe/Berlin
+      PUID: "99"          # Unraid: nobody
+      PGID: "100"         # Unraid: users
+      SERVER_NAME: Selfify
+      # Adresse, unter der der Server über deinen Reverse Proxy erreichbar ist
+      PUBLIC_URL: https://musik.example.de
+      ADMIN_USERNAME: admin
+      # Leer lassen = sicheres Passwort wird erzeugt und einmalig im Log angezeigt
+      ADMIN_PASSWORD: ""
+      # YouTube-Downloader (siehe README)
+      YTDL_AUDIO_FORMAT: best
+      YTDL_VIDEO_CODEC: compatible
+      YTDL_VIDEO_MAX_HEIGHT: "1080"
+      DOWNLOAD_WORKERS: "2"
+    volumes:
+      # Datenbank, Cover, Zwischenspeicher
+      - /mnt/user/appdata/selfify:/data
+      # Eigener Medien-Share – jede Rubrik bekommt hier ihren Unterordner
+      - /mnt/user/selfify:/media

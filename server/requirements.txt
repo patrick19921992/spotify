@@ -1,0 +1,15 @@
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+SQLAlchemy==2.1.4
+alembic==1.20.0
+pydantic==2.14.0
+pydantic-settings==2.15.0
+PyJWT==2.15.1
+argon2-cffi==25.1.0
+mutagen==1.48.1
+Pillow==12.3.0
+watchfiles==1.3.0
+python-multipart==0.0.32
+# YouTube: yt-dlp inkl. EJS + Deno (JavaScript-Laufzeit, die YouTube inzwischen voraussetzt)
+yt-dlp[default,deno]==2026.8.19
+ytmusicapi==1.12.3
