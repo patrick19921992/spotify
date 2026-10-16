@@ -453,12 +453,16 @@ Future<FakeApi> pumpScreen(
   FakeApi? api,
   SelfifyAudioHandler? handler,
   AppUpdateSource? updates,
+  Map<String, Object> prefs = const {},
 }) async {
   final fakeApi = api ?? FakeApi(admin: admin);
   final audioHandler = handler ?? SelfifyAudioHandler();
   await initializeDateFormatting('de_DE');
-  SharedPreferences.setMockInitialValues({'search.recent': <String>['queen', 'abba']});
-  final prefs = await SharedPreferences.getInstance();
+  SharedPreferences.setMockInitialValues({
+    'search.recent': <String>['queen', 'abba'],
+    ...prefs,
+  });
+  final preferences = await SharedPreferences.getInstance();
   // Bild-Zwischenspeicher braucht ein Verzeichnis (path_provider gibt es im Test nicht)
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     const MethodChannel('plugins.flutter.io/path_provider'),
@@ -477,7 +481,7 @@ Future<FakeApi> pumpScreen(
 
   await tester.pumpWidget(ProviderScope(
     overrides: [
-      sharedPreferencesProvider.overrideWithValue(prefs),
+      sharedPreferencesProvider.overrideWithValue(preferences),
       audioHandlerProvider.overrideWithValue(audioHandler),
       authProvider.overrideWith(() => FakeAuth(fakeApi)),
       connectivityProvider.overrideWith(

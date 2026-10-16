@@ -11,6 +11,7 @@ import '../../player/player.dart';
 import '../../state/auth.dart';
 import '../../state/downloads.dart';
 import '../../state/library.dart';
+import '../../state/settings.dart';
 import '../nav.dart';
 import '../widgets/common.dart';
 import '../widgets/cover.dart';
@@ -442,7 +443,8 @@ class _YouTubeLinkDialog extends ConsumerStatefulWidget {
 
 class _YouTubeLinkDialogState extends ConsumerState<_YouTubeLinkDialog> {
   final _controller = TextEditingController();
-  bool _video = false;
+  // Vorauswahl wie in den Einstellungen („Immer als Video“ -> Video, sonst Musik)
+  late bool _video = ref.read(settingsProvider).videoFetch == 'video';
   bool _busy = false;
   String? _error;
 

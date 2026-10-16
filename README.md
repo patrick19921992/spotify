@@ -244,7 +244,10 @@ Server-Adresse eintragen, z. B. `https://musik.example.de` oder im Heimnetz `htt
    `Videos` …) kopieren. Sie erscheinen nach wenigen Sekunden.
 4. **Fehlende Songs holen:** *Suche* → Song eintippen → unter „Von YouTube holen“ auf **Holen** tippen.
    Gibt es einen Titel nur als **Video** (oft bei Kinderliedern), fragt **Holen**: **Nur Musik** holt nur den
-   Ton als Song (ohne Bild, viel kleiner), **Video** das ganze Video.
+   Ton als Song (ohne Bild, viel kleiner), **Video** das ganze Video. Wer nicht jedes Mal gefragt werden will
+   (z. B. auf dem Handy der Kinder): *Einstellungen › YouTube-Downloads › YouTube-Videos holen als* auf
+   **Immer nur Musik** stellen – oder im Auswahlblatt **Wahl merken** anhaken. Die Einstellung gilt pro Gerät;
+   im Menü eines Videos (antippen) lässt sich trotzdem beides holen.
 5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Pfeil nach unten tippen
    („Aufs Gerät laden“). Die Musik findest du dann unter *Bibliothek › Auf diesem Gerät*.
 

@@ -278,6 +278,10 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       abgeschnitten (quadratische Album-Cover bleiben unberührt); laufender Musik-Download im Menü nicht
       abbrechbar, „Download abbrechen“ traf das Video → eigener „Musik-Download abbrechen“, Video-Einträge
       eindeutig beschriftet
+- [x] Einstellung statt jedes Mal fragen: *Einstellungen › YouTube-Downloads › YouTube-Videos holen als*
+      („Jedes Mal fragen“ / „Immer nur Musik“ / „Immer als Video“, pro Gerät, `s.videoFetch`); im Auswahlblatt
+      „Wahl merken“; der Link-Dialog übernimmt die Vorauswahl. Songs werden immer als Musik geholt, das Menü
+      eines Videos bietet weiterhin beides
 
 ## Weitermachen nach einer Unterbrechung
 
