@@ -1,5 +1,3 @@
-import 'dart:ui' show FlutterView;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -21,10 +19,13 @@ bool isForeground(AppLifecycleState? state) =>
     state == AppLifecycleState.resumed ||
     (isDesktopPlatform && state == AppLifecycleState.inactive);
 
-/// Handy: nur Hochformat (wie Spotify) – quer bliebe zwischen Systemleisten, Mini-Player und unterer Leiste kaum
-/// Platz für den Inhalt. Tablets (kürzere Seite ab 600) und Computer drehen weiter frei.
-Future<void> lockPortraitOnPhones(FlutterView? view) async {
-  if (isDesktopPlatform || view == null || view.devicePixelRatio <= 0) return;
-  if (view.physicalSize.shortestSide / view.devicePixelRatio >= 600) return;
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+/// Ausrichtungen, die die App gerade erlaubt (Handy: nur Hochformat). Der Videoplayer stellt sie nach dem
+/// Vollbild wieder her – sonst hebt das erste Vollbild-Video die Sperre auf.
+List<DeviceOrientation> appOrientations = DeviceOrientation.values;
+
+/// Handy (kürzere Bildschirmseite unter 600): nur Hochformat, wie Spotify – quer bliebe zwischen Systemleisten,
+/// Mini-Player und unterer Leiste kaum Platz. Tablets drehen frei. null = Größe noch unbekannt (beim Start).
+List<DeviceOrientation>? orientationsForScreen(Size logicalScreen) {
+  if (logicalScreen.isEmpty) return null;
+  return logicalScreen.shortestSide < 600 ? const [DeviceOrientation.portraitUp] : DeviceOrientation.values;
 }

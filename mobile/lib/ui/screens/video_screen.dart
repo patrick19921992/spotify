@@ -165,6 +165,8 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       videoPlayerController: controller,
       autoPlay: true,
       allowFullScreen: true,
+      // Nach dem Vollbild die Ausrichtung der App wiederherstellen (Handy: Hochformat) – chewie gibt sonst alle frei
+      deviceOrientationsAfterFullScreen: appOrientations,
       allowPlaybackSpeedChanging: true,
       // Am Computer: eigener Regler (gleiche Lautstärke wie die Musik) statt nur Stummschalten
       allowMuting: !isDesktopPlatform,

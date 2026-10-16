@@ -11,6 +11,13 @@ import 'support/fakes.dart';
 
 class RecordingApi extends FakeApi {
   final sent = <String>[];
+  final cancelled = <int>[];
+
+  @override
+  Future<DownloadJob> cancelDownload(int id) async {
+    cancelled.add(id);
+    return DownloadJob.fromJson({...jobJson(id, 'cancelled'), 'video_id': 'yyyyyyyyy03', 'media_type': 'audio'});
+  }
 
   @override
   Future<DownloadJob> startDownload({
@@ -112,5 +119,20 @@ void main() {
     expect(find.text('Musik abspielen'), findsOneWidget);
     expect(find.text('Nur Musik holen'), findsNothing);
     expect(find.text('Als Video holen'), findsOneWidget, reason: 'das Video selbst fehlt noch');
+  });
+
+  testWidgets('Menü: laufender Musik-Download lässt sich abbrechen – und nur er', (tester) async {
+    final api = RecordingApi();
+    await pumpScreen(tester, Scaffold(body: YouTubeItemTile(item: video())), api: api);
+    await tester.longPress(find.text('YouTube Song 3'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nur Musik holen'));
+    await settle(tester);
+    await tester.longPress(find.text('YouTube Song 3'));
+    await settle(tester);
+    expect(find.text('Musik wird geholt …'), findsOneWidget);
+    await tester.tap(find.text('Musik-Download abbrechen'));
+    await settle(tester);
+    expect(api.cancelled, [91], reason: 'der Musik-Auftrag, nicht ein Video');
   });
 }

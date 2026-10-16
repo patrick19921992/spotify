@@ -101,8 +101,23 @@ def fetch_image(url: str | None, timeout: int = 20) -> bytes | None:
         return None
 
 
-def square_jpeg(data: bytes | None, crop: bool = True, max_size: int = 1200) -> bytes | None:
-    """Cover als JPEG; Video-Vorschaubilder (16:9) werden mittig quadratisch zugeschnitten."""
+def _trim_letterbox(image: Image.Image) -> Image.Image:
+    """Schwarze Balken oben/unten entfernen (4:3-Vorschaubild eines 16:9-Videos) – höchstens je ein Viertel."""
+    gray = image.convert("L")
+    width, height = gray.size
+
+    def dark(row: int) -> bool:
+        return gray.crop((0, row, width, row + 1)).getextrema()[1] < 24  # type: ignore[index, operator]
+
+    top, bottom = 0, height
+    while top < height // 4 and dark(top):
+        top += 1
+    while bottom > height - height // 4 and dark(bottom - 1):
+        bottom -= 1
+    return image.crop((0, top, width, bottom)) if top or bottom < height else image
+
+
+def _square_image(data: bytes | None, crop: bool, max_size: int) -> Image.Image | None:
     if not data:
         return None
     try:
@@ -111,12 +126,30 @@ def square_jpeg(data: bytes | None, crop: bool = True, max_size: int = 1200) -> 
     except (UnidentifiedImageError, OSError, ValueError):
         return None
     if crop and abs(image.width - image.height) > min(image.width, image.height) * 0.05:
+        image = _trim_letterbox(image)  # nur bei Vorschaubildern – quadratische Album-Cover bleiben unberührt
         side = min(image.width, image.height)
         image = ImageOps.fit(image, (side, side))
     image.thumbnail((max_size, max_size))
+    return image
+
+
+def _jpeg(image: Image.Image) -> bytes:
     buffer = io.BytesIO()
     image.save(buffer, "JPEG", quality=92)
     return buffer.getvalue()
+
+
+def square_jpeg(data: bytes | None, crop: bool = True, max_size: int = 1200) -> bytes | None:
+    """Cover als JPEG; Video-Vorschaubilder (16:9) werden mittig quadratisch zugeschnitten."""
+    image = _square_image(data, crop, max_size)
+    return None if image is None else _jpeg(image)
+
+
+def best_square_jpeg(candidates: list[bytes | None], max_size: int = 1200) -> bytes | None:
+    """Das schärfste Cover aus mehreren Quellen – z. B. kleines Vorschaubild aus der Suche (400×225) gegen das
+    große, das yt-dlp mitlädt (1280×720)."""
+    images = [image for data in candidates if (image := _square_image(data, True, max_size)) is not None]
+    return _jpeg(max(images, key=lambda image: image.width)) if images else None
 
 
 # --------------------------------------------------------------------- Tags

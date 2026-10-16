@@ -243,6 +243,17 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
 - [x] niedrig – Künstler-Kopf endete mit harter Kante → läuft in die Seitenfarbe aus
 - [x] geprüft, kein Fehler: Inhalt „unter“ Hinweis/Mini-Player ist das normale Ende des Scrollbereichs; harter
       Balken unter Covern = Schatten im Test; Einstellungen haben unten Abstand für die Navigationsleiste
+- [x] Gegenprüfung (`wf_4858b1b0-317`):
+      - hoch – Video-Vollbild gab danach alle Ausrichtungen frei (chewie-Standard) → stellt die App-Ausrichtung
+        wieder her (`appOrientations`)
+      - hoch – Sperre wurde in main() entschieden, wo Android oft noch 0×0 meldet → auch Tablets gesperrt; das
+        Warten darauf konnte den Start im Hintergrund (Wiedergabe ohne Fenster) blockieren → neu: `OrientationLock`
+        im Widget-Baum, misst den ganzen Bildschirm (Tablet im geteilten Bildschirm bleibt Tablet), wartet nie,
+        prüft bei Größenänderung und beim Zurückkehren (neues Android-Fenster) neu
+      - mittel – Textanpassung rechnete linear, Android 14+ vergrößert nicht linear → in echten Pixeln; passt ein
+        Wort auch verkleinert nicht → eine Zeile mit „…“; Bindestriche dürfen umbrechen; Schnellzugriff-Cover
+        bleibt 56 breit (sonst weniger Platz für den Titel bei großer Schrift)
+      - mittel – Update-Hinweis: Schwelle für die flache Zeile wächst mit der Schrift
 - [ ] offen (niedrig): Downloads-Liste – Text bei Video-Vorschaubildern (16:9) weiter eingerückt als bei Covern;
       Warteschlange bei großer Schrift „4 Songs · 13…“ gekürzt; ungleiche Abstände auf der Startseite
 
@@ -252,6 +263,11 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       fragt bei Videos „Nur Musik“ (Ton als Song bei der Musik, quadratisches Cover) oder „Video“; das Menü eines
       Videos bietet „Nur Musik holen“ und „Musik holen und zu Playlist hinzufügen“. Der Server meldet, wenn der Ton
       eines Videos schon da ist (`in_library_audio_track_id`) – dann „Musik abspielen“ statt „Holen“
+- [x] Gegenprüfung (`wf_c04ef623-658`): Cover von „Nur Musik“ kam aus dem kleinen Such-Vorschaubild (~225 px)
+      → das größere Bild gewinnt (yt-dlp lädt 1280×720 mit), schwarze Balken alter 4:3-Vorschaubilder werden
+      abgeschnitten (quadratische Album-Cover bleiben unberührt); laufender Musik-Download im Menü nicht
+      abbrechbar, „Download abbrechen“ traf das Video → eigener „Musik-Download abbrechen“, Video-Einträge
+      eindeutig beschriftet
 
 ## Weitermachen nach einer Unterbrechung
 

@@ -65,7 +65,8 @@ class UpdateBanner extends ConsumerWidget {
             final buttonWidth = label.width + 36;
             final textWidth = constraints.maxWidth - 12 - 24 - 10 - 8 - buttonWidth - 40 - 4;
             label.dispose();
-            if (textWidth >= 100) {
+            // Mindestens ~8 Zeichen Text in der aktuellen Schriftgröße – sonst lieber zwei Zeilen
+            if (textWidth >= MediaQuery.textScalerOf(context).scale(14) * 8) {
               return Padding(
                 padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
                 child: Row(

@@ -154,21 +154,33 @@ class QuickTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Nav.context_(context, item),
-        // Cover so hoch wie die Kachel (die wächst mit großer Schrift mit)
+        // Cover so hoch wie die Kachel (die wächst mit großer Schrift mit), aber nur 56 breit – sonst bliebe
+        // gerade bei großer Schrift weniger Platz für den Titel
         child: LayoutBuilder(
-          builder: (context, constraints) => Row(
-            children: [
-              contextCover(item, constraints.maxHeight.isFinite ? constraints.maxHeight : 56, radius: 0),
-              const SizedBox(width: 8),
-              Expanded(
-                child: WordSafeText(
-                  item.title,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+          builder: (context, constraints) {
+            final height = constraints.maxHeight.isFinite ? constraints.maxHeight : 56.0;
+            return Row(
+              children: [
+                SizedBox(
+                  width: 56,
+                  height: height,
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    clipBehavior: Clip.hardEdge,
+                    child: contextCover(item, height, radius: 0),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-            ],
-          ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: WordSafeText(
+                    item.title,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+            );
+          },
         ),
       ),
     );
