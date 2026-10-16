@@ -296,6 +296,9 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
 - [x] „Mein Player zeigt kein Update“ (Windows): Die App prüfte nur beim Start – am PC bleibt Selfify aber
       tagelang offen → `UpdateWatcher`: stündlich und beim Zurückkehren in die App (Fenster wieder im
       Vordergrund, höchstens alle 30 Minuten); scheitert eine Nachprüfung (offline), bleibt der bisherige Stand
+- [x] Gegenprüfung (`wf_a691a425-8f9`): Build 31 (erste Windows-Version) sucht gar nicht nach Updates → Nutzer
+      informiert, Hinweis im README (einmal von Hand installieren); Test „beim Start offline, später online“
+      ergänzt; Tests für Sperrfrist-Grenzen, nur beim Zurückkehren und „Wächter bleibt still“ geschärft
 
 ## Weitermachen nach einer Unterbrechung
 

@@ -586,6 +586,7 @@ void main() {
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
             appUpdateSourceProvider.overrideWithValue(source),
+            availableUpdateProvider.overrideWith(_CountingUpdates.new),
           ],
           child: UpdateWatcher(
             child: MaterialApp(
@@ -631,17 +632,48 @@ void main() {
       await pumpWatched(tester, source);
       expect(source.calls, 1);
 
+      await tester.pump(const Duration(minutes: 29));
       await backToApp(tester);
-      expect(source.calls, 1, reason: 'gerade erst beim Start geprüft');
+      expect(source.calls, 1, reason: 'erst vor 29 Minuten beim Start geprüft');
 
       source.available = AppRelease.fromJson(manifest(47));
-      await tester.pump(const Duration(minutes: 31));
-      await backToApp(tester);
+      await tester.pump(const Duration(minutes: 2));
+      // Verlassen der App (Fenster verliert den Fokus) prüft nicht – erst das Zurückkehren
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(source.calls, 1);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
       expect(source.calls, 2);
       expect(find.text('Neue App-Version verfügbar'), findsOneWidget);
 
       await backToApp(tester);
       expect(source.calls, 2, reason: 'nicht bei jedem Fensterwechsel');
+    });
+
+    testWidgets('nach der stündlichen Prüfung gilt die Sperrfrist ebenfalls', (tester) async {
+      final source = _FakeSource(installed: 43, latest: null);
+      await pumpWatched(tester, source);
+      await tester.pump(const Duration(hours: 1));
+      await tester.pump();
+      expect(source.calls, 2);
+      await tester.pump(const Duration(minutes: 5));
+      await backToApp(tester);
+      expect(source.calls, 2);
+    });
+
+    testWidgets('beim Start offline, später online: der Hinweis kommt trotzdem', (tester) async {
+      final source = _FakeSource(installed: 41, latest: const SocketException('offline'));
+      await pumpWatched(tester, source);
+      expect(source.calls, 1);
+      expect(find.text('Neue App-Version verfügbar'), findsNothing);
+
+      source.available = AppRelease.fromJson(manifest(43));
+      await tester.pump(const Duration(hours: 1));
+      await tester.pump();
+      expect(source.calls, 2);
+      expect(find.text('Neue App-Version verfügbar'), findsOneWidget);
     });
 
     testWidgets('Nachprüfung ohne Internet: ein gezeigter Hinweis bleibt', (tester) async {
@@ -657,12 +689,27 @@ void main() {
       expectNoErrors(tester);
     });
 
-    testWidgets('ohne Update-Prüfung (iPhone, lokaler Build): kein Nachsehen', (tester) async {
+    testWidgets('ohne Update-Prüfung (iPhone, lokaler Build): der Wächter bleibt still', (tester) async {
       final source = _FakeSource(installed: 41, latest: AppRelease.fromJson(manifest(43)), supported: false);
       await pumpWatched(tester, source);
+      final updates = ProviderScope.containerOf(tester.element(find.byType(UpdateBanner)))
+          .read(availableUpdateProvider.notifier) as _CountingUpdates;
       await tester.pump(const Duration(hours: 3));
+      await tester.pump(const Duration(minutes: 31));
       await backToApp(tester);
+      expect(updates.rechecks, 0);
       expect(source.calls, 0);
     });
   });
+}
+
+/// Zählt die Nachprüfungen des Wächters.
+class _CountingUpdates extends AvailableUpdateController {
+  int rechecks = 0;
+
+  @override
+  Future<void> recheck() {
+    rechecks++;
+    return super.recheck();
+  }
 }
