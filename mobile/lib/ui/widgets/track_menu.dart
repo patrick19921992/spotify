@@ -85,17 +85,18 @@ class _TrackMenu extends ConsumerWidget {
                 showAddToPlaylist(parentContext, ref, [track]);
               },
             ),
+            // Videos laufen in der Warteschlange als Ton
+            ListTile(
+              leading: const Icon(Icons.queue_play_next_rounded),
+              title: const Text('Als Nächstes spielen'),
+              onTap: () => run(() => player.playNext([track]), done: 'Wird als Nächstes gespielt'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.queue_music_rounded),
+              title: const Text('Zur Warteschlange hinzufügen'),
+              onTap: () => run(() => player.addToQueue([track]), done: 'Zur Warteschlange hinzugefügt'),
+            ),
             if (!track.isVideo) ...[
-              ListTile(
-                leading: const Icon(Icons.queue_play_next_rounded),
-                title: const Text('Als Nächstes spielen'),
-                onTap: () => run(() => player.playNext([track]), done: 'Wird als Nächstes gespielt'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.queue_music_rounded),
-                title: const Text('Zur Warteschlange hinzufügen'),
-                onTap: () => run(() => player.addToQueue([track]), done: 'Zur Warteschlange hinzugefügt'),
-              ),
               ListTile(
                 leading: const Icon(Icons.radio_rounded),
                 title: const Text('Radio zu diesem Song'),

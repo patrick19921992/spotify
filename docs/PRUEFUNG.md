@@ -306,6 +306,10 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       Lieblingssongs endete nach dem Song → Videos laufen als Ton mit; der Server liefert mit `audio_only=true`
       nur die Tonspur als AAC (Zwischenspeicher wie beim iPhone-Umwandeln), Antippen öffnet weiterhin das Video;
       „Abspielen“ geht auch bei einer Playlist nur aus Videos. Offline bleiben Videos außen vor
+- [x] Gegenprüfung (`wf_507585aa-2c4`, kritisch): Die Korrektur wirkte nicht – der Audio-Handler
+      (`playTracks`, `addTracks`, `playNext`) filterte Videos ein zweites Mal; die Tests nutzten einen
+      Ersatz-Handler und merkten es nicht → Filter im Handler entfernt, „Zur Warteschlange“/„Als Nächstes“
+      nehmen Videos mit, Radio/Autoplay bleiben reine Musik; Tests laufen jetzt mit dem echten Handler
 
 ## Weitermachen nach einer Unterbrechung
 

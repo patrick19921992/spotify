@@ -48,7 +48,7 @@ Future<void> detailPlay(
   PlayContext? playContext,
   bool shuffle = false,
 }) async {
-  if (!tracks.any((t) => !t.isVideo)) {
+  if (tracks.isEmpty) {
     showMessage(context, 'Hier gibt es nichts zum Abspielen');
     return;
   }
@@ -61,10 +61,10 @@ Future<void> detailPlay(
   }
 }
 
-/// Songs an die Warteschlange hängen ([next] = direkt nach dem aktuellen Titel).
+/// Songs an die Warteschlange hängen ([next] = direkt nach dem aktuellen Titel); Videos laufen als Ton mit.
 /// Offline werden nur Songs genommen, die auf dem Handy sind.
 Future<void> detailEnqueue(BuildContext context, WidgetRef ref, List<Track> tracks, {bool next = false}) async {
-  var audio = tracks.where((t) => !t.isVideo).toList();
+  var audio = tracks.toList();
   if (audio.isEmpty) {
     showMessage(context, 'Hier gibt es keine Songs für die Warteschlange');
     return;
@@ -277,7 +277,8 @@ class DetailPlayControls extends ConsumerWidget {
     final playing = active && ref.watch(isPlayingProvider);
     final shuffleOn = active && ref.watch(playbackStateProvider).value?.shuffleMode == AudioServiceShuffleMode.all;
     final player = ref.read(playerProvider);
-    final playable = tracks.any((t) => !t.isVideo);
+    // Videos laufen beim Abspielen als Ton mit
+    final playable = tracks.isNotEmpty;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

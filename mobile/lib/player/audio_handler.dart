@@ -235,13 +235,12 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   // ------------------------------------------------------------- Steuerung
 
   /// Neue Wiedergabeliste abspielen (ersetzt die Warteschlange).
+  /// Videos laufen als Ton mit (wie Musikvideos bei Spotify) – resolveSource fragt dafür nur die Tonspur an.
   Future<void> playTracks(List<Track> tracks, {int index = 0, PlayContext? context, bool shuffle = false}) async {
-    final audio = tracks.where((t) => !t.isVideo).toList();
+    final audio = tracks.toList();
     if (audio.isEmpty) return;
     // Nach Position, nicht nach Gleichheit: derselbe Titel kann mehrfach vorkommen
-    final start = index >= 0 && index < tracks.length && !tracks[index].isVideo
-        ? tracks.take(index).where((t) => !t.isVideo).length
-        : 0;
+    final start = index >= 0 && index < tracks.length ? index : 0;
     final current = currentTrack;
     if (current != null) _report(current, _lastPosition);
     _lastIndex = null;
@@ -269,9 +268,9 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     await player.play();
   }
 
-  /// Am Ende der Warteschlange anhängen.
+  /// Am Ende der Warteschlange anhängen (Videos als Ton).
   Future<void> addTracks(List<Track> tracks) async {
-    final audio = tracks.where((t) => !t.isVideo).toList();
+    final audio = tracks.toList();
     if (audio.isEmpty) return;
     if (_tracks.isEmpty) return playTracks(audio, context: const PlayContext('queue'));
     _tracks.addAll(audio);
@@ -279,9 +278,9 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     await player.addAudioSources(audio.map(_sourceFor).toList());
   }
 
-  /// Direkt nach dem aktuellen Titel einreihen ("Als Nächstes spielen").
+  /// Direkt nach dem aktuellen Titel einreihen ("Als Nächstes spielen", Videos als Ton).
   Future<void> playNext(List<Track> tracks) async {
-    final audio = tracks.where((t) => !t.isVideo).toList();
+    final audio = tracks.toList();
     if (audio.isEmpty) return;
     if (_tracks.isEmpty) return playTracks(audio, context: const PlayContext('queue'));
     final current = player.currentIndex;
