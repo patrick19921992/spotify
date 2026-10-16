@@ -206,6 +206,10 @@ Punkten), zeigt Selfify die Handy-Ansicht.
 | Alt + ← oder seitliche Maustaste | Zurück |
 | Medientasten (Tastatur, Headset) | Abspielen/Pause, Weiter, Zurück – auch wenn Selfify im Hintergrund ist. Titel und Cover erscheinen zusätzlich in der Windows-Medienübersicht (Lautstärke-Popup bzw. Schnelleinstellungen) |
 
+Im **Videoplayer** (Maus über dem Video): Leertaste Abspielen/Pause, ← / → spulen, ↑ / ↓ lauter/leiser, M stumm,
+F Vollbild, Esc Vollbild beenden. Den Lautstärkeregler gibt es in der Leiste des Videos (auch im Vollbild); Musik
+und Videos haben dieselbe Lautstärke, wie bei Spotify.
+
 > **Unterschied zum Handy:** Zwischen zwei Titeln gibt es unter Windows eine kurze Pause (der nächste Titel
 > wird erst am Ende des vorherigen geöffnet) – bei Live-Alben oder DJ-Mixen hörbar.
 >

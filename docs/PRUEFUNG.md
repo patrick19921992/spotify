@@ -181,6 +181,9 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
 - [x] Folgeschritt: Update-Hinweis für Windows (version.json mit Windows-Installer, Prüfsumme, stilles Update
       mit Neustart; ZIP-Variante bekommt den Assistenten)
 - [ ] offen: Fenstergröße merken, lückenlose Übergänge zwischen Titeln
+- [x] Videoplayer am PC ohne Lautstärkeregler (nur Stummschalten) → Regler in der Leiste des Videos (auch im
+      Vollbild), ↑/↓ lauter/leiser, M stumm mit Anzeige im Bild; gleiche Lautstärke wie die Musik (Strg+↑/↓ und
+      Regler wirken auf beides, bleibt für den nächsten Start gespeichert). Tests mit nachgebautem Videoplayer
 
 ### Gegenprüfung PR #6 (`wf_0d99c533-5a2`)
 
