@@ -223,39 +223,49 @@ class AdminSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final side = math.max(20.0, (width - 640) / 2);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(side, 0, side, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+        // Rand aus der Breite des Blatts selbst, nicht des Fensters: Auf Tablets und am PC ist das Blatt schon
+        // auf 640 px begrenzt – mit der Fensterbreite gerechnet blieben dort nur ein paar Pixel für den Inhalt
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final side = math.max(20.0, (constraints.maxWidth - 640) / 2);
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(side, 0, side, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (leading != null) ...[leading!, const SizedBox(width: 14)],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: AppText.sectionTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        if (subtitle != null) ...[
-                          const SizedBox(height: 4),
-                          Text(subtitle!, style: AppText.tileSubtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        ],
-                      ],
-                    ),
+                  Row(
+                    children: [
+                      if (leading != null) ...[leading!, const SizedBox(width: 14)],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: AppText.sectionTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            if (subtitle != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                subtitle!,
+                                style: AppText.tileSubtitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 20),
+                  ...children,
                 ],
               ),
-              const SizedBox(height: 20),
-              ...children,
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

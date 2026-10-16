@@ -283,6 +283,14 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       „Wahl merken“; der Link-Dialog übernimmt die Vorauswahl. Songs werden immer als Musik geholt, das Menü
       eines Videos bietet weiterhin beides
 
+### Verwaltung am PC
+
+- [x] „Benutzer anlegen“ am Windows-PC: Texte standen Buchstabe für Buchstabe untereinander. Ursache: Das Blatt
+      ist auf breiten Bildschirmen auf 640 px begrenzt, `AdminSheet` rechnete den Seitenrand aber aus der
+      Fensterbreite (bei 1260 px je 310 px Rand → ~20 px Inhalt). Betraf alle Blätter der Verwaltung (Benutzer und
+      Rubriken anlegen/bearbeiten, Rubrik wählen) → Rand aus der Breite des Blatts (`LayoutBuilder`);
+      `admin_sheet_width_test.dart` prüft Handy, Windows-Fenster und großen Bildschirm
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich
