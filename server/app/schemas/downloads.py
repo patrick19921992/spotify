@@ -28,6 +28,8 @@ class YouTubeItemOut(BaseModel):
     track_number: int | None = None
     # Schon in der Bibliothek? Dann direkt abspielen statt herunterladen
     in_library_track_id: int | None = None
+    # Nur bei Videos: Ist der Ton davon schon als Song da („Nur Musik holen“)?
+    in_library_audio_track_id: int | None = None
     # Läuft gerade ein Download dafür?
     active_job_id: int | None = None
 

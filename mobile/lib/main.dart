@@ -22,6 +22,7 @@ Future<void> main() async {
     systemNavigationBarColor: Colors.black,
   ));
 
+
   final prefs = await SharedPreferences.getInstance();
   final session = await AudioSession.instance;
   await session.configure(const AudioSessionConfiguration.music());

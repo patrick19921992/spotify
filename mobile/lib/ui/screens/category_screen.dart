@@ -221,14 +221,19 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                     ? null
                     : Row(
                         children: [
-                          Flexible(
-                            child: OutlinedButton.icon(
-                              onPressed: () => Nav.mix(context, 'category:${category.id}'),
-                              icon: const Icon(Icons.shuffle_rounded, size: 20),
-                              label: const Text('Zufallsmix', maxLines: 1, overflow: TextOverflow.ellipsis),
+                          // Expanded statt Flexible + Spacer: sonst bekäme der Knopf nur die halbe Breite („Zufalls…“)
+                          // und rechts neben dem Abspielknopf bliebe eine Lücke
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: OutlinedButton.icon(
+                                onPressed: () => Nav.mix(context, 'category:${category.id}'),
+                                icon: const Icon(Icons.shuffle_rounded, size: 20),
+                                label: const Text('Zufallsmix', maxLines: 1, overflow: TextOverflow.ellipsis),
+                              ),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 12),
                           _CategoryPlayButton(categoryId: category.id, name: category.name, tracks: _tracks),
                         ],
                       ),

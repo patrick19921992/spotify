@@ -497,7 +497,8 @@ class _ArtistHero extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0x73000000), Color(0x00000000), Color(0x26000000), Color(0xD9000000)],
+              // Unten in die Seitenfarbe auslaufen – sonst harte Kante zum Seitenhintergrund
+              colors: [Color(0x73000000), Color(0x00000000), Color(0x26000000), AppColors.background],
               stops: [0, 0.3, 0.6, 1],
             ),
           ),

@@ -225,6 +225,60 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
 - [ ] offen (Vorschlag): Einzelne Texte sagen noch „Handy“ (z. B. „wird aufs Handy geladen“) – unter Windows
       wäre „Gerät“ passender
 
+### Handy-Ansicht: „alles verschoben und überlappt“ (Bildschirmfotos mit echten Systemleisten)
+
+Die bisherigen Bildschirm-Tests rendern ohne Status- und Navigationsleiste und mit Ersatzschrift – Überlappungen
+sieht man dort nicht. Neu geprüft: 88 Bildschirmfotos (14 Seiten; 412×915 und 360×780; Schrift 100/130/200 %;
+quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Prüfern (`wf_7c914d1b-22f`).
+
+- [x] hoch – Querformat: Systemleisten, Update-Hinweis, Mini-Player und untere Leiste ließen kaum Platz für den
+      Inhalt → Handys nur Hochformat (wie Spotify), Tablets und Computer drehen weiter
+- [x] hoch – Update-Hinweis 100–160 px hoch (auf kleinen Handys mit großer Schrift ein Fünftel des Bildschirms)
+      → eine flache Zeile (Installieren, × für „Später“); nur wenn der Text sonst unlesbar wäre, zweizeilig
+- [x] mittel – Player: Songtext-Karte lag unter der Navigationsleiste des Handys → unteren Rand abgezogen
+- [x] mittel – Wörter brachen mitten im Wort um („Lieblingssong / s“, „Musikvideo / s“) → Schrift wird so weit
+      verkleinert, dass das längste Wort passt; Kacheln wachsen mit großer Schrift statt abzuschneiden
+- [x] mittel – Rubrik: Abspielknopf ~30 px nach links versetzt, „Zufalls…“ unnötig gekürzt; Gerätespeicher:
+      „Einstellung…“ gekürzt (Flexible + Spacer teilten den Platz je zur Hälfte) → behoben
+- [x] niedrig – Künstler-Kopf endete mit harter Kante → läuft in die Seitenfarbe aus
+- [x] geprüft, kein Fehler: Inhalt „unter“ Hinweis/Mini-Player ist das normale Ende des Scrollbereichs; harter
+      Balken unter Covern = Schatten im Test; Einstellungen haben unten Abstand für die Navigationsleiste
+- [x] Gegenprüfung (`wf_4858b1b0-317`):
+      - hoch – Video-Vollbild gab danach alle Ausrichtungen frei (chewie-Standard) → stellt die App-Ausrichtung
+        wieder her (`appOrientations`)
+      - hoch – Sperre wurde in main() entschieden, wo Android oft noch 0×0 meldet → auch Tablets gesperrt; das
+        Warten darauf konnte den Start im Hintergrund (Wiedergabe ohne Fenster) blockieren → neu: `OrientationLock`
+        im Widget-Baum, misst den ganzen Bildschirm (Tablet im geteilten Bildschirm bleibt Tablet), wartet nie,
+        prüft bei Größenänderung und beim Zurückkehren (neues Android-Fenster) neu
+      - mittel – Textanpassung rechnete linear, Android 14+ vergrößert nicht linear → in echten Pixeln; passt ein
+        Wort auch verkleinert nicht → eine Zeile mit „…“; Bindestriche dürfen umbrechen; Schnellzugriff-Cover
+        bleibt 56 breit (sonst weniger Platz für den Titel bei großer Schrift)
+      - mittel – Update-Hinweis: Schwelle für die flache Zeile wächst mit der Schrift
+- [x] zweite Gegenprüfung (`wf_a063e2d6-a1a`):
+      - mittel – Video im Vollbild kippte beim Zurückkehren (Benachrichtigungsleiste, Sperrbildschirm) hochkant →
+        während des Vollbilds gilt dessen Ausrichtung (`fullScreenOrientations`)
+      - mittel – Balken-Zuschnitt hätte dunklen Bildinhalt echter 16:9-Bilder entfernt → nur so viel, wie ein
+        16:9-Bild an Balken hätte
+      - niedrig – Foldable während des Videos auf-/zugeklappt: nach dem Vollbild alte Ausrichtung →
+        `LiveAppOrientations` (gelesen beim Verlassen)
+      - niedrig – Android kannte beim Start die Bildschirmgröße nicht (Engine von audio_service ohne Activity) →
+        MainActivity reicht sie nach (`ViewUtils.calculateMaximumDisplayMetrics`)
+      - niedrig – rundes Künstlerbild in der Schnellzugriff-Kachel wurde bei großer Schrift zur Tonne → mittig 56 px
+- [ ] offen (niedrig): Downloads-Liste – Text bei Video-Vorschaubildern (16:9) weiter eingerückt als bei Covern;
+      Warteschlange bei großer Schrift „4 Songs · 13…“ gekürzt; ungleiche Abstände auf der Startseite
+
+### YouTube-Videos nur als Musik holen
+
+- [x] Titel, die es bei YouTube nur als Video gibt (z. B. Kinderlieder), ließen sich nur als Video holen → „Holen“
+      fragt bei Videos „Nur Musik“ (Ton als Song bei der Musik, quadratisches Cover) oder „Video“; das Menü eines
+      Videos bietet „Nur Musik holen“ und „Musik holen und zu Playlist hinzufügen“. Der Server meldet, wenn der Ton
+      eines Videos schon da ist (`in_library_audio_track_id`) – dann „Musik abspielen“ statt „Holen“
+- [x] Gegenprüfung (`wf_c04ef623-658`): Cover von „Nur Musik“ kam aus dem kleinen Such-Vorschaubild (~225 px)
+      → das größere Bild gewinnt (yt-dlp lädt 1280×720 mit), schwarze Balken alter 4:3-Vorschaubilder werden
+      abgeschnitten (quadratische Album-Cover bleiben unberührt); laufender Musik-Download im Menü nicht
+      abbrechbar, „Download abbrechen“ traf das Video → eigener „Musik-Download abbrechen“, Video-Einträge
+      eindeutig beschriftet
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

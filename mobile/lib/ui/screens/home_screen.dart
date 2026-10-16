@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -99,6 +101,8 @@ class _QuickAccess extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
+    // Zwei Zeilen Titel müssen hineinpassen – bei großer Schrift wird die Kachel höher statt abzuschneiden
+    final height = math.max(56.0, MediaQuery.textScalerOf(context).scale(13) * 1.3 * 2 + 12);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -107,7 +111,7 @@ class _QuickAccess extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: SizedBox(
-                height: 56,
+                height: height,
                 child: Row(
                   children: [
                     Expanded(child: QuickTile(item: items[i])),

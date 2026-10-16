@@ -106,16 +106,19 @@ class JobProgress extends StatelessWidget {
 
 /// "Holen"-Knopf für einen YouTube-Treffer – zeigt den Download-Fortschritt live,
 /// und wenn der Titel da ist, kann er direkt abgespielt werden.
+/// Bei Videos fragt er, ob nur die Musik (der Ton als Song) oder das ganze Video geholt werden soll.
 class DownloadButton extends ConsumerWidget {
   final YouTubeItem item;
   final int? playlistId;
 
   const DownloadButton({super.key, required this.item, this.playlistId});
 
-  Future<void> _start(BuildContext context, WidgetRef ref) async {
+  Future<void> _start(BuildContext context, WidgetRef ref, {bool audioOnly = false}) async {
     try {
-      await ref.read(downloadsProvider.notifier).startItem(item, playlistId: playlistId);
-      if (context.mounted) showMessage(context, '„${item.title}“ wird geholt');
+      await ref.read(downloadsProvider.notifier).startItem(item, audioOnly: audioOnly, playlistId: playlistId);
+      if (context.mounted) {
+        showMessage(context, audioOnly ? '„${item.title}“ wird als Musik geholt' : '„${item.title}“ wird geholt');
+      }
     } catch (e) {
       if (context.mounted) showError(context, e);
     }
@@ -130,15 +133,25 @@ class DownloadButton extends ConsumerWidget {
     }
   }
 
+  /// Video-Treffer: nur Musik oder ganzes Video?
+  Future<void> _choose(BuildContext context, WidgetRef ref) async {
+    final audioOnly = await showVideoFetchChoice(context, item.title);
+    if (audioOnly == null || !context.mounted) return;
+    await _start(context, ref, audioOnly: audioOnly);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final job = item.videoId == null
-        ? null
-        : ref.watch(jobForVideoProvider((item.videoId!, item.isVideo ? 'video' : 'audio')));
+    final videoId = item.videoId;
+    final job = videoId == null ? null : ref.watch(jobForVideoProvider((videoId, item.isVideo ? 'video' : 'audio')));
+    // Bei Videos zählt auch eine „Nur Musik“-Kopie (Ton als Song)
+    final audioJob = videoId == null || !item.isVideo ? null : ref.watch(jobForVideoProvider((videoId, 'audio')));
     final canDownload = ref.watch(currentUserProvider)?.canDownload ?? false;
     final trackId = job?.trackId ?? item.inLibraryTrackId;
+    final audioTrackId = audioJob?.trackId ?? item.inLibraryAudioTrackId;
+    final active = job != null && job.isActive ? job : (audioJob != null && audioJob.isActive ? audioJob : null);
 
-    if (job != null && job.isActive) {
+    if (active != null) {
       return SizedBox(
         width: 44,
         height: 44,
@@ -146,12 +159,12 @@ class DownloadButton extends ConsumerWidget {
           alignment: Alignment.center,
           children: [
             CircularProgressIndicator(
-              value: job.status == 'downloading' && job.progress > 0 ? job.progress : null,
+              value: active.status == 'downloading' && active.progress > 0 ? active.progress : null,
               strokeWidth: 3,
               backgroundColor: AppColors.surfaceHighest,
             ),
             Text(
-              job.status == 'downloading' ? '${(job.progress * 100).floor()}' : '',
+              active.status == 'downloading' ? '${(active.progress * 100).floor()}' : '',
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
             ),
           ],
@@ -171,11 +184,20 @@ class DownloadButton extends ConsumerWidget {
         child: Icon(Icons.check_circle_rounded, color: AppColors.accent),
       );
     }
-    if (job != null && job.isFailed) {
+    // Vom Video ist schon die Musik da – direkt abspielen (das Video gibt es weiter über das Menü)
+    if (audioTrackId != null) {
       return IconButton(
-        tooltip: job.error ?? 'Erneut versuchen',
+        tooltip: 'Musik abspielen',
+        icon: const Icon(Icons.play_circle_fill_rounded, color: AppColors.accent, size: 34),
+        onPressed: () => _play(context, ref, audioTrackId),
+      );
+    }
+    final failed = job != null && job.isFailed ? job : (audioJob != null && audioJob.isFailed ? audioJob : null);
+    if (failed != null) {
+      return IconButton(
+        tooltip: failed.error ?? 'Erneut versuchen',
         icon: const Icon(Icons.refresh_rounded, color: AppColors.danger),
-        onPressed: canDownload ? () => ref.read(downloadsProvider.notifier).retry(job.id) : null,
+        onPressed: canDownload ? () => ref.read(downloadsProvider.notifier).retry(failed.id) : null,
       );
     }
     if (!canDownload) {
@@ -188,7 +210,7 @@ class DownloadButton extends ConsumerWidget {
       );
     }
     return OutlinedButton.icon(
-      onPressed: () => _start(context, ref),
+      onPressed: () => item.isVideo ? _choose(context, ref) : _start(context, ref),
       icon: const Icon(Icons.download_rounded, size: 18),
       label: const Text('Holen'),
       style: OutlinedButton.styleFrom(
@@ -197,4 +219,41 @@ class DownloadButton extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Fragt bei einem Video, was geholt werden soll: true = nur die Musik (Ton als Song), false = ganzes Video,
+/// null = abgebrochen. Musik zuerst – für Kinderlieder & Co. reicht meist der Ton.
+Future<bool?> showVideoFetchChoice(BuildContext context, String title) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    useRootNavigator: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppText.tileTitle),
+            subtitle: const Text('Was möchtest du holen?', style: AppText.tileSubtitle),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.music_note_rounded, color: AppColors.accent),
+            title: const Text('Nur Musik'),
+            subtitle: const Text(
+              'Nur den Ton – als Song bei der Musik, ohne Bild, braucht viel weniger Platz',
+              style: AppText.tileSubtitle,
+            ),
+            onTap: () => Navigator.of(sheetContext).pop(true),
+          ),
+          ListTile(
+            leading: const Icon(Icons.movie_rounded),
+            title: const Text('Video'),
+            subtitle: const Text('Mit Bild – bei den Videos', style: AppText.tileSubtitle),
+            onTap: () => Navigator.of(sheetContext).pop(false),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
 }

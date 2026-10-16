@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -77,6 +78,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
   @override
   void dispose() {
     openVideoPages.value--;
+    fullScreenOrientations = null;
     _generation++;
     final video = _video;
     video?.removeListener(_onVideoValue);
@@ -155,6 +157,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
     }
 
     controller.addListener(_onVideoValue);
+    final fullScreen = _fullScreenOrientations(controller);
     final colors = ChewieProgressColors(
       playedColor: AppColors.accent,
       handleColor: AppColors.accent,
@@ -165,6 +168,11 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       videoPlayerController: controller,
       autoPlay: true,
       allowFullScreen: true,
+      // Vollbild: quer bei Querformat-Videos (wie chewie selbst); die App-Sperre lässt das in Ruhe (siehe unten)
+      deviceOrientationsOnEnterFullScreen: fullScreen,
+      // Nach dem Vollbild die Ausrichtung der App wiederherstellen (Handy: Hochformat) – chewie gäbe sonst alle frei.
+      // Gelesen erst beim Verlassen: so gilt auch ein zwischendurch auf- oder zugeklapptes Foldable.
+      deviceOrientationsAfterFullScreen: const LiveAppOrientations(),
       allowPlaybackSpeedChanging: true,
       // Am Computer: eigener Regler (gleiche Lautstärke wie die Musik) statt nur Stummschalten
       allowMuting: !isDesktopPlatform,
@@ -186,10 +194,20 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
         onRetry: _initialize,
       ),
     );
+    // Solange das Video im Vollbild läuft, gilt dessen Ausrichtung auch für die App-Sperre
+    chewie.addListener(() => fullScreenOrientations = chewie.isFullScreen ? fullScreen : null);
     setState(() {
       _video = controller;
       _chewie = chewie;
     });
+  }
+
+  /// Ausrichtungen im Vollbild – wie chewie: Querformat-Video quer, Hochformat-Video hochkant.
+  static List<DeviceOrientation> _fullScreenOrientations(VideoPlayerController controller) {
+    final size = controller.value.size;
+    if (size.width > size.height) return const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight];
+    if (size.width < size.height) return const [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown];
+    return DeviceOrientation.values;
   }
 
   Future<void> _goOnline() async {

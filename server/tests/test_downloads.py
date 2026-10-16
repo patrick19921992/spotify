@@ -1,5 +1,6 @@
 """YouTube-Suche und Downloader (mit yt-dlp-Attrappe und nachgestellter YouTube-Music-Antwort)."""
 
+import io
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from mutagen.oggopus import OggOpus
+from PIL import Image
 
 from app.config import Settings
 from app.downloads import tagging
@@ -120,6 +122,23 @@ def test_search_marks_library_items(env: Env) -> None:
     done = env.wait(job["id"])
     again = env.client.get("/api/youtube/search", headers=env.headers, params={"q": "brightside"}).json()
     assert again["results"][0]["in_library_track_id"] == done["track_id"]
+
+
+def test_video_result_reports_audio_only_copy(env: Env) -> None:
+    """Von einem Video nur den Ton holen (z. B. Kinderlieder, die es nur als Video gibt)."""
+    params = {"q": "brightside", "type": "videos"}
+    before = env.client.get("/api/youtube/search", headers=env.headers, params=params).json()["results"][0]
+    assert (before["in_library_track_id"], before["in_library_audio_track_id"]) == (None, None)
+    job = env.post("/api/downloads", {"video_id": "vvvvvvvvvv1", "media_type": "audio",
+                                      "title": "Mr. Brightside (Official Video)", "artists": ["The Killers"],
+                                      "thumbnail_url": "https://i.ytimg.com/vi/x/hq.jpg"})
+    done = env.wait(job["id"])
+    assert done["status"] == "done", done
+    track = env.client.get(f"/api/tracks/{done['track_id']}", headers=env.headers).json()
+    assert track["media_type"] == "audio"
+    after = env.client.get("/api/youtube/search", headers=env.headers, params=params).json()["results"][0]
+    assert after["in_library_track_id"] is None, "das Video selbst ist noch nicht da"
+    assert after["in_library_audio_track_id"] == done["track_id"]
 
 
 def test_search_reports_youtube_outage(env: Env) -> None:
@@ -560,3 +579,55 @@ def test_safe_names() -> None:
     assert tagging.safe_name('AC/DC: "Live"?') == "ACDC Live"
     assert tagging.safe_name("...") == "Unbekannt"
     assert tagging.safe_name("Die drei ???") == "Die drei"
+
+
+# --------------------------------------------------------------- Cover aus Vorschaubildern
+
+
+def _jpeg_bytes(image: Image.Image) -> bytes:
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG")
+    return buffer.getvalue()
+
+
+def _size(data: bytes | None) -> tuple[int, int]:
+    assert data is not None
+    with Image.open(io.BytesIO(data)) as image:
+        return image.size
+
+
+def test_cover_uses_sharper_thumbnail() -> None:
+    """„Nur Musik“ aus einem Video: Das Vorschaubild aus der Suche ist klein, yt-dlp lädt das große mit."""
+    small = _jpeg_bytes(Image.new("RGB", (400, 225), (200, 30, 30)))
+    large = _jpeg_bytes(Image.new("RGB", (1280, 720), (30, 30, 200)))
+    assert _size(tagging.best_square_jpeg([small, large])) == (720, 720)
+    assert _size(tagging.best_square_jpeg([None, small])) == (225, 225)
+    assert tagging.best_square_jpeg([None, b"kaputt"]) is None
+
+
+def test_cover_without_letterbox_bars() -> None:
+    """Älteres Video (4:3-Vorschaubild mit schwarzen Balken): Die Balken gehören nicht ins Cover."""
+    image = Image.new("RGB", (480, 360), (0, 0, 0))
+    image.paste(Image.new("RGB", (480, 270), (240, 200, 20)), (0, 45))
+    cover = tagging.square_jpeg(_jpeg_bytes(image))
+    assert _size(cover) == (270, 270)
+    with Image.open(io.BytesIO(cover)) as result:  # type: ignore[arg-type]
+        top = result.convert("RGB").getpixel((135, 2))
+    assert min(top) > 0 and top[0] > 150, top  # gelb statt schwarz
+
+
+def test_dark_16_9_thumbnail_keeps_its_picture() -> None:
+    """Echte 16:9-Bilder haben keine Balken – dunkler Bildinhalt oben (Nachthimmel) wird nicht weggeschnitten."""
+    image = Image.new("RGB", (1280, 720), (240, 200, 20))
+    image.paste(Image.new("RGB", (1280, 150), (5, 5, 5)), (0, 0))
+    cover = tagging.square_jpeg(_jpeg_bytes(image))
+    assert _size(cover) == (720, 720)
+    with Image.open(io.BytesIO(cover)) as result:  # type: ignore[arg-type]
+        assert max(result.convert("RGB").getpixel((360, 5))) < 40  # oben weiter dunkel
+
+
+def test_square_album_cover_keeps_dark_edges() -> None:
+    """Quadratische Album-Cover werden nicht beschnitten – auch wenn sie oben schwarz sind."""
+    image = Image.new("RGB", (600, 600), (0, 0, 0))
+    image.paste(Image.new("RGB", (600, 450), (20, 200, 90)), (0, 150))
+    assert _size(tagging.square_jpeg(_jpeg_bytes(image))) == (600, 600)

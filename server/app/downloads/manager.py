@@ -471,9 +471,12 @@ class DownloadManager:
         cover: bytes | None = None
         thumbnail = next((p for p in workdir.glob(f"{media_file.stem}.jpg")), None)
         if media_type == "audio":
-            cover = tagging.square_jpeg(tagging.fetch_image(snapshot["thumbnail_url"]))
-            if cover is None and thumbnail is not None:
-                cover = tagging.square_jpeg(thumbnail.read_bytes())
+            # Das größere Bild gewinnt: Vorschaubilder von Video-Treffern sind klein (z. B. 400×225), yt-dlp lädt
+            # das große mit; Song-Cover von YouTube Music (1200 px) bleiben vorn
+            cover = tagging.best_square_jpeg([
+                tagging.fetch_image(snapshot["thumbnail_url"]),
+                thumbnail.read_bytes() if thumbnail is not None else None,
+            ])
         try:
             tagging.write_tags(media_file, meta, cover)
         except Exception as exc:  # noqa: BLE001 – ohne Tags trotzdem weitermachen
