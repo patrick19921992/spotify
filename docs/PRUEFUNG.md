@@ -184,6 +184,18 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
 - [x] Videoplayer am PC ohne Lautstärkeregler (nur Stummschalten) → Regler in der Leiste des Videos (auch im
       Vollbild), ↑/↓ lauter/leiser, M stumm mit Anzeige im Bild; gleiche Lautstärke wie die Musik (Strg+↑/↓ und
       Regler wirken auf beides, bleibt für den nächsten Start gespeichert). Tests mit nachgebautem Videoplayer
+- [x] Gegenprüfung Lautstärke (`wf_10a680b2-ff7`):
+      - mittel – „Ton an“ sprang auf 100 %, weil Player-Leiste und Video sich den Wert vor dem Stummschalten
+        getrennt merkten → gemeinsam (`toggleDesktopMute`), ohne gemerkten Wert halbe Lautstärke
+      - mittel – gleiche Einstellung, ungleich laut: libmpv (Musik) rechnet die Lautstärke kubisch, der
+        Videoplayer von Windows linear (30 % ≈ 20 dB lauter) → Video bekommt unter Windows dieselbe Kurve
+      - mittel – Hochkant-Video/kleines Fenster: Leiste lief über, Vollbild-Knopf nicht mehr klickbar, Zeitangabe
+        abgeschnitten → schmaler Player: nur Lautsprecher-Knopf (↑/↓ gehen weiter)
+      - mittel – beim langen Ziehen am Regler blendete chewie die Leiste aus → Ziehen zählt wie Mausbewegung
+      - niedrig – zehnmal „leiser“ ergab 1e-16 statt 0 (kein „Stumm“, M brachte keinen Ton) → auf ganze Prozent
+        gerundet; Tab erreichte Lautsprecher/Regler (Leertaste wirkte doppelt) → nicht per Tab erreichbar;
+        Lautstärke-Anzeige lief bei schmalem Player über → verkleinert sich
+      - geprüft, kein Fehler: Strg+↑/↓ auf der Videoseite (wirkt, ohne Anzeige – gewollt)
 
 ### Gegenprüfung PR #6 (`wf_0d99c533-5a2`)
 

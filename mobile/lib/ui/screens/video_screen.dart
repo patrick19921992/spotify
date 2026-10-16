@@ -146,7 +146,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
     // Am Computer gilt dieselbe Lautstärke wie für die Musik (wie bei Spotify)
     if (isDesktopPlatform) {
       try {
-        await controller.setVolume(ref.read(audioHandlerProvider).player.volume.clamp(0.0, 1.0));
+        await controller.setVolume(videoGain(ref.read(audioHandlerProvider).player.volume));
       } catch (_) {}
     }
     if (!mounted || generation != _generation) {
@@ -265,7 +265,7 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       // Lautstärke geändert (Regler, Tasten, Strg+↑/↓) -> auch das Video
       ref.listen(volumeProvider, (_, next) {
         final volume = next.value;
-        if (volume != null) _video?.setVolume(volume.clamp(0.0, 1.0)).ignore();
+        if (volume != null) _video?.setVolume(videoGain(volume)).ignore();
       });
     }
 

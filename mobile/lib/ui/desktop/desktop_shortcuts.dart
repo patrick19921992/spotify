@@ -86,13 +86,31 @@ final volumeProvider = StreamProvider<double>((ref) => ref.watch(audioHandlerPro
 
 const _prefVolume = 'desktop.volume';
 
-/// Lautstärke setzen und für den nächsten Start merken.
+/// Lautstärke setzen und für den nächsten Start merken. Auf ganze Prozent gerundet – sonst bleibt nach
+/// mehrmals „leiser“ ein winziger Rest (z. B. 1e-16) statt 0, und „Stumm“/„Ton an“ stimmt nicht mehr.
 Future<void> setDesktopVolume(WidgetRef ref, double volume) async {
-  final value = volume.clamp(0.0, 1.0);
+  final value = (volume.clamp(0.0, 1.0) * 100).round() / 100;
   try {
     ref.read(sharedPreferencesProvider).setDouble(_prefVolume, value);
   } catch (_) {}
   await ref.read(audioHandlerProvider).player.setVolume(value);
+}
+
+/// Lautstärke vor dem Stummschalten – gemeinsam für Player-Leiste und Videoplayer (die Lautstärke ist ja
+/// auch gemeinsam). Ohne gemerkten Wert (z. B. stumm gestartet) geht es mit der halben Lautstärke weiter.
+double _volumeBeforeMute = 0.5;
+
+@visibleForTesting
+void debugResetDesktopMute() => _volumeBeforeMute = 0.5;
+
+/// Stummschalten bzw. wieder auf die Lautstärke davor.
+Future<void> toggleDesktopMute(WidgetRef ref) {
+  final volume = ref.read(audioHandlerProvider).player.volume;
+  if (volume > 0) {
+    _volumeBeforeMute = volume;
+    return setDesktopVolume(ref, 0);
+  }
+  return setDesktopVolume(ref, _volumeBeforeMute);
 }
 
 /// Hängt die Desktop-Aktionen über alle Seiten (MaterialApp.builder): Tastenkürzel, Maus-Zurück-Taste,
