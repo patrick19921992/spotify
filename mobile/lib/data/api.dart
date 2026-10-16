@@ -329,10 +329,12 @@ class ApiClient {
   // ------------------------------------------------------------ Links für Player/Bilder
 
   /// Stream-Link mit Medien-Token. [compatible] = für iPhones (Opus -> AAC).
-  String streamUrl(int trackId, {String quality = 'original', bool compatible = false}) {
+  /// [audioOnly] = bei einem Video nur den Ton (Video in einer Musik-Warteschlange).
+  String streamUrl(int trackId, {String quality = 'original', bool compatible = false, bool audioOnly = false}) {
     final params = <String, String>{'t': _tokens.mediaToken};
     if (quality != 'original') params['quality'] = quality;
     if (compatible) params['compatible'] = 'true';
+    if (audioOnly) params['audio_only'] = 'true';
     return Uri.parse('$baseUrl/api/tracks/$trackId/stream').replace(queryParameters: params).toString();
   }
 

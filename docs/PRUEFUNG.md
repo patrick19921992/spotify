@@ -293,6 +293,19 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       Fensterbreite (bei 1260 px je 310 px Rand → ~20 px Inhalt). Betraf alle Blätter der Verwaltung (Benutzer und
       Rubriken anlegen/bearbeiten, Rubrik wählen) → Rand aus der Breite des Blatts (`LayoutBuilder`);
       `admin_sheet_width_test.dart` prüft Handy, Windows-Fenster und großen Bildschirm
+- [x] „Mein Player zeigt kein Update“ (Windows): Die App prüfte nur beim Start – am PC bleibt Selfify aber
+      tagelang offen → `UpdateWatcher`: stündlich und beim Zurückkehren in die App (Fenster wieder im
+      Vordergrund, höchstens alle 30 Minuten); scheitert eine Nachprüfung (offline), bleibt der bisherige Stand
+- [x] Gegenprüfung (`wf_a691a425-8f9`): Build 31 (erste Windows-Version) sucht gar nicht nach Updates → Nutzer
+      informiert, Hinweis im README (einmal von Hand installieren); Test „beim Start offline, später online“
+      ergänzt; Tests für Sperrfrist-Grenzen, nur beim Zurückkehren und „Wächter bleibt still“ geschärft
+
+### Videos in Lieblingssongs/Playlists
+
+- [x] „Er hält einfach“: Der Musik-Player filterte Videos aus der Warteschlange – Song + Video in den
+      Lieblingssongs endete nach dem Song → Videos laufen als Ton mit; der Server liefert mit `audio_only=true`
+      nur die Tonspur als AAC (Zwischenspeicher wie beim iPhone-Umwandeln), Antippen öffnet weiterhin das Video;
+      „Abspielen“ geht auch bei einer Playlist nur aus Videos. Offline bleiben Videos außen vor
 
 ## Weitermachen nach einer Unterbrechung
 

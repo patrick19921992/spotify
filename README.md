@@ -127,8 +127,9 @@ und IPA.
 2. Installieren. Android fragt einmalig, ob Apps aus dieser Quelle erlaubt sind.
 3. Bei der ersten Wiedergabe die Benachrichtigungen erlauben (für die Steuerung auf dem Sperrbildschirm).
 
-**Updates:** Die App schaut beim Start nach einer neueren Version (Datei `version.json` im Release) und zeigt
-dann „Neue App-Version verfügbar“. *Installieren* lädt die APK und öffnet den Android-Installer. Beim ersten
+**Updates:** Die App schaut beim Start nach einer neueren Version (Datei `version.json` im Release), danach
+stündlich und beim Zurückkehren in die App (höchstens alle 30 Minuten), und zeigt dann „Neue App-Version
+verfügbar“. *Installieren* lädt die APK und öffnet den Android-Installer. Beim ersten
 Mal fragt Android, ob Selfify Apps installieren darf. Von Hand: *Einstellungen → Nach Updates suchen*. Der
 Hinweis erscheint auch auf dem Anmeldebildschirm – falls die Anmeldung erst mit der neuen Version klappt.
 
@@ -178,12 +179,16 @@ anhaken → OK*. Sonst fragt SmartScreen bei jedem Start nach. Dann entpacken un
 `selfify.exe` starten. Alle Dateien im Ordner gehören zusammen (DLLs und Ordner `data`). Die `.exe` allein
 funktioniert nicht.
 
-**Updates:** Wie am Handy zeigt Selfify „Neue App-Version verfügbar“. *Installieren* lädt den neuen Installer,
+**Updates:** Wie am Handy zeigt Selfify „Neue App-Version verfügbar“ – auch wenn das Programm die ganze Zeit
+offen bleibt (es schaut stündlich nach und wenn das Fenster wieder in den Vordergrund kommt). *Installieren* lädt den neuen Installer,
 prüft ihn, schließt Selfify, aktualisiert im Hintergrund und startet Selfify wieder – ohne erneute
 SmartScreen-Warnung. Von Hand: *Einstellungen → Nach Updates suchen*, oder die neue
 `selfify-windows-setup.exe` einfach darüber installieren. Anmeldung, Einstellungen und Offline-Musik bleiben
 erhalten. Wer die ZIP-Version nutzt, bekommt beim ersten Update den normalen Installations-Assistenten; danach
 Selfify über das Startmenü starten und den alten ZIP-Ordner löschen.
+Die allererste Windows-Version (Build 31) sucht noch nicht nach Updates (in den Einstellungen fehlt dort
+„Nach Updates suchen“): einmal `selfify-windows-setup.exe` aus dem Release `app-latest` von Hand darüber
+installieren – danach kommen Updates von selbst.
 
 **Deinstallieren:** *Einstellungen → Apps → Installierte Apps → Selfify → Deinstallieren*. Anmeldung,
 Einstellungen und Offline-Titel bleiben dabei auf dem PC. Wer alles entfernen will, löscht danach noch die
@@ -250,6 +255,9 @@ Server-Adresse eintragen, z. B. `https://musik.example.de` oder im Heimnetz `htt
    im Menü eines Videos (antippen) lässt sich trotzdem beides holen.
 5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Pfeil nach unten tippen
    („Aufs Gerät laden“). Die Musik findest du dann unter *Bibliothek › Auf diesem Gerät*.
+6. **Videos in Playlists:** Steht ein Video in den Lieblingssongs oder einer Playlist, läuft es beim Abspielen
+   als Ton mit (wie Musikvideos bei Spotify) – der Server schickt dafür nur die Tonspur. Antippen öffnet es
+   weiterhin als Video. Offline gibt es Videos nicht.
 
 ---
 

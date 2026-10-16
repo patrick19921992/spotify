@@ -43,9 +43,10 @@ final playbackBridgeProvider = Provider<void>((ref) {
     final local = offline.localPath(track.id);
     if (local != null) return AudioSource.file(local, tag: item);
     if (api == null) throw StateError('Nicht angemeldet und Titel nicht offline verfügbar.');
-    // iPhones können kein Opus/Ogg -> der Server liefert dann AAC
+    // iPhones können kein Opus/Ogg -> der Server liefert dann AAC. Videos (z. B. in den Lieblingssongs) laufen
+    // hier als Ton mit – der Server schickt dafür nur die Tonspur statt des ganzen Videos.
     return AudioSource.uri(
-      Uri.parse(api.streamUrl(track.id, quality: quality, compatible: Platform.isIOS)),
+      Uri.parse(api.streamUrl(track.id, quality: quality, compatible: Platform.isIOS, audioOnly: track.isVideo)),
       tag: item,
     );
   };
@@ -109,11 +110,11 @@ class PlayerController {
       throw StateError('Die Wiedergabe unter Windows konnte nicht gestartet werden (libmpv-2.dll fehlt oder wird '
           'vom Virenschutz blockiert). Bitte Selfify neu installieren.');
     }
-    var list = tracks.where((t) => !t.isVideo).toList();
+    // Videos laufen als Ton mit (wie Musikvideos bei Spotify) – sonst hielte z. B. eine Playlist mit
+    // Song und Video nach dem Song einfach an. Ansehen lässt sich ein Video weiterhin per Antippen.
+    var list = tracks.toList();
     // Nach Position, nicht nach Gleichheit: derselbe Titel kann mehrfach vorkommen (Playlist)
-    var start = index >= 0 && index < tracks.length && !tracks[index].isVideo
-        ? tracks.take(index).where((t) => !t.isVideo).length
-        : 0;
+    var start = index >= 0 && index < tracks.length ? index : 0;
     if (_ref.read(settingsProvider).offlineMode || _ref.read(isOfflineProvider)) {
       final offline = _ref.read(offlineProvider);
       // Fehlt der gewählte Titel offline, geht es mit dem nächsten heruntergeladenen weiter

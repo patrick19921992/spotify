@@ -17,6 +17,7 @@ import 'package:selfify/ui/desktop/desktop_player_bar.dart';
 import 'package:selfify/ui/desktop/desktop_right_panel.dart';
 import 'package:selfify/ui/desktop/desktop_shell.dart';
 import 'package:selfify/ui/router.dart';
+import 'package:selfify/ui/widgets/update_watcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fakes.dart';
@@ -86,6 +87,11 @@ void main() {
       expect(find.text(text), findsWidgets, reason: text);
     }
     expect(find.text(t[1].title), findsWidgets);
+  }, variant: windows);
+
+  testWidgets('Windows: die App sucht auch bei laufender App nach Updates (Wächter eingebunden)', (tester) async {
+    await pumpApp(tester, const Size(1280, 800));
+    expect(find.byType(UpdateWatcher), findsOneWidget);
   }, variant: windows);
 
   testWidgets('Windows narrow desktop 900x600 uses icon rail', (tester) async {

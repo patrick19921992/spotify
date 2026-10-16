@@ -269,7 +269,8 @@ class LibraryPlayControls extends ConsumerWidget {
     final playing = active && ref.watch(isPlayingProvider);
     final shuffleOn = active && ref.watch(playbackStateProvider).value?.shuffleMode == AudioServiceShuffleMode.all;
     final player = ref.read(playerProvider);
-    final playable = tracks.any((t) => !t.isVideo);
+    // Videos laufen beim Abspielen als Ton mit
+    final playable = tracks.isNotEmpty;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

@@ -59,6 +59,17 @@ class AvailableUpdateController extends AsyncNotifier<AppRelease?> {
     state = AsyncData(release);
     return release;
   }
+
+  /// Nebenbei erneut prüfen, während die App läuft (siehe UpdateWatcher). Scheitert die Prüfung (offline),
+  /// bleibt der bisherige Stand – ein schon gezeigter Hinweis verschwindet nicht.
+  Future<void> recheck() async {
+    if (state.isLoading) return;
+    try {
+      await refresh();
+    } catch (_) {
+      // beim nächsten Mal wieder
+    }
+  }
 }
 
 final availableUpdateProvider = AsyncNotifierProvider<AvailableUpdateController, AppRelease?>(
