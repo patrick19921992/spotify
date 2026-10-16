@@ -813,8 +813,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               title: 'Noch nichts auf diesem Gerät',
               message: noNetwork
                   ? 'Ohne Verbindung kannst du nur Musik hören, die auf deinem Handy ist. '
-                        'Tippe beim nächsten Mal bei Playlists, Alben oder Lieblingssongs auf den Download-Pfeil.'
-                  : 'Tippe bei Playlists, Alben oder deinen Lieblingssongs auf den Download-Pfeil, '
+                        'Tippe beim nächsten Mal bei Playlists, Alben oder Lieblingssongs auf den Pfeil nach unten.'
+                  : 'Tippe bei Playlists, Alben oder deinen Lieblingssongs auf den Pfeil nach unten, '
                         'um sie ohne Internet zu hören.',
             ),
           ),

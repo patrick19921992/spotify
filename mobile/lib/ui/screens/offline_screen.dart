@@ -182,9 +182,9 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
     final count = offline.tracks.length;
     final ok = await confirm(
       context,
-      title: 'Alles von diesem Gerät löschen?',
+      title: 'Alle Musik von diesem Gerät löschen?',
       message: count == 0
-          ? 'Alle gespeicherten Sammlungen und Titel in der Warteschlange werden entfernt.'
+          ? 'Alle gespeicherten Sammlungen und Titel, die noch aufs Gerät geladen werden sollten, werden entfernt.'
           : '${pluralSongs(count)} (${formatBytes(offline.totalBytes)}) werden vom Handy gelöscht. '
               'Gespeicherte Sammlungen werden nicht mehr offline gehalten.',
       confirmLabel: 'Alles löschen',
@@ -193,7 +193,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
     if (!ok) return;
     try {
       await ref.read(offlineProvider.notifier).removeAll();
-      if (mounted) showMessage(context, 'Alles wurde von diesem Gerät gelöscht');
+      if (mounted) showMessage(context, 'Alle Musik wurde von diesem Gerät gelöscht');
     } catch (e) {
       if (mounted) showError(context, e);
     }
@@ -235,12 +235,12 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
-              child: Text('Download-Qualität', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              child: Text('Qualität auf diesem Gerät', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                'Gilt für Titel, die neu aufs Gerät geladen werden. Titel auf diesem Gerät bleiben, wie sie sind. '
+                'Gilt für Titel, die neu aufs Gerät geladen werden. Titel, die schon auf diesem Gerät sind, bleiben, wie sie sind. '
                 'Höhere Qualität braucht mehr Speicherplatz.',
                 style: AppText.caption,
               ),
@@ -367,7 +367,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
                     icon: Icons.download_for_offline_outlined,
                     title: 'Noch nichts auf diesem Gerät',
                     message: 'Tippe auf einer Playlist, einem Album oder bei deinen Lieblingssongs auf den '
-                        'Download-Pfeil. Die Musik wird dann aufs Handy geladen und spielt auch ohne Internet.',
+                        'Pfeil nach unten. Die Musik wird dann aufs Gerät geladen und spielt auch ohne Internet.',
                     action: OutlinedButton.icon(
                       onPressed: () => context.go('/library'),
                       icon: const Icon(Icons.library_music_rounded),
@@ -403,7 +403,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
                   ),
                   ListTile(
                     leading: const Icon(Icons.high_quality_rounded, color: AppColors.textSecondary),
-                    title: const Text('Download-Qualität', style: AppText.tileTitle),
+                    title: const Text('Qualität auf diesem Gerät', style: AppText.tileTitle),
                     subtitle: Text(
                       qualityLabels[settings.offlineQuality] ?? settings.offlineQuality,
                       style: AppText.tileSubtitle,

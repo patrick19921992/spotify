@@ -198,8 +198,15 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
 
 - [x] „Heruntergeladen“ (Musik, die auf dem Gerät gespeichert ist) hieß fast wie „Downloads“ (YouTube-Downloads
       auf den Server) → umbenannt in „Auf diesem Gerät“ (Bibliothek-Filter, Startseite, Gerätespeicher-Seite,
-      Einstellungen, Offline-Hinweise); „Download entfernen“ → „Vom Gerät entfernen“, „Herunterladen“ (Pfeil an
-      Playlist/Album) → „Aufs Gerät laden“. Server-Texte (Downloads-Seite, Verwaltung) bleiben unverändert
+      Einstellungen, Offline-Hinweise); „Download entfernen“ → „Vom Gerät entfernen“, Pfeil an Playlist, Album und
+      Lieblingssongs → „Aufs Gerät laden“. Server-Texte (Downloads-Seite, Verwaltung) bleiben unverändert
+- [x] Gegenprüfung (`wf_43fc5dde-384`, 9 Prüfer wegen Limit abgebrochen → Funde selbst nachgeprüft):
+      übersehen waren „Lade … herunter“ (Startseite ohne Netz), „Download-Qualität“ (Einstellungen und
+      Gerätespeicher-Seite → „Qualität auf diesem Gerät“), „Download-Pfeil“ (→ „Pfeil nach unten“), der Album-Pfeil
+      („Aufs Handy laden“ → „Aufs Gerät laden“, wie an Playlists); „Alles von diesem Gerät löschen?“ klang nach
+      Zurücksetzen → „Alle Musik von diesem Gerät löschen?“; „Warteschlange“ war mit der Wiedergabe-Warteschlange
+      verwechselbar; „bereits“ fehlte im Qualitäts-Hinweis; Einstellungs-Schalter kürzten den längeren Text bei sehr
+      großer Schrift → Titel darf 3 Zeilen haben
 - [ ] offen (Vorschlag): Einzelne Texte sagen noch „Handy“ (z. B. „wird aufs Handy geladen“) – unter Windows
       wäre „Gerät“ passender
 

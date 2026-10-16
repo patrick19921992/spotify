@@ -190,7 +190,7 @@ class _PlaylistList extends ConsumerWidget {
           ? const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Offline – deine Musik findest du unter Bibliothek › Auf diesem Gerät.',
+                'Offline – deine gespeicherte Musik findest du unter Bibliothek › Auf diesem Gerät.',
                 style: AppText.caption,
               ),
             )

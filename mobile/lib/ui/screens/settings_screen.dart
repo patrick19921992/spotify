@@ -202,8 +202,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _pickOfflineQuality(AppSettings settings) async {
     final value = await _pickQuality(
-      title: 'Download-Qualität',
-      message: 'Gilt für Songs, die neu aufs Gerät geladen werden. Songs auf diesem Gerät bleiben, wie sie sind.',
+      title: 'Qualität auf diesem Gerät',
+      message: 'Gilt für Songs, die neu aufs Gerät geladen werden. Songs, die schon auf diesem Gerät sind, bleiben, wie sie sind.',
       keys: _offlineQualities,
       selected: _offlineQualities.contains(settings.offlineQuality) ? settings.offlineQuality : 'original',
     );
@@ -425,7 +425,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       AccountTile(
         icon: Icons.high_quality_rounded,
-        title: 'Download-Qualität',
+        title: 'Qualität auf diesem Gerät',
         subtitle: _qualityLabel(settings.offlineQuality),
         onTap: () => _pickOfflineQuality(settings),
       ),

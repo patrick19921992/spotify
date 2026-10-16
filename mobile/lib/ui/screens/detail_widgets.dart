@@ -411,7 +411,7 @@ class DetailOfflineButton extends ConsumerWidget {
     final offline = ref.watch(offlineProvider);
     if (!offline.isCollectionOffline(collectionKey)) {
       return IconButton(
-        tooltip: 'Aufs Handy laden',
+        tooltip: 'Aufs Gerät laden',
         iconSize: 28,
         icon: const Icon(Icons.arrow_circle_down_outlined, color: AppColors.textSecondary),
         onPressed: canKeep ? () => _keep(context, ref) : null,
@@ -421,7 +421,7 @@ class DetailOfflineButton extends ConsumerWidget {
     final done = ids.where(offline.tracks.containsKey).length;
     if (done >= ids.length) {
       return IconButton(
-        tooltip: 'Auf dem Handy – tippen zum Entfernen',
+        tooltip: 'Auf diesem Gerät – tippen zum Entfernen',
         iconSize: 28,
         icon: const Icon(Icons.arrow_circle_down_rounded, color: AppColors.accent),
         onPressed: () => _release(context, ref),

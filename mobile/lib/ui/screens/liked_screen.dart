@@ -193,7 +193,7 @@ class _LikedSongsScreenState extends ConsumerState<LikedSongsScreen> {
                 ? const EmptyState(
                     icon: Icons.cloud_off_rounded,
                     title: 'Keine Lieblingssongs auf dem Handy',
-                    message: 'Tippe auf den Download-Pfeil, damit du deine Lieblingssongs auch ohne Verbindung hören kannst.',
+                    message: 'Tippe auf den Pfeil nach unten, damit du deine Lieblingssongs auch ohne Verbindung hören kannst.',
                   )
                 : EmptyState(
                     icon: Icons.favorite_border_rounded,

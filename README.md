@@ -239,7 +239,8 @@ Server-Adresse eintragen, z. B. `https://musik.example.de` oder im Heimnetz `htt
 3. **Musik reinlegen:** Vorhandene Dateien per SMB in `\\tower\selfify\Musik` (bzw. `Hoerspiele`,
    `Videos` …) kopieren. Sie erscheinen nach wenigen Sekunden.
 4. **Fehlende Songs holen:** *Suche* → Song eintippen → unter „Von YouTube holen“ auf **Holen** tippen.
-5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Download-Pfeil tippen.
+5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Pfeil nach unten tippen
+   („Aufs Gerät laden“). Die Musik findest du dann unter *Bibliothek › Auf diesem Gerät*.
 
 ---
 

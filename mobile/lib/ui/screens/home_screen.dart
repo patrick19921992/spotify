@@ -502,7 +502,7 @@ class _OfflineHome extends ConsumerWidget {
           title: 'Noch nichts auf diesem Gerät',
           message: noNetwork
               ? 'Ohne Internet kannst du nur Musik hören, die auf deinem Handy gespeichert ist. '
-                  'Lade Playlists, Alben oder Lieblingssongs herunter, sobald du wieder online bist.'
+                  'Lade Playlists, Alben oder Lieblingssongs aufs Gerät, sobald du wieder online bist.'
               : 'Lade Playlists, Alben oder Lieblingssongs aufs Handy, um sie ohne Internet zu hören.',
           action: noNetwork
               ? null
