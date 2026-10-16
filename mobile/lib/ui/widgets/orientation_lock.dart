@@ -64,10 +64,12 @@ class _OrientationLockState extends State<OrientationLock> with WidgetsBindingOb
     final wanted = orientationsForScreen(_screenSize());
     if (wanted == null) return; // Größe noch unbekannt – didChangeMetrics kommt
     appOrientations = wanted;
-    if (!force && _sent != null && listEquals(_sent, wanted)) return;
-    _sent = wanted;
+    // Läuft ein Video im Vollbild, gilt dessen Ausrichtung (sonst kippt es beim Zurückkehren ins Hochformat)
+    final target = fullScreenOrientations ?? wanted;
+    if (!force && _sent != null && listEquals(_sent, target)) return;
+    _sent = target;
     // Nicht abwarten: ohne Fenster antwortet Android nie
-    unawaited(SystemChrome.setPreferredOrientations(wanted).catchError((Object _) {}));
+    unawaited(SystemChrome.setPreferredOrientations(target).catchError((Object _) {}));
   }
 
   @override

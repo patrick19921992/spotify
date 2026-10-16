@@ -254,6 +254,16 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
         Wort auch verkleinert nicht → eine Zeile mit „…“; Bindestriche dürfen umbrechen; Schnellzugriff-Cover
         bleibt 56 breit (sonst weniger Platz für den Titel bei großer Schrift)
       - mittel – Update-Hinweis: Schwelle für die flache Zeile wächst mit der Schrift
+- [x] zweite Gegenprüfung (`wf_a063e2d6-a1a`):
+      - mittel – Video im Vollbild kippte beim Zurückkehren (Benachrichtigungsleiste, Sperrbildschirm) hochkant →
+        während des Vollbilds gilt dessen Ausrichtung (`fullScreenOrientations`)
+      - mittel – Balken-Zuschnitt hätte dunklen Bildinhalt echter 16:9-Bilder entfernt → nur so viel, wie ein
+        16:9-Bild an Balken hätte
+      - niedrig – Foldable während des Videos auf-/zugeklappt: nach dem Vollbild alte Ausrichtung →
+        `LiveAppOrientations` (gelesen beim Verlassen)
+      - niedrig – Android kannte beim Start die Bildschirmgröße nicht (Engine von audio_service ohne Activity) →
+        MainActivity reicht sie nach (`ViewUtils.calculateMaximumDisplayMetrics`)
+      - niedrig – rundes Künstlerbild in der Schnellzugriff-Kachel wurde bei großer Schrift zur Tonne → mittig 56 px
 - [ ] offen (niedrig): Downloads-Liste – Text bei Video-Vorschaubildern (16:9) weiter eingerückt als bei Covern;
       Warteschlange bei großer Schrift „4 Songs · 13…“ gekürzt; ungleiche Abstände auf der Startseite
 

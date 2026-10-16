@@ -164,11 +164,14 @@ class QuickTile extends StatelessWidget {
                 SizedBox(
                   width: 56,
                   height: height,
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    clipBehavior: Clip.hardEdge,
-                    child: contextCover(item, height, radius: 0),
-                  ),
+                  // Künstler sind rund: nicht beschneiden (sonst Tonnenform), sondern mittig in 56
+                  child: item.type == 'artist'
+                      ? Center(child: contextCover(item, 56))
+                      : FittedBox(
+                          fit: BoxFit.cover,
+                          clipBehavior: Clip.hardEdge,
+                          child: contextCover(item, height, radius: 0),
+                        ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(

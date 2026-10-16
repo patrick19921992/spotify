@@ -102,17 +102,19 @@ def fetch_image(url: str | None, timeout: int = 20) -> bytes | None:
 
 
 def _trim_letterbox(image: Image.Image) -> Image.Image:
-    """Schwarze Balken oben/unten entfernen (4:3-Vorschaubild eines 16:9-Videos) – höchstens je ein Viertel."""
+    """Schwarze Balken oben/unten entfernen (4:3-Vorschaubild eines 16:9-Videos). Höchstens so viel, wie ein
+    16:9-Bild an Balken hätte – dunkler Bildinhalt echter 16:9-Bilder bleibt."""
     gray = image.convert("L")
     width, height = gray.size
+    limit = max(0, (height - round(width * 9 / 16)) // 2)
 
     def dark(row: int) -> bool:
         return gray.crop((0, row, width, row + 1)).getextrema()[1] < 24  # type: ignore[index, operator]
 
     top, bottom = 0, height
-    while top < height // 4 and dark(top):
+    while top < limit and dark(top):
         top += 1
-    while bottom > height - height // 4 and dark(bottom - 1):
+    while bottom > height - limit and dark(bottom - 1):
         bottom -= 1
     return image.crop((0, top, width, bottom)) if top or bottom < height else image
 

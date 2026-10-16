@@ -616,6 +616,16 @@ def test_cover_without_letterbox_bars() -> None:
     assert min(top) > 0 and top[0] > 150, top  # gelb statt schwarz
 
 
+def test_dark_16_9_thumbnail_keeps_its_picture() -> None:
+    """Echte 16:9-Bilder haben keine Balken – dunkler Bildinhalt oben (Nachthimmel) wird nicht weggeschnitten."""
+    image = Image.new("RGB", (1280, 720), (240, 200, 20))
+    image.paste(Image.new("RGB", (1280, 150), (5, 5, 5)), (0, 0))
+    cover = tagging.square_jpeg(_jpeg_bytes(image))
+    assert _size(cover) == (720, 720)
+    with Image.open(io.BytesIO(cover)) as result:  # type: ignore[arg-type]
+        assert max(result.convert("RGB").getpixel((360, 5))) < 40  # oben weiter dunkel
+
+
 def test_square_album_cover_keeps_dark_edges() -> None:
     """Quadratische Album-Cover werden nicht beschnitten – auch wenn sie oben schwarz sind."""
     image = Image.new("RGB", (600, 600), (0, 0, 0))

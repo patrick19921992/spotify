@@ -14,9 +14,12 @@ import 'package:selfify/data/app_update.dart';
 import 'package:selfify/state/app_update.dart';
 import 'package:selfify/state/auth.dart';
 import 'package:selfify/ui/screens/category_screen.dart';
+import 'package:selfify/ui/screens/home_screen.dart';
 import 'package:selfify/ui/screens/offline_screen.dart';
 import 'package:selfify/ui/screens/player_screen.dart';
 import 'package:selfify/ui/widgets/app_update.dart';
+import 'package:selfify/ui/widgets/cards.dart';
+import 'package:selfify/ui/widgets/cover.dart';
 import 'package:selfify/ui/widgets/fit_text.dart';
 import 'package:selfify/ui/widgets/orientation_lock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -135,6 +138,18 @@ void main() {
       expect(calls.last, ['portraitUp']);
     });
 
+    testWidgets('Video im Vollbild: Zurückkehren (z. B. nach der Benachrichtigungsleiste) kippt es nicht hochkant',
+        (tester) async {
+      await pumpLock(tester, screen: const Size(412, 915));
+      fullScreenOrientations = const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight];
+      addTearDown(() => fullScreenOrientations = null);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(calls.last, ['landscapeLeft', 'landscapeRight']);
+      expect(appOrientations, [DeviceOrientation.portraitUp], reason: 'die App selbst bleibt Hochformat');
+    });
+
     testWidgets('Computer: nichts sperren', (tester) async {
       await pumpLock(tester, screen: const Size(500, 400));
       expect(calls, isEmpty);
@@ -149,11 +164,31 @@ void main() {
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
+      expect(fullScreenOrientations, [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
       chewie.exitFullScreen();
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
       expect(calls.last, ['portraitUp'], reason: 'chewie würde sonst alle Ausrichtungen freigeben');
+      expect(fullScreenOrientations, isNull);
+      await v.close(tester);
+    }, timeout: const Timeout(Duration(seconds: 60)));
+
+    testWidgets('Foldable während des Videos aufgeklappt: nach dem Vollbild gilt die neue Ausrichtung', (tester) async {
+      appOrientations = const [DeviceOrientation.portraitUp];
+      v.video = v.FakeVideoPlatform();
+      VideoPlayerPlatform.instance = v.video;
+      await v.pumpVideo(tester);
+      final chewie = tester.widget<Chewie>(find.byType(Chewie)).controller..enterFullScreen();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      appOrientations = DeviceOrientation.values; // aufgeklappt: jetzt ein Tablet
+      chewie.exitFullScreen();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(calls.last, hasLength(4));
       await v.close(tester);
     }, timeout: const Timeout(Duration(seconds: 60)));
   });
@@ -240,6 +275,14 @@ void main() {
       await pumpTile(tester, 'A Night at the Opera', 140);
       expect(tester.widget<Text>(find.text('A Night at the Opera')).style!.fontSize, 13);
     });
+  });
+
+  testWidgets('Schnellzugriff mit großer Schrift: Künstler bleibt rund (keine Tonnenform)', (tester) async {
+    await pumpScreen(tester, const HomeScreen(), size: const Size(360, 780), textScale: 2.0);
+    expectNoErrors(tester);
+    final artist = find.descendant(of: find.byType(QuickTile), matching: find.byWidgetPredicate((w) => w is CoverImage && w.circle));
+    expect(artist, findsWidgets);
+    expect(tester.getSize(artist.first), const Size(56, 56));
   });
 
   testWidgets('Rubrik: „Zufallsmix“ ganz lesbar, Abspielknopf rechtsbündig', (tester) async {
