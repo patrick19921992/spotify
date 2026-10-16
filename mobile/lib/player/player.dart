@@ -158,7 +158,8 @@ class PlayerController {
     if (_ref.read(settingsProvider).offlineMode || _ref.read(isOfflineProvider)) {
       throw StateError('Im Offline-Modus ist Radio nicht verfügbar.');
     }
-    final tracks = await api.radio(track.id);
+    // Radio bleibt reine Musik (wie Autoplay) – Videos laufen nur mit, wenn man sie selbst in die Liste nimmt
+    final tracks = (await api.radio(track.id)).where((t) => !t.isVideo).toList();
     await handler.playTracks(tracks, context: PlayContext('radio', id: track.id, title: '${track.title}-Radio'));
   }
 }

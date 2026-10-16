@@ -227,8 +227,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
   Future<void> _addToQueue(List<Track> tracks) async {
     try {
       await ref.read(playerProvider).addToQueue(tracks);
-      final count = tracks.where((t) => !t.isVideo).length;
-      if (mounted) showMessage(context, '${pluralSongs(count)} zur Warteschlange hinzugefügt');
+      if (mounted) showMessage(context, '${pluralSongs(tracks.length)} zur Warteschlange hinzugefügt');
     } catch (e) {
       if (mounted) showError(context, e);
     }
@@ -336,7 +335,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
                       },
                     ),
                 ],
-                if (tracks.any((t) => !t.isVideo))
+                if (tracks.isNotEmpty)
                   ListTile(
                     leading: const Icon(Icons.queue_music_rounded),
                     title: const Text('Zur Warteschlange hinzufügen'),
