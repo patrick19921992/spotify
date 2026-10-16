@@ -13,10 +13,12 @@ import 'support/fakes.dart';
 
 class _RecordingApi extends FakeApi {
   int? sentCategory = -1;
+  bool? sentAudioOnly;
 
   @override
-  Future<DownloadJob> downloadItem(YouTubeItem item, {int? categoryId, int? playlistId}) async {
+  Future<DownloadJob> downloadItem(YouTubeItem item, {bool audioOnly = false, int? categoryId, int? playlistId}) async {
     sentCategory = categoryId;
+    sentAudioOnly = audioOnly;
     return DownloadJob.fromJson(jobJson(7, 'queued'));
   }
 
@@ -53,6 +55,18 @@ void main() {
     container.listen(downloadsProvider, (_, _) {});
     await container.read(downloadsProvider.notifier).startItem(YouTubeItem.fromJson(ytItemJson(3)));
     expect(api.sentCategory, 1);
+  });
+
+  test('Video nur als Musik holen: geht an die Musik-Rubrik, nicht an die Video-Rubrik', () async {
+    final api = _RecordingApi();
+    final container = await _container(api, {'s.audioCategoryId': 1, 's.videoCategoryId': 4});
+    addTearDown(container.dispose);
+    container.listen(downloadsProvider, (_, _) {});
+    final video = YouTubeItem.fromJson(ytItemJson(3, type: 'video'));
+    await container.read(downloadsProvider.notifier).startItem(video, audioOnly: true);
+    expect((api.sentAudioOnly, api.sentCategory), (true, 1));
+    await container.read(downloadsProvider.notifier).startItem(video);
+    expect((api.sentAudioOnly, api.sentCategory), (false, 4));
   });
 
   test('Fertig-Meldungen funktionieren auch nach einem Neuaufbau (z. B. erneute Anmeldung)', () async {

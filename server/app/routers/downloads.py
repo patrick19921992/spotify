@@ -41,6 +41,10 @@ def _item_out(db: DbSession, item: YouTubeItem, user_id: int) -> YouTubeItemOut:
         out.in_library_track_id = db.scalar(
             select(Track.id).where(Track.source_id == item.video_id, Track.media_type == media_type).limit(1)
         )
+        if item.type == "video":
+            out.in_library_audio_track_id = db.scalar(
+                select(Track.id).where(Track.source_id == item.video_id, Track.media_type == "audio").limit(1)
+            )
         out.active_job_id = db.scalar(
             select(DownloadJob.id)
             .where(

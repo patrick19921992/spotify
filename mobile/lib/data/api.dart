@@ -590,10 +590,11 @@ class ApiClient {
         'thumbnail_url': thumbnailUrl,
       }));
 
-  /// Einen YouTube-Music-Treffer holen (Song/Video).
-  Future<DownloadJob> downloadItem(YouTubeItem item, {int? categoryId, int? playlistId}) => startDownload(
+  /// Einen YouTube-Music-Treffer holen (Song/Video). Mit [audioOnly] von einem Video nur den Ton (als Song).
+  Future<DownloadJob> downloadItem(YouTubeItem item, {bool audioOnly = false, int? categoryId, int? playlistId}) =>
+      startDownload(
         videoId: item.videoId!,
-        mediaType: item.isVideo ? 'video' : 'audio',
+        mediaType: item.isVideo && !audioOnly ? 'video' : 'audio',
         categoryId: categoryId,
         playlistId: playlistId,
         title: item.title,

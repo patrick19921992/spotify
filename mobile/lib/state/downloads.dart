@@ -232,10 +232,13 @@ class DownloadsController extends Notifier<DownloadsState> {
   }
 
   /// Song oder Video aus der YouTube-Suche holen.
-  Future<DownloadJob> startItem(YouTubeItem item, {int? categoryId, int? playlistId}) async {
+  /// Treffer holen – mit [audioOnly] von einem Video nur den Ton (landet als Song bei der Musik).
+  Future<DownloadJob> startItem(YouTubeItem item, {bool audioOnly = false, int? categoryId, int? playlistId}) async {
+    final video = item.isVideo && !audioOnly;
     final job = await _api.downloadItem(
       item,
-      categoryId: categoryId ?? await _categoryFor(item.isVideo),
+      audioOnly: audioOnly,
+      categoryId: categoryId ?? await _categoryFor(video),
       playlistId: playlistId,
     );
     _upsert(job);

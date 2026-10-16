@@ -824,6 +824,9 @@ class YouTubeItem {
   final int? inLibraryTrackId;
   final int? activeJobId;
 
+  /// Nur bei Videos: Der Ton davon ist schon als Song in der Bibliothek („Nur Musik holen“).
+  final int? inLibraryAudioTrackId;
+
   const YouTubeItem({
     required this.type,
     required this.title,
@@ -839,6 +842,7 @@ class YouTubeItem {
     required this.trackNumber,
     required this.inLibraryTrackId,
     required this.activeJobId,
+    this.inLibraryAudioTrackId,
   });
 
   String get artistDisplay => artists.join(', ');
@@ -860,6 +864,7 @@ class YouTubeItem {
         trackNumber: (j['track_number'] as num?)?.toInt(),
         inLibraryTrackId: (j['in_library_track_id'] as num?)?.toInt(),
         activeJobId: (j['active_job_id'] as num?)?.toInt(),
+        inLibraryAudioTrackId: (j['in_library_audio_track_id'] as num?)?.toInt(),
       );
 }
 

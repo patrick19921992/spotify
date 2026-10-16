@@ -76,14 +76,15 @@ Future<void> openLibraryTrack(BuildContext context, int trackId) async {
   }
 }
 
-Future<void> _startDownload(BuildContext context, YouTubeItem item, {int? playlistId}) async {
+Future<void> _startDownload(BuildContext context, YouTubeItem item, {int? playlistId, bool audioOnly = false}) async {
   final container = ProviderScope.containerOf(context, listen: false);
   try {
-    await container.read(downloadsProvider.notifier).startItem(item, playlistId: playlistId);
+    await container.read(downloadsProvider.notifier).startItem(item, audioOnly: audioOnly, playlistId: playlistId);
     if (!context.mounted) return;
+    final what = audioOnly ? 'wird als Musik geholt' : 'wird geholt';
     showMessage(
       context,
-      playlistId == null ? '„${item.title}“ wird geholt' : '„${item.title}“ wird geholt und landet in deiner Playlist',
+      playlistId == null ? '„${item.title}“ $what' : '„${item.title}“ $what und landet in deiner Playlist',
     );
   } catch (e) {
     if (context.mounted) showError(context, e);
@@ -123,6 +124,12 @@ class _YouTubeItemSheet extends ConsumerWidget {
     final failed = job != null && job.isFailed;
     final albumBrowseId = item.albumBrowseId;
     final subtitle = youtubeItemSubtitle(item, withDuration: false);
+    // Videos: zusätzlich „Nur Musik“ (der Ton als Song) – z. B. Kinderlieder, die es nur als Video gibt
+    final audioJob = item.videoId == null || !item.isVideo
+        ? null
+        : ref.watch(jobForVideoProvider((item.videoId!, 'audio')));
+    final audioTrackId = audioJob?.trackId ?? item.inLibraryAudioTrackId;
+    final audioFailed = audioJob != null && audioJob.isFailed;
 
     void close() => Navigator.of(context).pop();
 
@@ -139,6 +146,58 @@ class _YouTubeItemSheet extends ConsumerWidget {
                   : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.tileSubtitle),
             ),
             const Divider(),
+            if (item.isVideo && item.videoId != null) ...[
+              if (audioTrackId != null)
+                ListTile(
+                  leading: const Icon(Icons.music_note_rounded, color: AppColors.accent),
+                  title: const Text('Musik abspielen'),
+                  subtitle: const Text('Der Ton dieses Videos ist schon in deiner Bibliothek', style: AppText.tileSubtitle),
+                  onTap: () {
+                    close();
+                    openLibraryTrack(parentContext, audioTrackId);
+                  },
+                )
+              else if (audioJob != null && audioJob.isActive)
+                ListTile(
+                  leading: const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                  title: const Text('Musik wird geholt …'),
+                  subtitle: Padding(padding: const EdgeInsets.only(top: 6), child: JobProgress(job: audioJob)),
+                )
+              else ...[
+                ListTile(
+                  enabled: canDownload,
+                  leading: Icon(audioFailed ? Icons.refresh_rounded : Icons.music_note_rounded),
+                  title: Text(audioFailed ? 'Musik erneut holen' : 'Nur Musik holen'),
+                  subtitle: audioFailed
+                      ? Text(
+                          'Letzter Versuch fehlgeschlagen: ${audioJob.error ?? 'unbekannter Fehler'}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.tileSubtitle.copyWith(color: AppColors.danger),
+                        )
+                      : const Text(
+                          'Nur den Ton – als Song bei der Musik, ohne Bild, braucht viel weniger Platz',
+                          style: AppText.tileSubtitle,
+                        ),
+                  onTap: () {
+                    close();
+                    _startDownload(parentContext, item, audioOnly: true);
+                  },
+                ),
+                ListTile(
+                  enabled: canDownload,
+                  leading: const Icon(Icons.playlist_add_rounded),
+                  title: const Text('Musik holen und zu Playlist hinzufügen'),
+                  onTap: () async {
+                    close();
+                    final playlistId = await pickPlaylist(parentContext);
+                    if (playlistId == null || !parentContext.mounted) return;
+                    await _startDownload(parentContext, item, playlistId: playlistId, audioOnly: true);
+                  },
+                ),
+              ],
+              const Divider(),
+            ],
             if (trackId != null) ...[
               ListTile(
                 leading: Icon(item.isVideo ? Icons.smart_display_rounded : Icons.play_circle_outline_rounded),
@@ -206,7 +265,9 @@ class _YouTubeItemSheet extends ConsumerWidget {
               ListTile(
                 enabled: canDownload,
                 leading: Icon(failed ? Icons.refresh_rounded : Icons.download_rounded),
-                title: Text(failed ? 'Erneut holen' : 'Holen'),
+                title: Text(
+                  item.isVideo ? (failed ? 'Video erneut holen' : 'Als Video holen') : (failed ? 'Erneut holen' : 'Holen'),
+                ),
                 subtitle: failed
                     ? Text(
                         'Letzter Versuch fehlgeschlagen: ${job.error ?? 'unbekannter Fehler'}',
@@ -226,7 +287,7 @@ class _YouTubeItemSheet extends ConsumerWidget {
               ListTile(
                 enabled: canDownload,
                 leading: const Icon(Icons.playlist_add_rounded),
-                title: const Text('Holen und zu Playlist hinzufügen'),
+                title: Text(item.isVideo ? 'Video holen und zu Playlist hinzufügen' : 'Holen und zu Playlist hinzufügen'),
                 onTap: () async {
                   close();
                   final playlistId = await pickPlaylist(parentContext);

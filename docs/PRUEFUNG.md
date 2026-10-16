@@ -246,6 +246,13 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
 - [ ] offen (niedrig): Downloads-Liste – Text bei Video-Vorschaubildern (16:9) weiter eingerückt als bei Covern;
       Warteschlange bei großer Schrift „4 Songs · 13…“ gekürzt; ungleiche Abstände auf der Startseite
 
+### YouTube-Videos nur als Musik holen
+
+- [x] Titel, die es bei YouTube nur als Video gibt (z. B. Kinderlieder), ließen sich nur als Video holen → „Holen“
+      fragt bei Videos „Nur Musik“ (Ton als Song bei der Musik, quadratisches Cover) oder „Video“; das Menü eines
+      Videos bietet „Nur Musik holen“ und „Musik holen und zu Playlist hinzufügen“. Der Server meldet, wenn der Ton
+      eines Videos schon da ist (`in_library_audio_track_id`) – dann „Musik abspielen“ statt „Holen“
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

@@ -122,6 +122,23 @@ def test_search_marks_library_items(env: Env) -> None:
     assert again["results"][0]["in_library_track_id"] == done["track_id"]
 
 
+def test_video_result_reports_audio_only_copy(env: Env) -> None:
+    """Von einem Video nur den Ton holen (z. B. Kinderlieder, die es nur als Video gibt)."""
+    params = {"q": "brightside", "type": "videos"}
+    before = env.client.get("/api/youtube/search", headers=env.headers, params=params).json()["results"][0]
+    assert (before["in_library_track_id"], before["in_library_audio_track_id"]) == (None, None)
+    job = env.post("/api/downloads", {"video_id": "vvvvvvvvvv1", "media_type": "audio",
+                                      "title": "Mr. Brightside (Official Video)", "artists": ["The Killers"],
+                                      "thumbnail_url": "https://i.ytimg.com/vi/x/hq.jpg"})
+    done = env.wait(job["id"])
+    assert done["status"] == "done", done
+    track = env.client.get(f"/api/tracks/{done['track_id']}", headers=env.headers).json()
+    assert track["media_type"] == "audio"
+    after = env.client.get("/api/youtube/search", headers=env.headers, params=params).json()["results"][0]
+    assert after["in_library_track_id"] is None, "das Video selbst ist noch nicht da"
+    assert after["in_library_audio_track_id"] == done["track_id"]
+
+
 def test_search_reports_youtube_outage(env: Env) -> None:
     env.youtube.fail = True
     response = env.client.get("/api/youtube/search", headers=env.headers, params={"q": "x"})
