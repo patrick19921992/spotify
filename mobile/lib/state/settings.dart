@@ -19,6 +19,8 @@ class AppSettings {
   /// Standard-Rubrik für neue YouTube-Downloads (null = Server-Standard).
   final int? audioCategoryId;
   final int? videoCategoryId;
+  /// Was der „Holen“-Knopf bei YouTube-Videos holt: ask (jedes Mal fragen) | audio (nur die Musik) | video
+  final String videoFetch;
 
   const AppSettings({
     this.wifiQuality = 'original',
@@ -29,6 +31,7 @@ class AppSettings {
     this.autoplay = true,
     this.audioCategoryId,
     this.videoCategoryId,
+    this.videoFetch = 'ask',
   });
 
   AppSettings copyWith({
@@ -40,6 +43,7 @@ class AppSettings {
     bool? autoplay,
     int? Function()? audioCategoryId,
     int? Function()? videoCategoryId,
+    String? videoFetch,
   }) =>
       AppSettings(
         wifiQuality: wifiQuality ?? this.wifiQuality,
@@ -50,6 +54,7 @@ class AppSettings {
         autoplay: autoplay ?? this.autoplay,
         audioCategoryId: audioCategoryId != null ? audioCategoryId() : this.audioCategoryId,
         videoCategoryId: videoCategoryId != null ? videoCategoryId() : this.videoCategoryId,
+        videoFetch: videoFetch ?? this.videoFetch,
       );
 }
 
@@ -59,6 +64,13 @@ const qualityLabels = {
   'high': 'Hoch (AAC 256 kbit/s)',
   'normal': 'Normal (AAC 160 kbit/s)',
   'low': 'Datensparend (AAC 96 kbit/s)',
+};
+
+/// Beschriftungen für [AppSettings.videoFetch].
+const videoFetchLabels = {
+  'ask': 'Jedes Mal fragen',
+  'audio': 'Immer nur Musik',
+  'video': 'Immer als Video',
 };
 
 class SettingsController extends Notifier<AppSettings> {
@@ -74,6 +86,8 @@ class SettingsController extends Notifier<AppSettings> {
       autoplay: p.getBool('s.autoplay') ?? true,
       audioCategoryId: p.getInt('s.audioCategoryId'),
       videoCategoryId: p.getInt('s.videoCategoryId'),
+      // Unbekannter Wert (z. B. von einer neueren App-Version) -> wie bisher fragen
+      videoFetch: videoFetchLabels.containsKey(p.getString('s.videoFetch')) ? p.getString('s.videoFetch')! : 'ask',
     );
   }
 
@@ -87,6 +101,7 @@ class SettingsController extends Notifier<AppSettings> {
     await p.setBool('s.offlineWifiOnly', next.offlineWifiOnly);
     await p.setBool('s.offlineMode', next.offlineMode);
     await p.setBool('s.autoplay', next.autoplay);
+    await p.setString('s.videoFetch', next.videoFetch);
     if (next.audioCategoryId == null) {
       await p.remove('s.audioCategoryId');
     } else {

@@ -217,6 +217,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ---------------------------------------------------------------- YouTube-Downloads
 
+  Future<void> _pickVideoFetch(AppSettings settings) async {
+    final choice = await showAccountChoiceSheet<String>(
+      context,
+      title: 'YouTube-Videos holen als',
+      message: 'Gilt für „Holen“ auf diesem Gerät. Im Menü eines Videos geht weiterhin beides.',
+      selected: settings.videoFetch,
+      options: [
+        AccountChoice(
+          value: 'ask',
+          label: videoFetchLabels['ask']!,
+          subtitle: 'Musik oder Video wählen',
+          icon: Icons.help_outline_rounded,
+        ),
+        AccountChoice(
+          value: 'audio',
+          label: videoFetchLabels['audio']!,
+          subtitle: 'Nur den Ton – als Song, viel kleiner',
+          icon: Icons.music_note_rounded,
+        ),
+        AccountChoice(
+          value: 'video',
+          label: videoFetchLabels['video']!,
+          subtitle: 'Mit Bild – bei den Videos',
+          icon: Icons.movie_rounded,
+        ),
+      ],
+    );
+    if (choice == null) return;
+    await ref.read(settingsProvider.notifier).update((s) => s.copyWith(videoFetch: choice.value));
+  }
+
   Future<void> _pickCategory(String mediaType) async {
     final List<Category> categories;
     try {
@@ -461,6 +492,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         )
       else ...[
+        AccountTile(
+          icon: Icons.smart_display_rounded,
+          title: 'YouTube-Videos holen als',
+          subtitle: videoFetchLabels[settings.videoFetch] ?? videoFetchLabels['ask'],
+          onTap: () => _pickVideoFetch(settings),
+        ),
         AccountTile(
           icon: Icons.library_music_rounded,
           title: 'Ziel-Rubrik für Musik',

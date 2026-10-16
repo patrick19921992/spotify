@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../player/player.dart';
 import '../../state/auth.dart';
 import '../../state/downloads.dart';
+import '../../state/settings.dart';
 import 'common.dart';
 
 /// Vorschaubild von YouTube (Google-Server, ohne Token).
@@ -106,18 +107,20 @@ class JobProgress extends StatelessWidget {
 
 /// "Holen"-Knopf für einen YouTube-Treffer – zeigt den Download-Fortschritt live,
 /// und wenn der Titel da ist, kann er direkt abgespielt werden.
-/// Bei Videos fragt er, ob nur die Musik (der Ton als Song) oder das ganze Video geholt werden soll.
+/// Bei Videos fragt er, ob nur die Musik (der Ton als Song) oder das ganze Video geholt werden soll –
+/// außer in den Einstellungen ist „Immer nur Musik“ bzw. „Immer als Video“ festgelegt.
 class DownloadButton extends ConsumerWidget {
   final YouTubeItem item;
   final int? playlistId;
 
   const DownloadButton({super.key, required this.item, this.playlistId});
 
-  Future<void> _start(BuildContext context, WidgetRef ref, {bool audioOnly = false}) async {
+  Future<void> _start(BuildContext context, WidgetRef ref, {bool audioOnly = false, bool remembered = false}) async {
     try {
       await ref.read(downloadsProvider.notifier).startItem(item, audioOnly: audioOnly, playlistId: playlistId);
       if (context.mounted) {
-        showMessage(context, audioOnly ? '„${item.title}“ wird als Musik geholt' : '„${item.title}“ wird geholt');
+        final what = audioOnly ? '„${item.title}“ wird als Musik geholt' : '„${item.title}“ wird geholt';
+        showMessage(context, remembered ? '$what · Gemerkt, änderbar in den Einstellungen' : what);
       }
     } catch (e) {
       if (context.mounted) showError(context, e);
@@ -133,11 +136,23 @@ class DownloadButton extends ConsumerWidget {
     }
   }
 
-  /// Video-Treffer: nur Musik oder ganzes Video?
-  Future<void> _choose(BuildContext context, WidgetRef ref) async {
-    final audioOnly = await showVideoFetchChoice(context, item.title);
-    if (audioOnly == null || !context.mounted) return;
-    await _start(context, ref, audioOnly: audioOnly);
+  /// Video-Treffer: nur Musik oder ganzes Video – wie in den Einstellungen festgelegt, sonst nachfragen.
+  Future<void> _fetchVideo(BuildContext context, WidgetRef ref) async {
+    switch (ref.read(settingsProvider).videoFetch) {
+      case 'audio':
+        return _start(context, ref, audioOnly: true);
+      case 'video':
+        return _start(context, ref);
+    }
+    final choice = await showVideoFetchChoice(context, item.title);
+    if (choice == null || !context.mounted) return;
+    if (choice.remember) {
+      await ref
+          .read(settingsProvider.notifier)
+          .update((s) => s.copyWith(videoFetch: choice.audioOnly ? 'audio' : 'video'));
+      if (!context.mounted) return;
+    }
+    await _start(context, ref, audioOnly: choice.audioOnly, remembered: choice.remember);
   }
 
   @override
@@ -192,7 +207,13 @@ class DownloadButton extends ConsumerWidget {
         onPressed: () => _play(context, ref, audioTrackId),
       );
     }
-    final failed = job != null && job.isFailed ? job : (audioJob != null && audioJob.isFailed ? audioJob : null);
+    // „Erneut versuchen“ nur für das, was „Holen“ auch holen würde: Bei „Immer nur Musik“ führt ein
+    // fehlgeschlagenes Video nicht zurück zum Video (stattdessen „Holen“ = Musik), bei „Immer als Video“ umgekehrt
+    final fetch = item.isVideo ? ref.watch(settingsProvider.select((s) => s.videoFetch)) : 'ask';
+    final failed = [
+      if (fetch != 'audio') job, // bei Songs der Song selbst, bei Videos das Video
+      if (fetch != 'video') audioJob,
+    ].nonNulls.where((j) => j.isFailed).firstOrNull;
     if (failed != null) {
       return IconButton(
         tooltip: failed.error ?? 'Erneut versuchen',
@@ -210,7 +231,7 @@ class DownloadButton extends ConsumerWidget {
       );
     }
     return OutlinedButton.icon(
-      onPressed: () => item.isVideo ? _choose(context, ref) : _start(context, ref),
+      onPressed: () => item.isVideo ? _fetchVideo(context, ref) : _start(context, ref),
       icon: const Icon(Icons.download_rounded, size: 18),
       label: const Text('Holen'),
       style: OutlinedButton.styleFrom(
@@ -221,39 +242,78 @@ class DownloadButton extends ConsumerWidget {
   }
 }
 
-/// Fragt bei einem Video, was geholt werden soll: true = nur die Musik (Ton als Song), false = ganzes Video,
-/// null = abgebrochen. Musik zuerst – für Kinderlieder & Co. reicht meist der Ton.
-Future<bool?> showVideoFetchChoice(BuildContext context, String title) {
-  return showModalBottomSheet<bool>(
+/// Fragt bei einem Video, was geholt werden soll: audioOnly = nur die Musik (Ton als Song), sonst das ganze Video;
+/// remember = „Wahl merken“ angehakt (dann nicht mehr fragen). null = abgebrochen.
+/// Musik zuerst – für Kinderlieder & Co. reicht meist der Ton.
+Future<({bool audioOnly, bool remember})?> showVideoFetchChoice(BuildContext context, String title) {
+  var remember = false;
+  return showModalBottomSheet<({bool audioOnly, bool remember})>(
     context: context,
     useRootNavigator: true,
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppText.tileTitle),
-            subtitle: const Text('Was möchtest du holen?', style: AppText.tileSubtitle),
-          ),
-          const Divider(height: 1),
-          ListTile(
-            leading: const Icon(Icons.music_note_rounded, color: AppColors.accent),
-            title: const Text('Nur Musik'),
-            subtitle: const Text(
-              'Nur den Ton – als Song bei der Musik, ohne Bild, braucht viel weniger Platz',
-              style: AppText.tileSubtitle,
+    // Mit großer Schrift höher als die halbe Seite – dann scrollen statt abschneiden
+    isScrollControlled: true,
+    constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (sheetContext, setSheetState) {
+        void pick(bool audioOnly) => Navigator.of(sheetContext).pop((audioOnly: audioOnly, remember: remember));
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppText.tileTitle),
+                  subtitle: const Text('Was möchtest du holen?', style: AppText.tileSubtitle),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.music_note_rounded, color: AppColors.accent),
+                  title: const Text('Nur Musik'),
+                  subtitle: const Text(
+                    'Nur den Ton – als Song bei der Musik, viel kleiner',
+                    style: AppText.tileSubtitle,
+                  ),
+                  onTap: () => pick(true),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.movie_rounded),
+                  title: const Text('Video'),
+                  subtitle: const Text('Mit Bild – bei den Videos', style: AppText.tileSubtitle),
+                  onTap: () => pick(false),
+                ),
+                const Divider(height: 1),
+                // Für Kinder-Handys & Co.: einmal „Nur Musik“ merken, dann holt „Holen“ ohne Nachfrage.
+                // Kästchen so breit wie die Symbole darüber, damit die Texte bündig stehen. Wie bei
+                // CheckboxListTile ein einziges Bedienziel: Screenreader lesen „Wahl merken“ samt Haken vor.
+                MergeSemantics(
+                  child: ListTile(
+                    leading: SizedBox(
+                      width: 24,
+                      child: ExcludeFocus(
+                        child: Checkbox(
+                          value: remember,
+                          onChanged: (value) => setSheetState(() => remember = value ?? false),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          activeColor: AppColors.accent,
+                          checkColor: Colors.black,
+                        ),
+                      ),
+                    ),
+                    title: const Text('Wahl merken'),
+                    subtitle: const Text(
+                      'Nicht mehr fragen – änderbar in den Einstellungen',
+                      style: AppText.tileSubtitle,
+                    ),
+                    onTap: () => setSheetState(() => remember = !remember),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
             ),
-            onTap: () => Navigator.of(sheetContext).pop(true),
           ),
-          ListTile(
-            leading: const Icon(Icons.movie_rounded),
-            title: const Text('Video'),
-            subtitle: const Text('Mit Bild – bei den Videos', style: AppText.tileSubtitle),
-            onTap: () => Navigator.of(sheetContext).pop(false),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
+        );
+      },
     ),
   );
 }

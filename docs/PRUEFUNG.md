@@ -278,6 +278,21 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       abgeschnitten (quadratische Album-Cover bleiben unberührt); laufender Musik-Download im Menü nicht
       abbrechbar, „Download abbrechen“ traf das Video → eigener „Musik-Download abbrechen“, Video-Einträge
       eindeutig beschriftet
+- [x] Einstellung statt jedes Mal fragen: *Einstellungen › YouTube-Downloads › YouTube-Videos holen als*
+      („Jedes Mal fragen“ / „Immer nur Musik“ / „Immer als Video“, pro Gerät, `s.videoFetch`); im Auswahlblatt
+      „Wahl merken“. Songs werden immer als Musik geholt, das Menü eines Videos bietet weiterhin beides
+- [x] Gegenprüfung (`wf_7dfe21e2-66c`): „Erneut versuchen“ nach fehlgeschlagenem Video holte bei „Immer nur
+      Musik“ wieder das Video → der Knopf folgt der Einstellung; Link-Dialog wählte bei „Immer als Video“ auch für
+      Playlists/Alben „Video“ vor → beide Link-Dialoge bleiben bei „Musik“; „Wahl merken“ waren zwei Bedienziele
+      ohne gemeinsamen Namen → `MergeSemantics` + `ExcludeFocus` wie bei `CheckboxListTile`; fehlende Tests ergänzt
+
+### Verwaltung am PC
+
+- [x] „Benutzer anlegen“ am Windows-PC: Texte standen Buchstabe für Buchstabe untereinander. Ursache: Das Blatt
+      ist auf breiten Bildschirmen auf 640 px begrenzt, `AdminSheet` rechnete den Seitenrand aber aus der
+      Fensterbreite (bei 1260 px je 310 px Rand → ~20 px Inhalt). Betraf alle Blätter der Verwaltung (Benutzer und
+      Rubriken anlegen/bearbeiten, Rubrik wählen) → Rand aus der Breite des Blatts (`LayoutBuilder`);
+      `admin_sheet_width_test.dart` prüft Handy, Windows-Fenster und großen Bildschirm
 
 ## Weitermachen nach einer Unterbrechung
 
