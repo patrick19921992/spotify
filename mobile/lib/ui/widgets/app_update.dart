@@ -7,7 +7,17 @@ import '../../core/theme.dart';
 import '../../data/app_update.dart';
 import '../../state/app_update.dart';
 
+/// Kompakter „Installieren“-Knopf im Hinweis (der normale ist für eine Zeile zu hoch).
+final _compactInstall = FilledButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+  visualDensity: VisualDensity.compact,
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+);
+
 /// Hinweis „Neue Version verfügbar“ über dem Mini-Player – mit „Installieren“ und „Später“.
+/// Normalerweise eine flache Zeile (so hoch wie der Mini-Player), damit auf dem Handy Platz für den Inhalt bleibt.
+/// Nur wenn der Text dann kaum noch lesbar wäre (schmales Handy, große Schrift), stehen die Knöpfe darunter.
 class UpdateBanner extends ConsumerWidget {
   const UpdateBanner({super.key});
 
@@ -15,58 +25,102 @@ class UpdateBanner extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final release = ref.watch(updateNoticeProvider);
     if (release == null) return const SizedBox.shrink();
+    void later() => ref.read(dismissedUpdateProvider.notifier).dismiss(release.build);
+    void install() => showUpdateDialog(context, release);
+    final texts = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Neue App-Version verfügbar',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        Text(
+          release.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+        ),
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
       child: Material(
         color: AppColors.surfaceHigh,
         borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.system_update_rounded, color: AppColors.accent),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Neue App-Version verfügbar',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        Text(
-                          release.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-                        ),
-                      ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final label = TextPainter(
+              text: TextSpan(
+                text: 'Installieren',
+                style: DefaultTextStyle.of(context).style.merge(const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              ),
+              textScaler: MediaQuery.textScalerOf(context),
+              textDirection: TextDirection.ltr,
+              maxLines: 1,
+            )..layout();
+            // Platz für den Text: Breite minus Ränder, Symbol, Installieren-Knopf und Schließen-Knopf
+            final buttonWidth = label.width + 36;
+            final textWidth = constraints.maxWidth - 12 - 24 - 10 - 8 - buttonWidth - 40 - 4;
+            label.dispose();
+            if (textWidth >= 100) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.system_update_rounded, color: AppColors.accent),
+                    const SizedBox(width: 10),
+                    Expanded(child: texts),
+                    const SizedBox(width: 8),
+                    // Nie breiter als berechnet – fällt die Systemschrift breiter aus, läuft die Zeile so nicht über
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: buttonWidth),
+                      child: FilledButton(
+                        style: _compactInstall,
+                        onPressed: install,
+                        child: const Text('Installieren', maxLines: 1, softWrap: false, overflow: TextOverflow.fade),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              // Knöpfe in eigener Zeile: So bleibt der Text auch auf schmalen Handys und mit großer Schrift lesbar
-              OverflowBar(
-                alignment: MainAxisAlignment.end,
-                overflowAlignment: OverflowBarAlignment.end,
-                spacing: 8,
+                    IconButton(
+                      tooltip: 'Später',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.textSecondary),
+                      onPressed: later,
+                    ),
+                  ],
+                ),
+              );
+            }
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextButton(
-                    onPressed: () => ref.read(dismissedUpdateProvider.notifier).dismiss(release.build),
-                    child: const Text('Später'),
+                  Row(
+                    children: [
+                      const Icon(Icons.system_update_rounded, color: AppColors.accent),
+                      const SizedBox(width: 12),
+                      Expanded(child: texts),
+                    ],
                   ),
-                  FilledButton(onPressed: () => showUpdateDialog(context, release), child: const Text('Installieren')),
+                  const SizedBox(height: 4),
+                  // Knöpfe in eigener Zeile: So bleibt der Text auch auf schmalen Handys und mit großer Schrift lesbar
+                  OverflowBar(
+                    alignment: MainAxisAlignment.end,
+                    overflowAlignment: OverflowBarAlignment.end,
+                    spacing: 8,
+                    children: [
+                      TextButton(onPressed: later, child: const Text('Später')),
+                      FilledButton(style: _compactInstall, onPressed: install, child: const Text('Installieren')),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

@@ -512,18 +512,25 @@ class _Heading extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(16, 24, trailing == null ? 16 : 12, 8),
       child: Row(
         children: [
-          Flexible(
-            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.sectionTitle),
-          ),
-          if (count != null) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: AppColors.surfaceHighest, borderRadius: BorderRadius.circular(10)),
-              child: Text('$count', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          // Titel (mit Anzahl) bekommt den ganzen freien Platz – Flexible neben einem Spacer gäbe ihm nur die
+          // halbe Breite („Einstellung…“)
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.sectionTitle),
+                ),
+                if (count != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: AppColors.surfaceHighest, borderRadius: BorderRadius.circular(10)),
+                    child: Text('$count', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ],
             ),
-          ],
-          const Spacer(),
+          ),
           ?trailing,
         ],
       ),

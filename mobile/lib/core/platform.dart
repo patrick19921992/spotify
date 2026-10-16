@@ -1,4 +1,7 @@
+import 'dart:ui' show FlutterView;
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 /// Läuft die App auf einem Computer (Windows/macOS/Linux)? Nie auf Handy oder Tablet.
@@ -17,3 +20,11 @@ bool isForeground(AppLifecycleState? state) =>
     state == null ||
     state == AppLifecycleState.resumed ||
     (isDesktopPlatform && state == AppLifecycleState.inactive);
+
+/// Handy: nur Hochformat (wie Spotify) – quer bliebe zwischen Systemleisten, Mini-Player und unterer Leiste kaum
+/// Platz für den Inhalt. Tablets (kürzere Seite ab 600) und Computer drehen weiter frei.
+Future<void> lockPortraitOnPhones(FlutterView? view) async {
+  if (isDesktopPlatform || view == null || view.devicePixelRatio <= 0) return;
+  if (view.physicalSize.shortestSide / view.devicePixelRatio >= 600) return;
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+}

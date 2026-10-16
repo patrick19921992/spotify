@@ -449,6 +449,7 @@ Future<FakeApi> pumpScreen(
   OfflineState? offlineState,
   Size size = const Size(400, 860),
   double textScale = 1.0,
+  EdgeInsets padding = EdgeInsets.zero,
   FakeApi? api,
   SelfifyAudioHandler? handler,
   AppUpdateSource? updates,
@@ -487,7 +488,7 @@ Future<FakeApi> pumpScreen(
       if (updates != null) appUpdateSourceProvider.overrideWithValue(updates),
     ],
     child: MediaQuery(
-      data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale)),
+      data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale), padding: padding, viewPadding: padding),
       child: MaterialApp.router(theme: buildTheme(), routerConfig: router),
     ),
   ));

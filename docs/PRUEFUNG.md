@@ -225,6 +225,27 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
 - [ ] offen (Vorschlag): Einzelne Texte sagen noch „Handy“ (z. B. „wird aufs Handy geladen“) – unter Windows
       wäre „Gerät“ passender
 
+### Handy-Ansicht: „alles verschoben und überlappt“ (Bildschirmfotos mit echten Systemleisten)
+
+Die bisherigen Bildschirm-Tests rendern ohne Status- und Navigationsleiste und mit Ersatzschrift – Überlappungen
+sieht man dort nicht. Neu geprüft: 88 Bildschirmfotos (14 Seiten; 412×915 und 360×780; Schrift 100/130/200 %;
+quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Prüfern (`wf_7c914d1b-22f`).
+
+- [x] hoch – Querformat: Systemleisten, Update-Hinweis, Mini-Player und untere Leiste ließen kaum Platz für den
+      Inhalt → Handys nur Hochformat (wie Spotify), Tablets und Computer drehen weiter
+- [x] hoch – Update-Hinweis 100–160 px hoch (auf kleinen Handys mit großer Schrift ein Fünftel des Bildschirms)
+      → eine flache Zeile (Installieren, × für „Später“); nur wenn der Text sonst unlesbar wäre, zweizeilig
+- [x] mittel – Player: Songtext-Karte lag unter der Navigationsleiste des Handys → unteren Rand abgezogen
+- [x] mittel – Wörter brachen mitten im Wort um („Lieblingssong / s“, „Musikvideo / s“) → Schrift wird so weit
+      verkleinert, dass das längste Wort passt; Kacheln wachsen mit großer Schrift statt abzuschneiden
+- [x] mittel – Rubrik: Abspielknopf ~30 px nach links versetzt, „Zufalls…“ unnötig gekürzt; Gerätespeicher:
+      „Einstellung…“ gekürzt (Flexible + Spacer teilten den Platz je zur Hälfte) → behoben
+- [x] niedrig – Künstler-Kopf endete mit harter Kante → läuft in die Seitenfarbe aus
+- [x] geprüft, kein Fehler: Inhalt „unter“ Hinweis/Mini-Player ist das normale Ende des Scrollbereichs; harter
+      Balken unter Covern = Schatten im Test; Einstellungen haben unten Abstand für die Navigationsleiste
+- [ ] offen (niedrig): Downloads-Liste – Text bei Video-Vorschaubildern (16:9) weiter eingerückt als bei Covern;
+      Warteschlange bei großer Schrift „4 Songs · 13…“ gekürzt; ungleiche Abstände auf der Startseite
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

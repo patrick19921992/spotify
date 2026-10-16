@@ -4,6 +4,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../nav.dart';
 import 'cover.dart';
+import 'fit_text.dart';
 
 /// Quadratische Karte (Album, Playlist, Mix) bzw. runde (Künstler) für horizontale Reihen.
 class MediaCard extends StatelessWidget {
@@ -153,18 +154,21 @@ class QuickTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Nav.context_(context, item),
-        child: Row(
-          children: [
-            contextCover(item, 56, radius: 0),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(item.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
-            ),
-            const SizedBox(width: 6),
-          ],
+        // Cover so hoch wie die Kachel (die wächst mit großer Schrift mit)
+        child: LayoutBuilder(
+          builder: (context, constraints) => Row(
+            children: [
+              contextCover(item, constraints.maxHeight.isFinite ? constraints.maxHeight : 56, radius: 0),
+              const SizedBox(width: 8),
+              Expanded(
+                child: WordSafeText(
+                  item.title,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+          ),
         ),
       ),
     );

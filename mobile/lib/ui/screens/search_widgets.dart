@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import '../../state/library.dart';
 import '../nav.dart';
 import '../widgets/common.dart';
 import '../widgets/cover.dart';
+import '../widgets/fit_text.dart';
 
 // ------------------------------------------------------------------ Zuletzt gesucht
 
@@ -286,10 +288,8 @@ class CategoryTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  WordSafeText(
                     category.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white, height: 1.15),
                   ),
                   const SizedBox(height: 4),
@@ -309,12 +309,13 @@ class CategoryTile extends StatelessWidget {
   }
 }
 
-const _categoryGridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
-  crossAxisCount: 2,
-  mainAxisExtent: 100,
-  mainAxisSpacing: 12,
-  crossAxisSpacing: 12,
-);
+/// Kachelhöhe wächst mit großer Schrift (Name zweizeilig + Anzahl), sonst würde abgeschnitten.
+SliverGridDelegate _categoryGridDelegate(BuildContext context) => SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 2,
+      mainAxisExtent: math.max(100.0, MediaQuery.textScalerOf(context).scale(1) * 53 + 32),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+    );
 
 /// "Rubriken durchsuchen" – 2-spaltiges Raster (Sliver).
 class CategoryGridSliver extends ConsumerWidget {
@@ -333,7 +334,7 @@ class CategoryGridSliver extends ConsumerWidget {
       return SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         sliver: SliverGrid.builder(
-          gridDelegate: _categoryGridDelegate,
+          gridDelegate: _categoryGridDelegate(context),
           itemCount: 6,
           itemBuilder: (_, _) => DecoratedBox(
             decoration: BoxDecoration(color: AppColors.surfaceHigh, borderRadius: BorderRadius.circular(6)),
@@ -353,7 +354,7 @@ class CategoryGridSliver extends ConsumerWidget {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverGrid.builder(
-        gridDelegate: _categoryGridDelegate,
+        gridDelegate: _categoryGridDelegate(context),
         itemCount: list.length,
         itemBuilder: (context, index) => CategoryTile(
           category: list[index],

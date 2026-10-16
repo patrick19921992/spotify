@@ -110,7 +110,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               // Der Player füllt den Bildschirm, darunter lugt die nächste Karte hervor
-              final mainHeight = math.max(constraints.maxHeight - 40, 540.0);
+              // (ohne die Systemleiste unten – dort läge die Karte sonst unter den Systemknöpfen)
+              final mainHeight = math.max(constraints.maxHeight - 40 - bottomInset, 540.0);
               return NotificationListener<ScrollNotification>(
                 onNotification: _onScroll,
                 child: CustomScrollView(

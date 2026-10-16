@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/platform.dart';
 import 'player/player.dart';
 import 'player/windows_audio.dart';
 import 'player/windows_media_controls.dart';
@@ -21,6 +22,8 @@ Future<void> main() async {
     statusBarIconBrightness: Brightness.light,
     systemNavigationBarColor: Colors.black,
   ));
+
+  await lockPortraitOnPhones(WidgetsBinding.instance.platformDispatcher.implicitView);
 
   final prefs = await SharedPreferences.getInstance();
   final session = await AudioSession.instance;
