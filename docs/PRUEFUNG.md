@@ -300,6 +300,13 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       informiert, Hinweis im README (einmal von Hand installieren); Test „beim Start offline, später online“
       ergänzt; Tests für Sperrfrist-Grenzen, nur beim Zurückkehren und „Wächter bleibt still“ geschärft
 
+### Videos in Lieblingssongs/Playlists
+
+- [x] „Er hält einfach“: Der Musik-Player filterte Videos aus der Warteschlange – Song + Video in den
+      Lieblingssongs endete nach dem Song → Videos laufen als Ton mit; der Server liefert mit `audio_only=true`
+      nur die Tonspur als AAC (Zwischenspeicher wie beim iPhone-Umwandeln), Antippen öffnet weiterhin das Video;
+      „Abspielen“ geht auch bei einer Playlist nur aus Videos. Offline bleiben Videos außen vor
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 
 from app.deps import AppSettings, DbSession, MediaAuth
 from app.library.covers import COVER_SIZES
-from app.library.transcode import TranscodeUnavailableError, needs_transcode
+from app.library.transcode import QUALITY_BITRATES, TranscodeUnavailableError, needs_transcode
 from app.models import Cover, Track
 
 router = APIRouter(tags=["Streaming"])
@@ -50,6 +50,9 @@ def stream_track(
     compatible: Annotated[
         bool, Query(description="true = nur Formate, die auch iPhones abspielen (Opus/Ogg -> AAC)")
     ] = False,
+    audio_only: Annotated[
+        bool, Query(description="true = bei Videos nur den Ton als AAC (Video in einer Musik-Warteschlange)")
+    ] = False,
 ) -> FileResponse:
     """Liefert die Datei mit Spulen (HTTP Range). Bei Bedarf als AAC umgewandelt (Datensparmodus/iPhone)."""
     track = db.get(Track, track_id)
@@ -68,16 +71,18 @@ def stream_track(
     db.close()
 
     headers = {"Cache-Control": "private, max-age=86400"}
+    bitrate: int | None = None
     if kind == "audio":
         bitrate = needs_transcode(codec, path.suffix, track_bitrate, quality, compatible)
-        if bitrate is not None:
-            try:
-                converted = request.app.state.transcoder.get(path, version, bitrate)
-            except TranscodeUnavailableError as exc:
-                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from None
-            return FileResponse(
-                converted, media_type="audio/mp4", headers=headers, content_disposition_type="inline"
-            )
+    elif audio_only:
+        # Video in Lieblingssongs/Playlist: nur die Tonspur – spart gegenüber dem ganzen Video viel Datenvolumen
+        bitrate = QUALITY_BITRATES.get(quality, QUALITY_BITRATES["normal"])
+    if bitrate is not None:
+        try:
+            converted = request.app.state.transcoder.get(path, version, bitrate)
+        except TranscodeUnavailableError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from None
+        return FileResponse(converted, media_type="audio/mp4", headers=headers, content_disposition_type="inline")
     return FileResponse(path, media_type=media_type_for(path, kind), headers=headers, content_disposition_type="inline")
 
 

@@ -30,6 +30,8 @@ void main() {
     expect(api.streamUrl(5), 'https://musik.example.de/api/tracks/5/stream?t=med');
     expect(api.streamUrl(5, quality: 'low', compatible: true),
         'https://musik.example.de/api/tracks/5/stream?t=med&quality=low&compatible=true');
+    // Video in einer Musik-Warteschlange: nur der Ton
+    expect(api.streamUrl(5, audioOnly: true), 'https://musik.example.de/api/tracks/5/stream?t=med&audio_only=true');
     expect(api.coverUrl('abc', size: 64), 'https://musik.example.de/api/covers/abc?size=64&t=med');
   });
 

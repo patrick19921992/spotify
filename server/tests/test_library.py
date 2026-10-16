@@ -284,6 +284,33 @@ def test_video_stream(lib: Library) -> None:
     assert response.headers["content-type"] == "video/mp4"
 
 
+def test_video_as_audio_in_music_queue(lib: Library) -> None:
+    """Video in Lieblingssongs/Playlist: Die App fragt nur den Ton an – AAC statt des ganzen Videos."""
+    video = lib.get("/api/tracks", media_type="video")["items"][0]
+    url = f"/api/tracks/{video['id']}/stream"
+    sound = lib.client.get(url, headers=lib.headers, params={"audio_only": "true"})
+    assert sound.status_code == 200
+    assert sound.headers["content-type"] == "audio/mp4"
+    assert sound.content[4:8] == b"ftyp"
+    # nur Ton: keine H.264-Spur mehr drin (das Testvideo ist winzig, auf die Größe ist hier kein Verlass)
+    assert b"avc1" not in sound.content and b"mp4a" in sound.content
+    # Spulen klappt auch hier (aus dem Zwischenspeicher)
+    part = lib.client.get(
+        url, headers={**lib.headers, "Range": "bytes=0-99"}, params={"audio_only": "true", "compatible": "true"}
+    )
+    assert part.status_code == 206 and len(part.content) == 100
+    # Ohne audio_only weiterhin das ganze Video
+    full = lib.client.get(url, headers=lib.headers)
+    assert full.headers["content-type"] == "video/mp4" and b"avc1" in full.content
+
+
+def test_audio_only_leaves_songs_alone(lib: Library) -> None:
+    track = lib.track_by_title("Bohemian Rhapsody")
+    response = lib.client.get(f"/api/tracks/{track['id']}/stream", headers=lib.headers, params={"audio_only": "true"})
+    assert response.status_code == 200
+    assert list(lib.settings.transcode_dir.rglob("*.m4a")) == []
+
+
 def test_missing_file_returns_404(lib: Library) -> None:
     track = lib.track_by_title("Love of My Life")
     (lib.settings.media_dir / lib.paths["m4a"]).unlink()

@@ -255,6 +255,9 @@ Server-Adresse eintragen, z. B. `https://musik.example.de` oder im Heimnetz `htt
    im Menü eines Videos (antippen) lässt sich trotzdem beides holen.
 5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Pfeil nach unten tippen
    („Aufs Gerät laden“). Die Musik findest du dann unter *Bibliothek › Auf diesem Gerät*.
+6. **Videos in Playlists:** Steht ein Video in den Lieblingssongs oder einer Playlist, läuft es beim Abspielen
+   als Ton mit (wie Musikvideos bei Spotify) – der Server schickt dafür nur die Tonspur. Antippen öffnet es
+   weiterhin als Video. Offline gibt es Videos nicht.
 
 ---
 
