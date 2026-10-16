@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:selfify/data/models.dart';
 import 'package:selfify/state/settings.dart';
-import 'package:selfify/ui/screens/search_widgets.dart';
+import 'package:selfify/ui/screens/search_widgets.dart' show YouTubeLinkTile;
 import 'package:selfify/ui/screens/search_youtube.dart';
 import 'package:selfify/ui/screens/settings_screen.dart';
 import 'package:selfify/ui/widgets/download_widgets.dart';
@@ -18,6 +18,13 @@ import 'support/fakes.dart';
 class RecordingApi extends FakeApi {
   final sent = <String>[];
   final cancelled = <int>[];
+  final retried = <int>[];
+
+  @override
+  Future<DownloadJob> retryDownload(int id) async {
+    retried.add(id);
+    return DownloadJob.fromJson(jobJson(id, 'queued'));
+  }
 
   @override
   Future<DownloadJob> cancelDownload(int id) async {
@@ -53,9 +60,19 @@ Future<void> settle(WidgetTester tester) async {
 YouTubeItem video({int id = 3, int? audioTrack}) =>
     YouTubeItem.fromJson({...ytItemJson(id, type: 'video'), 'in_library_audio_track_id': audioTrack});
 
+/// Video, zu dem es einen fehlgeschlagenen Video-Auftrag gibt (Auftrag 4 in FakeDownloads).
+YouTubeItem failedVideo() => YouTubeItem.fromJson({...ytItemJson(3, type: 'video'), 'video_id': 'aaaaaaaaa04'});
+
 Future<RecordingApi> pumpButton(WidgetTester tester, YouTubeItem item, {Map<String, Object> prefs = const {}}) async {
   final api = RecordingApi();
-  await pumpScreen(tester, Scaffold(body: Center(child: DownloadButton(item: item))), api: api, prefs: prefs);
+  await pumpScreen(
+    tester,
+    Scaffold(
+      body: Center(child: DownloadButton(item: item)),
+    ),
+    api: api,
+    prefs: prefs,
+  );
   return api;
 }
 
@@ -110,7 +127,11 @@ void main() {
 
   testWidgets('Menü eines Videos: „Nur Musik holen“ und „Als Video holen“', (tester) async {
     final api = RecordingApi();
-    await pumpScreen(tester, Scaffold(body: YouTubeItemTile(item: video())), api: api);
+    await pumpScreen(
+      tester,
+      Scaffold(body: YouTubeItemTile(item: video())),
+      api: api,
+    );
     await tester.longPress(find.text('YouTube Song 3'));
     await tester.pumpAndSettle();
     expect(find.text('Nur Musik holen'), findsOneWidget);
@@ -123,7 +144,11 @@ void main() {
   });
 
   testWidgets('Menü eines Videos, dessen Musik schon da ist: „Musik abspielen“', (tester) async {
-    await pumpScreen(tester, Scaffold(body: YouTubeItemTile(item: video(audioTrack: 2))), api: RecordingApi());
+    await pumpScreen(
+      tester,
+      Scaffold(body: YouTubeItemTile(item: video(audioTrack: 2))),
+      api: RecordingApi(),
+    );
     await tester.longPress(find.text('YouTube Song 3'));
     await tester.pumpAndSettle();
     expect(find.text('Musik abspielen'), findsOneWidget);
@@ -133,7 +158,11 @@ void main() {
 
   testWidgets('Menü: laufender Musik-Download lässt sich abbrechen – und nur er', (tester) async {
     final api = RecordingApi();
-    await pumpScreen(tester, Scaffold(body: YouTubeItemTile(item: video())), api: api);
+    await pumpScreen(
+      tester,
+      Scaffold(body: YouTubeItemTile(item: video())),
+      api: api,
+    );
     await tester.longPress(find.text('YouTube Song 3'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Nur Musik holen'));
@@ -185,7 +214,14 @@ void main() {
       final api = RecordingApi();
       await pumpScreen(
         tester,
-        Scaffold(body: Column(children: [DownloadButton(item: video()), DownloadButton(item: video(id: 4))])),
+        Scaffold(
+          body: Column(
+            children: [
+              DownloadButton(item: video()),
+              DownloadButton(item: video(id: 4)),
+            ],
+          ),
+        ),
         api: api,
       );
       await tester.tap(find.text('Holen').first);
@@ -195,7 +231,10 @@ void main() {
       await tester.tap(find.text('Nur Musik'));
       await settle(tester);
       expect(api.sent, ['audio']);
-      expect(find.text('„YouTube Song 3“ wird als Musik geholt · Gemerkt, änderbar in den Einstellungen'), findsOneWidget);
+      expect(
+        find.text('„YouTube Song 3“ wird als Musik geholt · Gemerkt, änderbar in den Einstellungen'),
+        findsOneWidget,
+      );
       expect(videoFetchSetting(tester), 'audio');
       expect((await SharedPreferences.getInstance()).getString('s.videoFetch'), 'audio');
 
@@ -232,18 +271,94 @@ void main() {
       expectNoErrors(tester);
     });
 
-    testWidgets('Link einfügen: Vorauswahl „Video“ bei „Immer als Video“', (tester) async {
+    testWidgets('Link einfügen: „Musik“ bleibt vorausgewählt – auch bei „Immer als Video“', (tester) async {
+      // Die Einstellung gilt nur für „Holen“ bei Videos; ein Link kann eine ganze Playlist mit Songs sein
       await pumpScreen(tester, const Scaffold(body: YouTubeLinkTile()), prefs: {'s.videoFetch': 'video'});
       await tester.tap(find.text('YouTube-Link einfügen'));
       await settle(tester);
-      expect(find.text('Landet als Video in deiner Bibliothek (mit Bild).'), findsOneWidget);
+      expect(find.text('Landet als Song in deiner Bibliothek (nur Ton).'), findsOneWidget);
     });
 
-    testWidgets('Link einfügen: Vorauswahl „Musik“ bei „Immer nur Musik“', (tester) async {
-      await pumpScreen(tester, const Scaffold(body: YouTubeLinkTile()), prefs: {'s.videoFetch': 'audio'});
-      await tester.tap(find.text('YouTube-Link einfügen'));
+    testWidgets('„Wahl merken“ + „Video“: danach holt „Holen“ ohne Nachfrage das Video', (tester) async {
+      final api = RecordingApi();
+      await pumpScreen(
+        tester,
+        Scaffold(
+          body: Column(
+            children: [
+              DownloadButton(item: video()),
+              DownloadButton(item: video(id: 4)),
+            ],
+          ),
+        ),
+        api: api,
+      );
+      await tester.tap(find.text('Holen').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Checkbox)); // direkt aufs Kästchen
+      await tester.pump();
+      await tester.tap(find.text('Video'));
       await settle(tester);
-      expect(find.text('Landet als Song in deiner Bibliothek (nur Ton).'), findsOneWidget);
+      expect(videoFetchSetting(tester), 'video');
+      await tester.tap(find.text('Holen'));
+      await settle(tester);
+      expect(find.text('Was möchtest du holen?'), findsNothing);
+      expect(api.sent, ['video', 'video']);
+    });
+
+    testWidgets('„Wahl merken“ ist für Screenreader ein Kästchen mit Namen', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpButton(tester, video());
+      await tester.tap(find.text('Holen'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(find.text('Wahl merken')),
+        isSemantics(
+          label: 'Wahl merken\nNicht mehr fragen – änderbar in den Einstellungen',
+          hasCheckedState: true,
+          isChecked: false,
+          hasTapAction: true,
+        ),
+      );
+      await tester.tap(find.text('Wahl merken'));
+      await tester.pump();
+      expect(tester.getSemantics(find.text('Wahl merken')), isSemantics(isChecked: true));
+      semantics.dispose();
+    });
+
+    testWidgets('„Immer nur Musik“: fehlgeschlagenes Video führt nicht zurück zum Video', (tester) async {
+      final api = await pumpButton(tester, failedVideo(), prefs: {'s.videoFetch': 'audio'});
+      expect(find.byIcon(Icons.refresh_rounded), findsNothing);
+      await tester.tap(find.text('Holen'));
+      await settle(tester);
+      expect(api.sent, ['audio']);
+      expect(api.retried, isEmpty);
+    });
+
+    testWidgets('„Jedes Mal fragen“: fehlgeschlagenes Video lässt sich erneut versuchen', (tester) async {
+      final api = await pumpButton(tester, failedVideo());
+      await tester.tap(find.byIcon(Icons.refresh_rounded));
+      await settle(tester);
+      expect(api.retried, [4]);
+      expect(api.sent, isEmpty);
+    });
+
+    testWidgets('Einstellungen: alle drei Möglichkeiten lassen sich wählen', (tester) async {
+      await pumpScreen(tester, const SettingsScreen(), prefs: {'s.videoFetch': 'audio'});
+      final tile = find.text('YouTube-Videos holen als');
+      await tester.scrollUntilVisible(tile, 200, scrollable: find.byType(Scrollable).first);
+      for (final (label, value) in [
+        ('Immer als Video', 'video'),
+        ('Jedes Mal fragen', 'ask'),
+        ('Immer nur Musik', 'audio'),
+      ]) {
+        await tester.tap(tile);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(label).last);
+        await tester.pumpAndSettle();
+        expect(videoFetchSetting(tester), value);
+        expect((await SharedPreferences.getInstance()).getString('s.videoFetch'), value);
+      }
     });
   });
 }

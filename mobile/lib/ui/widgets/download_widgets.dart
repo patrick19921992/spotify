@@ -207,7 +207,13 @@ class DownloadButton extends ConsumerWidget {
         onPressed: () => _play(context, ref, audioTrackId),
       );
     }
-    final failed = job != null && job.isFailed ? job : (audioJob != null && audioJob.isFailed ? audioJob : null);
+    // „Erneut versuchen“ nur für das, was „Holen“ auch holen würde: Bei „Immer nur Musik“ führt ein
+    // fehlgeschlagenes Video nicht zurück zum Video (stattdessen „Holen“ = Musik), bei „Immer als Video“ umgekehrt
+    final fetch = item.isVideo ? ref.watch(settingsProvider.select((s) => s.videoFetch)) : 'ask';
+    final failed = [
+      if (fetch != 'audio') job, // bei Songs der Song selbst, bei Videos das Video
+      if (fetch != 'video') audioJob,
+    ].nonNulls.where((j) => j.isFailed).firstOrNull;
     if (failed != null) {
       return IconButton(
         tooltip: failed.error ?? 'Erneut versuchen',
@@ -277,25 +283,30 @@ Future<({bool audioOnly, bool remember})?> showVideoFetchChoice(BuildContext con
                 ),
                 const Divider(height: 1),
                 // Für Kinder-Handys & Co.: einmal „Nur Musik“ merken, dann holt „Holen“ ohne Nachfrage.
-                // Kästchen so breit wie die Symbole darüber, damit die Texte bündig stehen.
-                ListTile(
-                  leading: SizedBox(
-                    width: 24,
-                    child: Checkbox(
-                      value: remember,
-                      onChanged: (value) => setSheetState(() => remember = value ?? false),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                      activeColor: AppColors.accent,
-                      checkColor: Colors.black,
+                // Kästchen so breit wie die Symbole darüber, damit die Texte bündig stehen. Wie bei
+                // CheckboxListTile ein einziges Bedienziel: Screenreader lesen „Wahl merken“ samt Haken vor.
+                MergeSemantics(
+                  child: ListTile(
+                    leading: SizedBox(
+                      width: 24,
+                      child: ExcludeFocus(
+                        child: Checkbox(
+                          value: remember,
+                          onChanged: (value) => setSheetState(() => remember = value ?? false),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          activeColor: AppColors.accent,
+                          checkColor: Colors.black,
+                        ),
+                      ),
                     ),
+                    title: const Text('Wahl merken'),
+                    subtitle: const Text(
+                      'Nicht mehr fragen – änderbar in den Einstellungen',
+                      style: AppText.tileSubtitle,
+                    ),
+                    onTap: () => setSheetState(() => remember = !remember),
                   ),
-                  title: const Text('Wahl merken'),
-                  subtitle: const Text(
-                    'Nicht mehr fragen – änderbar in den Einstellungen',
-                    style: AppText.tileSubtitle,
-                  ),
-                  onTap: () => setSheetState(() => remember = !remember),
                 ),
                 const SizedBox(height: 8),
               ],

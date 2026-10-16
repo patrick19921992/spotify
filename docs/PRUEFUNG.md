@@ -280,8 +280,11 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       eindeutig beschriftet
 - [x] Einstellung statt jedes Mal fragen: *Einstellungen › YouTube-Downloads › YouTube-Videos holen als*
       („Jedes Mal fragen“ / „Immer nur Musik“ / „Immer als Video“, pro Gerät, `s.videoFetch`); im Auswahlblatt
-      „Wahl merken“; der Link-Dialog übernimmt die Vorauswahl. Songs werden immer als Musik geholt, das Menü
-      eines Videos bietet weiterhin beides
+      „Wahl merken“. Songs werden immer als Musik geholt, das Menü eines Videos bietet weiterhin beides
+- [x] Gegenprüfung (`wf_7dfe21e2-66c`): „Erneut versuchen“ nach fehlgeschlagenem Video holte bei „Immer nur
+      Musik“ wieder das Video → der Knopf folgt der Einstellung; Link-Dialog wählte bei „Immer als Video“ auch für
+      Playlists/Alben „Video“ vor → beide Link-Dialoge bleiben bei „Musik“; „Wahl merken“ waren zwei Bedienziele
+      ohne gemeinsamen Namen → `MergeSemantics` + `ExcludeFocus` wie bei `CheckboxListTile`; fehlende Tests ergänzt
 
 ### Verwaltung am PC
 
