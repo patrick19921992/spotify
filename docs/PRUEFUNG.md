@@ -293,6 +293,9 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       Fensterbreite (bei 1260 px je 310 px Rand → ~20 px Inhalt). Betraf alle Blätter der Verwaltung (Benutzer und
       Rubriken anlegen/bearbeiten, Rubrik wählen) → Rand aus der Breite des Blatts (`LayoutBuilder`);
       `admin_sheet_width_test.dart` prüft Handy, Windows-Fenster und großen Bildschirm
+- [x] „Mein Player zeigt kein Update“ (Windows): Die App prüfte nur beim Start – am PC bleibt Selfify aber
+      tagelang offen → `UpdateWatcher`: stündlich und beim Zurückkehren in die App (Fenster wieder im
+      Vordergrund, höchstens alle 30 Minuten); scheitert eine Nachprüfung (offline), bleibt der bisherige Stand
 
 ## Weitermachen nach einer Unterbrechung
 
