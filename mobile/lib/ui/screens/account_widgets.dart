@@ -95,7 +95,7 @@ class AccountSwitchTile extends StatelessWidget {
       title: Text(
         title,
         style: AppText.tileTitle.copyWith(fontSize: 16),
-        maxLines: 2,
+        maxLines: 3,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: subtitle == null

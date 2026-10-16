@@ -7,11 +7,15 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/app_update.dart';
 import 'auth.dart';
+import 'windows_update.dart';
 
 /// Woher die App erfährt, welche Version installiert ist und welche es gibt (in Tests ersetzbar).
 abstract class AppUpdateSource {
-  /// Nur Android-Builds mit eingebauter Versions-Adresse prüfen auf Updates.
+  /// Nur Android- und Windows-Builds mit eingebauter Versions-Adresse prüfen auf Updates.
   bool get supported;
+
+  /// Für welche Plattform die Update-Datei gesucht wird.
+  UpdatePlatform get platform;
   Future<int> installedBuild();
   Future<AppRelease?> latest();
 }
@@ -20,7 +24,10 @@ class _ReleaseUpdateSource implements AppUpdateSource {
   const _ReleaseUpdateSource();
 
   @override
-  bool get supported => Platform.isAndroid && updateManifestUrl.isNotEmpty;
+  bool get supported => (Platform.isAndroid || Platform.isWindows) && updateManifestUrl.isNotEmpty;
+
+  @override
+  UpdatePlatform get platform => Platform.isWindows ? UpdatePlatform.windows : UpdatePlatform.android;
 
   @override
   Future<int> installedBuild() async => int.tryParse((await PackageInfo.fromPlatform()).buildNumber) ?? 0;
@@ -36,7 +43,7 @@ final appUpdateSourceProvider = Provider<AppUpdateSource>((ref) => const _Releas
 Future<AppRelease?> checkForUpdate(AppUpdateSource source) async {
   if (!source.supported) return null;
   final latest = await source.latest();
-  if (latest == null || latest.android == null) return null;
+  if (latest == null || latest.downloadFor(source.platform) == null) return null;
   return latest.build > await source.installedBuild() ? latest : null;
 }
 
@@ -102,8 +109,13 @@ class UpdateProgress {
 /// muss auch der Download abgebrochen werden.
 typedef UpdateInstaller = Stream<UpdateProgress> Function(AppDownload download);
 
-/// Lädt die APK und öffnet den Android-Installer (in Tests ersetzbar).
-final updateInstallerProvider = Provider<UpdateInstaller>((ref) => _installWithOtaUpdate);
+/// Lädt das Update und installiert es: Android über den Android-Installer, Windows über den Selfify-Installer
+/// (in Tests ersetzbar).
+final updateInstallerProvider = Provider<UpdateInstaller>(
+  (ref) => ref.watch(appUpdateSourceProvider).platform == UpdatePlatform.windows
+      ? installWindowsUpdate
+      : _installWithOtaUpdate,
+);
 
 Stream<UpdateProgress> _installWithOtaUpdate(AppDownload download) {
   final ota = OtaUpdate();

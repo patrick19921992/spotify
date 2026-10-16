@@ -381,8 +381,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
           icon: Icons.cloud_off_rounded,
           title: 'Du bist offline',
           message:
-              'Von diesem Künstler ist nichts auf deinem Handy. Ohne Verbindung kannst du nur heruntergeladene Musik hören.',
-          action: OutlinedButton(onPressed: () => Nav.offline(context), child: const Text('Heruntergeladene Musik')),
+              'Von diesem Künstler ist nichts auf deinem Handy. Ohne Verbindung kannst du nur Musik auf diesem Gerät hören.',
+          action: OutlinedButton(onPressed: () => Nav.offline(context), child: const Text('Auf diesem Gerät')),
         ),
       );
     }

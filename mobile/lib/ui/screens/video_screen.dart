@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/format.dart';
+import '../../core/platform.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../player/player.dart';
@@ -17,9 +18,11 @@ import '../../state/connectivity.dart';
 import '../../state/library.dart';
 import '../../state/offline.dart';
 import '../../state/settings.dart';
+import '../desktop/desktop_shortcuts.dart' show volumeProvider;
 import '../nav.dart';
 import '../widgets/common.dart';
 import '../widgets/track_menu.dart';
+import '../widgets/video_volume.dart';
 import 'player_widgets.dart';
 
 /// Titel laden, wenn die Seite ohne Titeldaten geöffnet wurde (z. B. über einen Link).
@@ -140,6 +143,12 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       if (mounted && generation == _generation) setState(() => _problem = _VideoProblem(_unsupportedMessage));
       return;
     }
+    // Am Computer gilt dieselbe Lautstärke wie für die Musik (wie bei Spotify)
+    if (isDesktopPlatform) {
+      try {
+        await controller.setVolume(videoGain(ref.read(audioHandlerProvider).player.volume));
+      } catch (_) {}
+    }
     if (!mounted || generation != _generation) {
       controller.dispose().ignore();
       return;
@@ -157,7 +166,10 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       autoPlay: true,
       allowFullScreen: true,
       allowPlaybackSpeedChanging: true,
-      allowMuting: true,
+      // Am Computer: eigener Regler (gleiche Lautstärke wie die Musik) statt nur Stummschalten
+      allowMuting: !isDesktopPlatform,
+      additionalControls: isDesktopPlatform ? (_) => const [VideoVolumeControl()] : null,
+      customControls: isDesktopPlatform ? const VideoVolumeKeys(child: MaterialDesktopControls()) : null,
       aspectRatio: _aspectRatio(controller, _track),
       playbackSpeeds: const [0.5, 0.75, 1, 1.25, 1.5, 2],
       materialProgressColors: colors,
@@ -249,6 +261,13 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
     final loaded = _track == null ? ref.watch(_videoTrackProvider(_trackId)) : null;
     final track = _track ?? loaded?.value;
     final screenHeight = MediaQuery.sizeOf(context).height;
+    if (isDesktopPlatform) {
+      // Lautstärke geändert (Regler, Tasten, Strg+↑/↓) -> auch das Video
+      ref.listen(volumeProvider, (_, next) {
+        final volume = next.value;
+        if (volume != null) _video?.setVolume(videoGain(volume)).ignore();
+      });
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,

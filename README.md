@@ -178,8 +178,12 @@ anhaken → OK*. Sonst fragt SmartScreen bei jedem Start nach. Dann entpacken un
 `selfify.exe` starten. Alle Dateien im Ordner gehören zusammen (DLLs und Ordner `data`). Die `.exe` allein
 funktioniert nicht.
 
-**Updates:** Die neue `selfify-windows-setup.exe` herunterladen und einfach darüber installieren. Läuft
-Selfify noch, schließt der Installer die App vorher. Anmeldung und Einstellungen bleiben erhalten.
+**Updates:** Wie am Handy zeigt Selfify „Neue App-Version verfügbar“. *Installieren* lädt den neuen Installer,
+prüft ihn, schließt Selfify, aktualisiert im Hintergrund und startet Selfify wieder – ohne erneute
+SmartScreen-Warnung. Von Hand: *Einstellungen → Nach Updates suchen*, oder die neue
+`selfify-windows-setup.exe` einfach darüber installieren. Anmeldung, Einstellungen und Offline-Musik bleiben
+erhalten. Wer die ZIP-Version nutzt, bekommt beim ersten Update den normalen Installations-Assistenten; danach
+Selfify über das Startmenü starten und den alten ZIP-Ordner löschen.
 
 **Deinstallieren:** *Einstellungen → Apps → Installierte Apps → Selfify → Deinstallieren*. Anmeldung,
 Einstellungen und Offline-Titel bleiben dabei auf dem PC. Wer alles entfernen will, löscht danach noch die
@@ -200,7 +204,11 @@ Punkten), zeigt Selfify die Handy-Ansicht.
 | Umschalt + → / Umschalt + ← | 5 Sekunden vor / zurück |
 | Strg + ↑ / Strg + ↓ | Lauter / leiser |
 | Alt + ← oder seitliche Maustaste | Zurück |
-| Medientasten der Tastatur | Abspielen/Pause, Weiter, Zurück (solange das Selfify-Fenster aktiv ist) |
+| Medientasten (Tastatur, Headset) | Abspielen/Pause, Weiter, Zurück – auch wenn Selfify im Hintergrund ist. Titel und Cover erscheinen zusätzlich in der Windows-Medienübersicht (Lautstärke-Popup bzw. Schnelleinstellungen) |
+
+Im **Videoplayer** (Maus über dem Video): Leertaste Abspielen/Pause, ← / → spulen, ↑ / ↓ lauter/leiser, M stumm,
+F Vollbild, Esc Vollbild beenden. Den Lautstärkeregler gibt es in der Leiste des Videos (auch im Vollbild); Musik
+und Videos haben dieselbe Lautstärke, wie bei Spotify.
 
 > **Unterschied zum Handy:** Zwischen zwei Titeln gibt es unter Windows eine kurze Pause (der nächste Titel
 > wird erst am Ende des vorherigen geöffnet) – bei Live-Alben oder DJ-Mixen hörbar.
@@ -235,7 +243,8 @@ Server-Adresse eintragen, z. B. `https://musik.example.de` oder im Heimnetz `htt
 3. **Musik reinlegen:** Vorhandene Dateien per SMB in `\\tower\selfify\Musik` (bzw. `Hoerspiele`,
    `Videos` …) kopieren. Sie erscheinen nach wenigen Sekunden.
 4. **Fehlende Songs holen:** *Suche* → Song eintippen → unter „Von YouTube holen“ auf **Holen** tippen.
-5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Download-Pfeil tippen.
+5. **Offline hören:** In einer Playlist, einem Album oder bei den Lieblingssongs auf den Pfeil nach unten tippen
+   („Aufs Gerät laden“). Die Musik findest du dann unter *Bibliothek › Auf diesem Gerät*.
 
 ---
 

@@ -65,6 +65,12 @@ dependencies:
   just_audio_platform_interface: 4.6.0
   # Video unter Windows (Media Foundation); chewie bleibt unverändert
   video_player_win: ^3.3.1
+  # Windows: Medientasten (auch ohne Fokus) und Anzeige in der Windows-Medienübersicht.
+  # flutter_rust_bridge muss exakt zur Version passen, mit der smtc_windows erzeugt wurde – sonst startet es nicht.
+  smtc_windows: ^1.1.0
+  flutter_rust_bridge: 2.11.1
+  # Windows-Update: Prüfsumme des heruntergeladenen Installers
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +82,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # Nachgebauter Videoplayer in den Tests (Lautstärke am PC)
+  video_player_platform_interface: ^6.9.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

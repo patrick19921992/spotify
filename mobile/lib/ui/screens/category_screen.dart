@@ -546,7 +546,7 @@ class _OfflineCategory extends ConsumerWidget {
         hasScrollBody: false,
         child: EmptyState(
           icon: Icons.download_for_offline_outlined,
-          title: 'Nichts heruntergeladen',
+          title: 'Nichts auf diesem Gerät',
           message: 'Aus dieser Rubrik ist noch nichts auf deinem Handy.',
         ),
       );
@@ -564,7 +564,7 @@ class _OfflineCategory extends ConsumerWidget {
             icon: categoryIcon(category?.icon ?? 'folder'),
             color: color,
             topInset: topInset,
-            title: isVideo ? 'Nicht offline verfügbar' : '${_countFormat.format(tracks.length)} heruntergeladen',
+            title: isVideo ? 'Nicht offline verfügbar' : '${_countFormat.format(tracks.length)} auf diesem Gerät',
             subtitle: noNetwork ? 'Keine Verbindung – nur Titel auf deinem Handy' : 'Offline-Modus – nur Titel auf deinem Handy',
             actions: isVideo || tracks.isEmpty
                 ? null
@@ -581,7 +581,7 @@ class _OfflineCategory extends ConsumerWidget {
                   ),
           ),
         ),
-        if (!isVideo && tracks.isNotEmpty) const SliverToBoxAdapter(child: SectionHeader('Heruntergeladen')),
+        if (!isVideo && tracks.isNotEmpty) const SliverToBoxAdapter(child: SectionHeader('Auf diesem Gerät')),
         content,
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],

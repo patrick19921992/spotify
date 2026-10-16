@@ -316,10 +316,10 @@ class OfflineCollectionButton extends ConsumerWidget {
   Future<void> _release(BuildContext context, WidgetRef ref) async {
     final ok = await confirm(
       context,
-      title: 'Download entfernen?',
+      title: 'Vom Gerät entfernen?',
       message:
           '„$name“ ist dann nicht mehr offline verfügbar. '
-          'Songs, die auch in anderen heruntergeladenen Playlists oder Alben sind, bleiben auf dem Handy.',
+          'Songs, die auch in anderen Playlists oder Alben auf diesem Gerät sind, bleiben erhalten.',
       confirmLabel: 'Entfernen',
       danger: true,
     );
@@ -338,7 +338,7 @@ class OfflineCollectionButton extends ConsumerWidget {
       showMessage(
         context,
         tracks.isEmpty
-            ? 'Hier gibt es noch nichts zum Herunterladen'
+            ? 'Hier gibt es noch nichts, was aufs Gerät geladen werden kann'
             : 'Videos können nicht offline gespeichert werden',
       );
       return;
@@ -391,7 +391,7 @@ class OfflineCollectionButton extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-              title: const Text('Download entfernen', style: TextStyle(color: AppColors.danger)),
+              title: const Text('Vom Gerät entfernen', style: TextStyle(color: AppColors.danger)),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 _release(context, ref);
@@ -420,11 +420,11 @@ class OfflineCollectionButton extends ConsumerWidget {
     VoidCallback? onPressed;
     if (!kept) {
       icon = const Icon(Icons.arrow_circle_down_outlined, color: AppColors.textSecondary, size: 30);
-      tooltip = 'Herunterladen';
+      tooltip = 'Aufs Gerät laden';
       onPressed = canKeep ? () => _keep(context, ref) : null;
     } else if (complete) {
       icon = const Icon(Icons.arrow_circle_down_rounded, color: AppColors.accent, size: 30);
-      tooltip = 'Heruntergeladen';
+      tooltip = 'Auf diesem Gerät';
       onPressed = () => _release(context, ref);
     } else {
       icon = SizedBox(
@@ -448,7 +448,7 @@ class OfflineCollectionButton extends ConsumerWidget {
         ),
       );
       tooltip = busy
-          ? 'Wird heruntergeladen · ${formatPercent(progress)}'
+          ? 'Wird aufs Gerät geladen · ${formatPercent(progress)}'
           : 'Unvollständig · ${formatPercent(progress)}';
       onPressed = busy || !canKeep ? () => _release(context, ref) : () => _showStalledOptions(context, ref, progress);
     }

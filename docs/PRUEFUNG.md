@@ -176,8 +176,54 @@ Vorab Planung mit Gegenkritik (`wf_a53e5ff2-5d0`), danach Gegenprüfung des PRs 
       ohne Wirkung → ausgeblendet
 - [x] fehlende libmpv-2.dll verhinderte den Start → App startet, Abspielen meldet den Grund; CI prüft die DLL
 - [x] Installer: nur pro Benutzer, fester Ordner (kein Löschen von „data“ in fremden Ordnern)
-- [ ] offen (Folgeschritt): systemweite Medientasten/Windows-Medienübersicht (SMTC), Update-Hinweis für
-      Windows, Fenstergröße merken, lückenlose Übergänge zwischen Titeln
+- [x] Folgeschritt: systemweite Medientasten und Windows-Medienübersicht (smtc_windows, flutter_rust_bridge
+      exakt 2.11.1); Medientasten im Fenster nur ohne Medienübersicht (sonst doppelt)
+- [x] Folgeschritt: Update-Hinweis für Windows (version.json mit Windows-Installer, Prüfsumme, stilles Update
+      mit Neustart; ZIP-Variante bekommt den Assistenten)
+- [ ] offen: Fenstergröße merken, lückenlose Übergänge zwischen Titeln
+- [x] Videoplayer am PC ohne Lautstärkeregler (nur Stummschalten) → Regler in der Leiste des Videos (auch im
+      Vollbild), ↑/↓ lauter/leiser, M stumm mit Anzeige im Bild; gleiche Lautstärke wie die Musik (Strg+↑/↓ und
+      Regler wirken auf beides, bleibt für den nächsten Start gespeichert). Tests mit nachgebautem Videoplayer
+- [x] Gegenprüfung Lautstärke (`wf_10a680b2-ff7`):
+      - mittel – „Ton an“ sprang auf 100 %, weil Player-Leiste und Video sich den Wert vor dem Stummschalten
+        getrennt merkten → gemeinsam (`toggleDesktopMute`), ohne gemerkten Wert halbe Lautstärke
+      - mittel – gleiche Einstellung, ungleich laut: libmpv (Musik) rechnet die Lautstärke kubisch, der
+        Videoplayer von Windows linear (30 % ≈ 20 dB lauter) → Video bekommt unter Windows dieselbe Kurve
+      - mittel – Hochkant-Video/kleines Fenster: Leiste lief über, Vollbild-Knopf nicht mehr klickbar, Zeitangabe
+        abgeschnitten → schmaler Player: nur Lautsprecher-Knopf (↑/↓ gehen weiter)
+      - mittel – beim langen Ziehen am Regler blendete chewie die Leiste aus → Ziehen zählt wie Mausbewegung
+      - niedrig – zehnmal „leiser“ ergab 1e-16 statt 0 (kein „Stumm“, M brachte keinen Ton) → auf ganze Prozent
+        gerundet; Tab erreichte Lautsprecher/Regler (Leertaste wirkte doppelt) → nicht per Tab erreichbar;
+        Lautstärke-Anzeige lief bei schmalem Player über → verkleinert sich
+      - geprüft, kein Fehler: Strg+↑/↓ auf der Videoseite (wirkt, ohne Anzeige – gewollt)
+
+### Gegenprüfung PR #6 (`wf_0d99c533-5a2`)
+
+- [x] mittel – Scheiterte im Windows-Job das Herunterladen von version.json kurz, wurde sie durch eine reine
+      Windows-Datei ersetzt (Handys ohne Update-Hinweis) → neu nur, wenn sie wirklich fehlt; gh-Fehler brechen ab
+- [x] niedrig – fehlgeschlagener Installer-Upload blieb unbemerkt → Schritt bricht ab, version.json bleibt
+- [x] niedrig – Medienübersicht behielt Cover/Album des vorigen Titels; Aufrufe an Windows konnten sich
+      überholen → bei Titelwechsel erst leeren, alle Aufrufe nacheinander
+- [x] niedrig – „Abspielen“ ohne Titel (nach dem Abmelden) zeigte „spielt“ → ignoriert
+- [x] niedrig – ZIP-Variante bot nach dem Assistenten immer wieder dasselbe Update an → Hinweis: Startmenü
+      nutzen, ZIP-Ordner löschen
+- [x] geprüft, kein Fehler: Medientaste auf der Videoseite (die Videoseite pausiert die Musik selbst)
+
+### Begriffe: Server-Bibliothek vs. Gerätespeicher
+
+- [x] „Heruntergeladen“ (Musik, die auf dem Gerät gespeichert ist) hieß fast wie „Downloads“ (YouTube-Downloads
+      auf den Server) → umbenannt in „Auf diesem Gerät“ (Bibliothek-Filter, Startseite, Gerätespeicher-Seite,
+      Einstellungen, Offline-Hinweise); „Download entfernen“ → „Vom Gerät entfernen“, Pfeil an Playlist, Album und
+      Lieblingssongs → „Aufs Gerät laden“. Server-Texte (Downloads-Seite, Verwaltung) bleiben unverändert
+- [x] Gegenprüfung (`wf_43fc5dde-384`, 9 Prüfer wegen Limit abgebrochen → Funde selbst nachgeprüft):
+      übersehen waren „Lade … herunter“ (Startseite ohne Netz), „Download-Qualität“ (Einstellungen und
+      Gerätespeicher-Seite → „Qualität auf diesem Gerät“), „Download-Pfeil“ (→ „Pfeil nach unten“), der Album-Pfeil
+      („Aufs Handy laden“ → „Aufs Gerät laden“, wie an Playlists); „Alles von diesem Gerät löschen?“ klang nach
+      Zurücksetzen → „Alle Musik von diesem Gerät löschen?“; „Warteschlange“ war mit der Wiedergabe-Warteschlange
+      verwechselbar; „bereits“ fehlte im Qualitäts-Hinweis; Einstellungs-Schalter kürzten den längeren Text bei sehr
+      großer Schrift → Titel darf 3 Zeilen haben
+- [ ] offen (Vorschlag): Einzelne Texte sagen noch „Handy“ (z. B. „wird aufs Handy geladen“) – unter Windows
+      wäre „Gerät“ passender
 
 ## Weitermachen nach einer Unterbrechung
 

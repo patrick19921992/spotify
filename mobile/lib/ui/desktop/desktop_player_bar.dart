@@ -193,8 +193,6 @@ class _Volume extends ConsumerStatefulWidget {
 }
 
 class _VolumeState extends ConsumerState<_Volume> {
-  double _beforeMute = 1;
-
   @override
   Widget build(BuildContext context) {
     final volume = ref.watch(volumeProvider).value ?? ref.read(audioHandlerProvider).player.volume;
@@ -209,10 +207,7 @@ class _VolumeState extends ConsumerState<_Volume> {
         IconButton(
           tooltip: volume == 0 ? 'Ton an' : 'Stummschalten',
           icon: Icon(icon),
-          onPressed: () {
-            if (volume > 0) _beforeMute = volume;
-            setDesktopVolume(ref, volume > 0 ? 0 : _beforeMute);
-          },
+          onPressed: () => toggleDesktopMute(ref),
         ),
         if (widget.showSlider)
           SizedBox(

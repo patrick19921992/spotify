@@ -35,7 +35,7 @@ class MixScreen extends ConsumerWidget {
             return const EmptyState(
               icon: Icons.cloud_off_rounded,
               title: 'Du bist offline',
-              message: 'Mixe werden vom Server zusammengestellt. Deine heruntergeladene Musik findest du auf der Startseite.',
+              message: 'Mixe werden vom Server zusammengestellt. Deine Musik auf diesem Gerät findest du auf der Startseite.',
             );
           }
           return ErrorView(message: errorText(mix.error!), onRetry: () => ref.invalidate(mixProvider(mixKey)));

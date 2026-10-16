@@ -326,7 +326,7 @@ class DetailOfflineButton extends ConsumerWidget {
     if (audio.isEmpty) {
       showMessage(
         context,
-        tracks.isEmpty ? 'Hier gibt es noch nichts zum Herunterladen' : 'Videos können nicht aufs Handy geladen werden',
+        tracks.isEmpty ? 'Hier gibt es noch nichts, was aufs Gerät geladen werden kann' : 'Videos können nicht aufs Handy geladen werden',
       );
       return;
     }
@@ -353,9 +353,9 @@ class DetailOfflineButton extends ConsumerWidget {
   Future<void> _release(BuildContext context, WidgetRef ref) async {
     final ok = await confirm(
       context,
-      title: 'Download entfernen?',
+      title: 'Vom Gerät entfernen?',
       message: '„$name“ ist dann nicht mehr offline verfügbar. '
-          'Songs, die auch in anderen heruntergeladenen Alben oder Playlists sind, bleiben auf dem Handy.',
+          'Songs, die auch in anderen Alben oder Playlists auf diesem Gerät sind, bleiben erhalten.',
       confirmLabel: 'Entfernen',
       danger: true,
     );
@@ -394,7 +394,7 @@ class DetailOfflineButton extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
           title: Text(
-            busy ? 'Download abbrechen' : 'Download entfernen',
+            busy ? 'Laden abbrechen' : 'Vom Gerät entfernen',
             style: const TextStyle(color: AppColors.danger),
           ),
           onTap: () {
@@ -411,7 +411,7 @@ class DetailOfflineButton extends ConsumerWidget {
     final offline = ref.watch(offlineProvider);
     if (!offline.isCollectionOffline(collectionKey)) {
       return IconButton(
-        tooltip: 'Aufs Handy laden',
+        tooltip: 'Aufs Gerät laden',
         iconSize: 28,
         icon: const Icon(Icons.arrow_circle_down_outlined, color: AppColors.textSecondary),
         onPressed: canKeep ? () => _keep(context, ref) : null,
@@ -421,7 +421,7 @@ class DetailOfflineButton extends ConsumerWidget {
     final done = ids.where(offline.tracks.containsKey).length;
     if (done >= ids.length) {
       return IconButton(
-        tooltip: 'Auf dem Handy – tippen zum Entfernen',
+        tooltip: 'Auf diesem Gerät – tippen zum Entfernen',
         iconSize: 28,
         icon: const Icon(Icons.arrow_circle_down_rounded, color: AppColors.accent),
         onPressed: () => _release(context, ref),

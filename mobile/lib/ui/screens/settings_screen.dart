@@ -141,7 +141,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context,
       title: 'Abmelden?',
       message: 'Du wirst auf diesem Gerät als @${user.username} abgemeldet. '
-          'Heruntergeladene Musik bleibt auf dem Gerät.',
+          'Musik auf diesem Gerät bleibt erhalten.',
       confirmLabel: 'Abmelden',
       danger: true,
     );
@@ -202,8 +202,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _pickOfflineQuality(AppSettings settings) async {
     final value = await _pickQuality(
-      title: 'Download-Qualität',
-      message: 'Gilt für neue Downloads. Bereits heruntergeladene Songs bleiben, wie sie sind.',
+      title: 'Qualität auf diesem Gerät',
+      message: 'Gilt für Songs, die neu aufs Gerät geladen werden. Songs, die schon auf diesem Gerät sind, bleiben, wie sie sind.',
       keys: _offlineQualities,
       selected: _offlineQualities.contains(settings.offlineQuality) ? settings.offlineQuality : 'original',
     );
@@ -408,7 +408,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!offline.loaded) {
       storage = 'Wird geladen …';
     } else if (count == 0) {
-      storage = pending > 0 ? 'Wird heruntergeladen …' : 'Noch nichts heruntergeladen';
+      storage = pending > 0 ? 'Wird aufs Gerät geladen …' : 'Noch nichts auf diesem Gerät';
     } else {
       storage = '${pluralSongs(count)} · ${formatBytes(offline.totalBytes)} belegt';
     }
@@ -419,26 +419,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       AccountSwitchTile(
         icon: Icons.cloud_off_rounded,
         title: 'Offline-Modus',
-        subtitle: 'Nur heruntergeladene Musik anzeigen und abspielen',
+        subtitle: 'Nur Musik auf diesem Gerät anzeigen und abspielen',
         value: settings.offlineMode,
         onChanged: (value) => ref.read(settingsProvider.notifier).update((s) => s.copyWith(offlineMode: value)),
       ),
       AccountTile(
         icon: Icons.high_quality_rounded,
-        title: 'Download-Qualität',
+        title: 'Qualität auf diesem Gerät',
         subtitle: _qualityLabel(settings.offlineQuality),
         onTap: () => _pickOfflineQuality(settings),
       ),
       AccountSwitchTile(
         icon: Icons.network_wifi_rounded,
-        title: 'Nur im WLAN herunterladen',
+        title: 'Nur im WLAN aufs Gerät laden',
         subtitle: 'Spart dein mobiles Datenvolumen',
         value: settings.offlineWifiOnly,
         onChanged: _setWifiOnly,
       ),
       AccountTile(
         icon: Icons.download_for_offline_rounded,
-        title: 'Heruntergeladene Musik',
+        title: 'Auf diesem Gerät',
         subtitle: subtitle,
         chevron: true,
         onTap: () => Nav.offline(context),

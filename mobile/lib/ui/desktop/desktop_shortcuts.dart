@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../player/player.dart';
+import '../../player/windows_media_controls.dart' show windowsMediaControlsActive;
 import '../../state/auth.dart';
 import '../router.dart';
 import '../screens/video_screen.dart' show openVideoPages;
@@ -60,11 +61,15 @@ Map<ShortcutActivator, Intent> get desktopShortcuts => <ShortcutActivator, Inten
         if (!_isSpace(entry.key)) entry.key: entry.value,
       // Gedrückt halten soll nicht dauernd umschalten
       const SingleActivator(LogicalKeyboardKey.space, includeRepeats: false): const PlayPauseIntent(),
-      const SingleActivator(LogicalKeyboardKey.mediaPlayPause, includeRepeats: false): const PlayPauseIntent(),
-      const SingleActivator(LogicalKeyboardKey.mediaTrackNext): const NextTrackIntent(),
-      const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious): const PreviousTrackIntent(),
-      const SingleActivator(_windowsMediaNext): const NextTrackIntent(),
-      const SingleActivator(_windowsMediaPrevious): const PreviousTrackIntent(),
+      // Medientasten nur hier, wenn die Windows-Medienübersicht fehlt – sonst kommen sie über Windows
+      // (auch ohne Fokus) und würden im Fenster doppelt umschalten
+      if (!windowsMediaControlsActive) ...{
+        const SingleActivator(LogicalKeyboardKey.mediaPlayPause, includeRepeats: false): const PlayPauseIntent(),
+        const SingleActivator(LogicalKeyboardKey.mediaTrackNext): const NextTrackIntent(),
+        const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious): const PreviousTrackIntent(),
+        const SingleActivator(_windowsMediaNext): const NextTrackIntent(),
+        const SingleActivator(_windowsMediaPrevious): const PreviousTrackIntent(),
+      },
       const SingleActivator(LogicalKeyboardKey.keyF, control: true): const FocusSearchIntent(),
       const SingleActivator(LogicalKeyboardKey.keyL, control: true): const FocusSearchIntent(),
       const SingleActivator(LogicalKeyboardKey.arrowRight, control: true): const NextTrackIntent(),
@@ -81,13 +86,31 @@ final volumeProvider = StreamProvider<double>((ref) => ref.watch(audioHandlerPro
 
 const _prefVolume = 'desktop.volume';
 
-/// Lautstärke setzen und für den nächsten Start merken.
+/// Lautstärke setzen und für den nächsten Start merken. Auf ganze Prozent gerundet – sonst bleibt nach
+/// mehrmals „leiser“ ein winziger Rest (z. B. 1e-16) statt 0, und „Stumm“/„Ton an“ stimmt nicht mehr.
 Future<void> setDesktopVolume(WidgetRef ref, double volume) async {
-  final value = volume.clamp(0.0, 1.0);
+  final value = (volume.clamp(0.0, 1.0) * 100).round() / 100;
   try {
     ref.read(sharedPreferencesProvider).setDouble(_prefVolume, value);
   } catch (_) {}
   await ref.read(audioHandlerProvider).player.setVolume(value);
+}
+
+/// Lautstärke vor dem Stummschalten – gemeinsam für Player-Leiste und Videoplayer (die Lautstärke ist ja
+/// auch gemeinsam). Ohne gemerkten Wert (z. B. stumm gestartet) geht es mit der halben Lautstärke weiter.
+double _volumeBeforeMute = 0.5;
+
+@visibleForTesting
+void debugResetDesktopMute() => _volumeBeforeMute = 0.5;
+
+/// Stummschalten bzw. wieder auf die Lautstärke davor.
+Future<void> toggleDesktopMute(WidgetRef ref) {
+  final volume = ref.read(audioHandlerProvider).player.volume;
+  if (volume > 0) {
+    _volumeBeforeMute = volume;
+    return setDesktopVolume(ref, 0);
+  }
+  return setDesktopVolume(ref, _volumeBeforeMute);
 }
 
 /// Hängt die Desktop-Aktionen über alle Seiten (MaterialApp.builder): Tastenkürzel, Maus-Zurück-Taste,

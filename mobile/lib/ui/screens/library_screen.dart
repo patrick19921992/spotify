@@ -23,7 +23,7 @@ enum _Filter {
   playlists('Playlists'),
   albums('Alben'),
   artists('Künstler'),
-  downloaded('Heruntergeladen'),
+  downloaded('Auf diesem Gerät'),
   family('Familie');
 
   const _Filter(this.label);
@@ -42,7 +42,7 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   static const _prefSort = 'library.sort';
   static const _prefGrid = 'library.grid';
-  static const _downloadsContext = PlayContext('queue', title: 'Heruntergeladene Titel');
+  static const _downloadsContext = PlayContext('queue', title: 'Titel auf diesem Gerät');
 
   _Filter? _filter;
   bool _alphabetical = false;
@@ -60,7 +60,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       // Ansicht ist nur Komfort – Standardwerte reichen
     }
     if (ref.read(settingsProvider).offlineMode) _filter = _Filter.downloaded;
-    // Offline-Modus eingeschaltet -> automatisch „Heruntergeladen“ zeigen
+    // Offline-Modus eingeschaltet -> automatisch „Auf diesem Gerät“ zeigen
     ref.listenManual(settingsProvider.select((s) => s.offlineMode), (previous, now) {
       if (now && previous != true && mounted) setState(() => _filter = _Filter.downloaded);
     });
@@ -143,7 +143,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     try {
       final tracks = (await load()).where((t) => !t.isVideo).toList();
       if (tracks.isEmpty) {
-        if (mounted) showMessage(context, 'Hier gibt es noch nichts zum Herunterladen');
+        if (mounted) showMessage(context, 'Hier gibt es noch nichts, was aufs Gerät geladen werden kann');
         return;
       }
       await ref.read(offlineProvider.notifier).keepCollection(key, name, tracks);
@@ -156,7 +156,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Future<void> _releaseOffline(String key, String name) async {
     final ok = await confirm(
       context,
-      title: 'Download entfernen?',
+      title: 'Vom Gerät entfernen?',
       message: '„$name“ ist dann nicht mehr offline verfügbar.',
       confirmLabel: 'Entfernen',
       danger: true,
@@ -245,13 +245,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return kept
         ? (
             icon: Icons.download_done_rounded,
-            label: 'Download entfernen',
+            label: 'Vom Gerät entfernen',
             onTap: () => _releaseOffline(key, name),
             danger: false,
           )
         : (
             icon: Icons.download_for_offline_outlined,
-            label: 'Herunterladen',
+            label: 'Aufs Gerät laden',
             onTap: () => _keepOffline(key, name, load),
             danger: false,
           );
@@ -810,11 +810,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           _emptySliver(
             EmptyState(
               icon: Icons.download_for_offline_outlined,
-              title: 'Noch nichts heruntergeladen',
+              title: 'Noch nichts auf diesem Gerät',
               message: noNetwork
                   ? 'Ohne Verbindung kannst du nur Musik hören, die auf deinem Handy ist. '
-                        'Tippe beim nächsten Mal bei Playlists, Alben oder Lieblingssongs auf den Download-Pfeil.'
-                  : 'Tippe bei Playlists, Alben oder deinen Lieblingssongs auf den Download-Pfeil, '
+                        'Tippe beim nächsten Mal bei Playlists, Alben oder Lieblingssongs auf den Pfeil nach unten.'
+                  : 'Tippe bei Playlists, Alben oder deinen Lieblingssongs auf den Pfeil nach unten, '
                         'um sie ohne Internet zu hören.',
             ),
           ),
@@ -860,7 +860,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           actions: [
             (
               icon: Icons.download_done_rounded,
-              label: 'Download entfernen',
+              label: 'Vom Gerät entfernen',
               onTap: () => _releaseOffline(key, title),
               danger: false,
             ),
@@ -929,7 +929,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return LibraryEntryTile(
       entry: LibraryEntry(
         id: 'offline:all',
-        title: 'Alle heruntergeladenen Titel',
+        title: 'Alle Titel auf diesem Gerät',
         subtitle: '${pluralSongs(tracks.length)} · ${formatBytes(totalBytes)}',
         offline: true,
         cover: (size) => SymbolCover(

@@ -61,7 +61,7 @@ class _LikedSongsScreenState extends ConsumerState<LikedSongsScreen> {
 
   Future<void> _refresh() async {
     if (ref.read(isOfflineProvider)) {
-      showMessage(context, 'Du bist offline – hier sind deine heruntergeladenen Songs');
+      showMessage(context, 'Du bist offline – hier sind deine Songs auf diesem Gerät');
       return;
     }
     ref.invalidate(likedTracksProvider);
@@ -193,7 +193,7 @@ class _LikedSongsScreenState extends ConsumerState<LikedSongsScreen> {
                 ? const EmptyState(
                     icon: Icons.cloud_off_rounded,
                     title: 'Keine Lieblingssongs auf dem Handy',
-                    message: 'Tippe auf den Download-Pfeil, damit du deine Lieblingssongs auch ohne Verbindung hören kannst.',
+                    message: 'Tippe auf den Pfeil nach unten, damit du deine Lieblingssongs auch ohne Verbindung hören kannst.',
                   )
                 : EmptyState(
                     icon: Icons.favorite_border_rounded,
@@ -295,8 +295,8 @@ class _LikedSongsScreenState extends ConsumerState<LikedSongsScreen> {
                   Expanded(
                     child: Text(
                       onRetry == null
-                          ? 'Offline – nur heruntergeladene Songs'
-                          : 'Server nicht erreichbar – heruntergeladene Songs',
+                          ? 'Offline – nur Songs auf diesem Gerät'
+                          : 'Server nicht erreichbar – Songs auf diesem Gerät',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppText.caption,

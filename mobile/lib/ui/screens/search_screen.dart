@@ -307,7 +307,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               text: 'Du bist offline. Die Suche findet nur Musik, die auf deinem Handy gespeichert ist.',
               action: TextButton(
                 onPressed: () => Nav.offline(context),
-                child: const Text('Heruntergeladene Musik', style: TextStyle(color: AppColors.accent)),
+                child: const Text('Auf diesem Gerät', style: TextStyle(color: AppColors.accent)),
               ),
             ),
           ),

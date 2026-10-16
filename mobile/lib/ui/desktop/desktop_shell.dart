@@ -50,7 +50,7 @@ class DesktopShell extends ConsumerWidget {
                         color: AppColors.surfaceHighest,
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: Text(
-                          offline ? 'Keine Verbindung – nur heruntergeladene Musik' : 'Offline-Modus ist an',
+                          offline ? 'Keine Verbindung – nur Musik auf diesem Gerät' : 'Offline-Modus ist an',
                           textAlign: TextAlign.center,
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                         ),

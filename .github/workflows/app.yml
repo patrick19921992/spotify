@@ -177,9 +177,14 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      # smtc_windows (Medientasten, Windows-Medienübersicht) wird beim Bauen aus Rust-Quellcode übersetzt
+      - uses: dtolnay/rust-toolchain@stable
       - run: flutter pub get
       - name: Windows-App bauen
-        run: flutter build windows --release --build-number=${{ github.run_number }}
+        # UPDATE_MANIFEST_URL: Dort schaut die App nach neueren Versionen (Update-Hinweis)
+        run: >-
+          flutter build windows --release --build-number=${{ github.run_number }}
+          --dart-define=UPDATE_MANIFEST_URL=https://github.com/${{ github.repository }}/releases/download/app-latest/version.json
       - name: Visual-C++-Laufzeit beilegen (läuft dann auch auf PCs ohne VC++-Redistributable)
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -198,7 +203,7 @@ jobs:
             'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll' |
               ForEach-Object { Copy-Item "$env:SystemRoot\System32\$_" $release }
           }
-          'selfify.exe', 'flutter_windows.dll', 'libmpv-2.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
+          'selfify.exe', 'flutter_windows.dll', 'libmpv-2.dll', 'smtc_windows.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
           'data\app.so', 'data\icudtl.dat', 'data\flutter_assets' | ForEach-Object {
             if (-not (Test-Path (Join-Path $release $_))) { throw "Fehlt im Build: $_" }
           }
@@ -235,6 +240,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Jeder Fehler eines gh-Aufrufs bricht den Schritt ab (sonst ginge z. B. ein fehlgeschlagener Upload unter)
+          $PSNativeCommandUseErrorActionPreference = $true
           # Nur in das Release dieses Stands – ein später neu gestarteter alter Lauf darf neuere Dateien nicht ersetzen
           $target = gh release view app-latest --repo $env:GITHUB_REPOSITORY --json targetCommitish -q .targetCommitish
           if ($target -ne $env:GITHUB_SHA) {
@@ -242,6 +249,35 @@ jobs:
             exit 0
           }
           gh release upload app-latest build/selfify-windows.zip build/selfify-windows-setup.exe --clobber --repo $env:GITHUB_REPOSITORY
+
+          # Update-Hinweis am PC: version.json (vom Android-Job) um den Windows-Installer ergänzen
+          $build = ${{ github.run_number }}
+          $setup = @{
+            url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/app-latest/selfify-windows-setup.exe"
+            sha256 = (Get-FileHash build/selfify-windows-setup.exe -Algorithm SHA256).Hash.ToLower()
+          }
+          New-Item -ItemType Directory -Force build/manifest | Out-Null
+          # Nur wenn es wirklich keine version.json gibt, eine neue anlegen – nie die des Android-Jobs ersetzen
+          $assets = gh release view app-latest --repo $env:GITHUB_REPOSITORY --json assets -q '.assets[].name'
+          if ($assets -contains 'version.json') {
+            gh release download app-latest -p version.json -D build/manifest --clobber --repo $env:GITHUB_REPOSITORY
+            $manifest = Get-Content build/manifest/version.json -Raw | ConvertFrom-Json
+            if ($manifest.build -ne $build) {
+              Write-Host "::warning::version.json gehört zu Build $($manifest.build) - Windows-Eintrag wird nicht ergänzt."
+              exit 0
+            }
+          } else {
+            # ohne Android-Signaturschlüssel gibt es keine version.json – dann nur mit Windows-Eintrag
+            $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
+            $manifest = [pscustomobject]@{
+              build = $build; version = $version; commit = $env:GITHUB_SHA.Substring(0, 7)
+              date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            }
+          }
+          $manifest | Add-Member -NotePropertyName windows -NotePropertyValue $setup -Force
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content build/manifest/version.json -Encoding utf8NoBOM
+          Get-Content build/manifest/version.json
+          gh release upload app-latest build/manifest/version.json --clobber --repo $env:GITHUB_REPOSITORY
       - name: Release mit Windows-Dateien (bei Tags v*)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3

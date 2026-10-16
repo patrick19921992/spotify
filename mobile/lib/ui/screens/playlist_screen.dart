@@ -690,7 +690,7 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           icon: Icons.cloud_off_rounded,
           title: 'Du bist offline',
           message:
-              'Diese Playlist ist nicht heruntergeladen. Ohne Verbindung kannst du nur Musik hören, '
+              'Diese Playlist ist nicht auf diesem Gerät. Ohne Verbindung kannst du nur Musik hören, '
               'die auf deinem Handy ist.',
           action: OutlinedButton(onPressed: () => context.go('/library'), child: const Text('Zur Bibliothek')),
         ),
@@ -718,8 +718,8 @@ class _PlaylistScreenState extends ConsumerState<PlaylistScreen> {
           Expanded(
             child: Text(
               onRetry == null
-                  ? 'Keine Verbindung – du siehst die heruntergeladene Version.'
-                  : 'Server nicht erreichbar – du siehst die heruntergeladene Version.',
+                  ? 'Keine Verbindung – du siehst die Version auf diesem Gerät.'
+                  : 'Server nicht erreichbar – du siehst die Version auf diesem Gerät.',
               style: AppText.caption,
             ),
           ),

@@ -415,7 +415,7 @@ class _HistorySheet extends ConsumerWidget {
 
 // ------------------------------------------------------------------ Offline
 
-const _downloadedContext = PlayContext('queue', title: 'Heruntergeladen');
+const _downloadedContext = PlayContext('queue', title: 'Auf diesem Gerät');
 
 /// Anzeigename und Titel einer offline gehaltenen Sammlung.
 class _Collection {
@@ -499,10 +499,10 @@ class _OfflineHome extends ConsumerWidget {
         hasScrollBody: false,
         child: EmptyState(
           icon: Icons.download_for_offline_outlined,
-          title: 'Noch nichts heruntergeladen',
+          title: 'Noch nichts auf diesem Gerät',
           message: noNetwork
               ? 'Ohne Internet kannst du nur Musik hören, die auf deinem Handy gespeichert ist. '
-                  'Lade Playlists, Alben oder Lieblingssongs herunter, sobald du wieder online bist.'
+                  'Lade Playlists, Alben oder Lieblingssongs aufs Gerät, sobald du wieder online bist.'
               : 'Lade Playlists, Alben oder Lieblingssongs aufs Handy, um sie ohne Internet zu hören.',
           action: noNetwork
               ? null
@@ -531,7 +531,7 @@ class _OfflineHome extends ConsumerWidget {
   }
 }
 
-/// "Heruntergeladen" mit Größe, Verwalten, Zufall und Abspielen.
+/// "Auf diesem Gerät" mit Größe, Verwalten, Zufall und Abspielen.
 class _DownloadedHeader extends ConsumerWidget {
   final List<Track> tracks;
   final int totalBytes;
@@ -554,7 +554,7 @@ class _DownloadedHeader extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Heruntergeladen', style: AppText.sectionTitle),
+                const Text('Auf diesem Gerät', style: AppText.sectionTitle),
                 const SizedBox(height: 4),
                 Text(
                   '${pluralSongs(tracks.length)} · ${formatBytes(totalBytes)}',

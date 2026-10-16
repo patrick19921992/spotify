@@ -76,9 +76,10 @@ class UpdateBanner extends ConsumerWidget {
 /// Ist gerade ein Update-Dialog offen? Ein zweiter (Doppeltipp) würde den laufenden Download stören.
 bool _updateDialogOpen = false;
 
-/// Lädt das Update mit Fortschrittsanzeige und öffnet danach den Android-Installer.
+/// Lädt das Update mit Fortschrittsanzeige und installiert es (Android-Installer bzw. Selfify-Installer).
 Future<void> showUpdateDialog(BuildContext context, AppRelease release) async {
-  if (release.android == null || _updateDialogOpen) return;
+  final platform = ProviderScope.containerOf(context, listen: false).read(appUpdateSourceProvider).platform;
+  if (release.downloadFor(platform) == null || _updateDialogOpen) return;
   _updateDialogOpen = true;
   try {
     await showDialog<void>(
@@ -138,7 +139,7 @@ class _UpdateDialogState extends ConsumerState<_UpdateDialog> {
     }
     if (!mounted || attempt != _attempt) return;
     final fresh = release;
-    final download = fresh?.android;
+    final download = fresh?.downloadFor(ref.read(appUpdateSourceProvider).platform);
     if (fresh == null || download == null) {
       setState(
         () => _progress = const UpdateProgress(UpdateStep.failed, message: 'Du hast schon die neueste Version.'),
@@ -184,9 +185,16 @@ class _UpdateDialogState extends ConsumerState<_UpdateDialog> {
           LinearProgressIndicator(value: progress.fraction),
         ],
       ),
-      UpdateStep.installing => const Text(
-        'Android fragt jetzt, ob Selfify aktualisiert werden soll – bitte „Aktualisieren“ bzw. „Installieren“ '
-        'tippen. Deine Musik und Anmeldung bleiben erhalten.',
+      UpdateStep.installing => Text(
+        progress.message ??
+            switch (ref.read(appUpdateSourceProvider).platform) {
+              UpdatePlatform.android =>
+                'Android fragt jetzt, ob Selfify aktualisiert werden soll – bitte „Aktualisieren“ bzw. „Installieren“ '
+                    'tippen. Deine Musik und Anmeldung bleiben erhalten.',
+              UpdatePlatform.windows =>
+                'Selfify wird jetzt aktualisiert und startet danach von selbst neu. '
+                    'Deine Musik und Anmeldung bleiben erhalten.',
+            },
       ),
       UpdateStep.failed => Text(progress.message ?? 'Das Update ist fehlgeschlagen.'),
     };

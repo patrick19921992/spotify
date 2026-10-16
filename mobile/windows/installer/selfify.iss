@@ -62,3 +62,11 @@ Name: "{autodesktop}\Selfify"; Filename: "{app}\selfify.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\selfify.exe"; Description: "{cm:LaunchProgram,Selfify}"; Flags: nowait postinstall skipifsilent
+; Update aus der App (still, /autoupdate=1): Selfify danach von selbst wieder starten
+Filename: "{app}\selfify.exe"; Flags: nowait; Check: IsAutoUpdate
+
+[Code]
+function IsAutoUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:autoupdate|0}') = '1';
+end;
