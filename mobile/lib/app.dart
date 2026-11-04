@@ -8,7 +8,9 @@ import 'state/auth.dart';
 import 'ui/desktop/desktop_layout.dart';
 import 'ui/desktop/desktop_shortcuts.dart';
 import 'ui/router.dart';
+import 'ui/widgets/app_config_watcher.dart';
 import 'ui/widgets/orientation_lock.dart';
+import 'ui/widgets/play_notices.dart';
 import 'ui/widgets/update_watcher.dart';
 
 class SelfifyApp extends ConsumerWidget {
@@ -28,26 +30,34 @@ class SelfifyApp extends ConsumerWidget {
     // Handy: nur Hochformat (Tablet und Computer frei). Updates auch bei laufender App suchen.
     return OrientationLock(
       child: UpdateWatcher(
-        child: MaterialApp.router(
-          title: 'Selfify',
-          debugShowCheckedModeBanner: false,
-          theme: buildTheme(),
-          darkTheme: buildTheme(),
-          themeMode: ThemeMode.dark,
-          routerConfig: router,
-          // Computer: Tastenkürzel und Desktop-Aktionen (Handy: unverändert). Scrollen per Mausrad/Scrollleiste –
-          // Ziehen mit der Maus würde Klicks verschlucken, sobald sich die Maus dabei 1–2 Pixel bewegt.
-          shortcuts: isDesktopPlatform ? desktopShortcuts : null,
-          builder: isDesktopPlatform
-              ? (context, child) => DesktopActions(child: child ?? const SizedBox.shrink())
-              : null,
-          locale: const Locale('de'),
-          supportedLocales: const [Locale('de'), Locale('en')],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
+        child: AppConfigWatcher(
+          child: MaterialApp.router(
+            title: 'Selfify',
+            debugShowCheckedModeBanner: false,
+            theme: buildTheme(),
+            darkTheme: buildTheme(),
+            themeMode: ThemeMode.dark,
+            routerConfig: router,
+            // Computer: Tastenkürzel und Desktop-Aktionen (Handy: unverändert). Scrollen per Mausrad/Scrollleiste –
+            // Ziehen mit der Maus würde Klicks verschlucken, sobald sich die Maus dabei 1–2 Pixel bewegt.
+            shortcuts: isDesktopPlatform ? desktopShortcuts : null,
+            // Computer: Tastenkürzel. Alle: Pflicht-Update der Play-Version ersetzt die App durch einen Hinweis.
+            builder: (context, child) {
+              final content = UpdateGate(
+                child: child ?? const SizedBox.shrink(),
+              );
+              return isDesktopPlatform
+                  ? DesktopActions(child: content)
+                  : content;
+            },
+            locale: const Locale('de'),
+            supportedLocales: const [Locale('de'), Locale('en')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+          ),
         ),
       ),
     );

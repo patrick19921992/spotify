@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/flavor.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -196,8 +197,11 @@ class _Welcome extends StatelessWidget {
     return EmptyState(
       icon: Icons.library_music_rounded,
       title: 'Willkommen bei Selfify',
-      message: 'Deine Bibliothek ist noch leer. Such nach Musik und hol sie dir direkt von YouTube – '
-          'oder leg Dateien in die Musikordner auf dem Server.',
+      message: youtubeFeaturesEnabled
+          ? 'Deine Bibliothek ist noch leer. Such nach Musik und hol sie dir direkt von YouTube – '
+              'oder leg Dateien in die Musikordner auf dem Server.'
+          : 'Deine Bibliothek ist noch leer. Sobald auf dem Server Musik liegt, erscheint sie hier. '
+              'Fehlt dir ein Song, kannst du ihn dir in der Suche wünschen.',
       action: FilledButton.icon(
         onPressed: () => context.go('/search'),
         icon: const Icon(Icons.search_rounded),

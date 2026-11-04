@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../core/client_info.dart';
 import 'models.dart';
 
 /// Fehler vom Server oder Netzwerk – [message] ist immer eine verständliche deutsche Meldung.
@@ -125,7 +126,11 @@ Dio _plainDio(String baseUrl) => Dio(BaseOptions(
       baseUrl: '$baseUrl/api',
       connectTimeout: const Duration(seconds: 12),
       receiveTimeout: const Duration(seconds: 30),
-      headers: {'Accept': 'application/json'},
+      headers: {
+        'Accept': 'application/json',
+        // Welche App-Version fragt an? (Dashboard: „Geräte & Versionen“)
+        if (currentClient != null) 'X-Selfify-Client': currentClient!.header,
+      },
     ));
 
 /// Zugriff auf den Selfify-Server. Erneuert abgelaufene Anmeldungen automatisch.
@@ -225,6 +230,17 @@ class ApiClient {
       message = 'Unter dieser Adresse läuft kein Selfify-Server.';
     }
     throw ServerProbeException(message, statusCode: status ?? 0, details: details);
+  }
+
+  /// Einstellungen, die der Admin im Dashboard festlegt (Werbung, Premium, Wünsche, Update, Wartungshinweis).
+  /// Braucht keine Anmeldung.
+  static Future<AppConfig> fetchConfig(String baseUrl, {required String channel, required int build}) async {
+    try {
+      final response = await _plainDio(baseUrl).get('/app/config', queryParameters: {'channel': channel, 'build': build});
+      return AppConfig.fromJson(Map<String, dynamic>.from(response.data as Map));
+    } catch (e) {
+      throw toApiException(e);
+    }
   }
 
   /// Technische Angaben zu einer fehlgeschlagenen Prüfung (zum Anzeigen und Weitergeben).
@@ -382,6 +398,43 @@ class ApiClient {
   Future<List<DeviceSession>> sessions() => _get('/me/sessions', (d) => _listOf(d, DeviceSession.fromJson));
   Future<void> deleteSession(int id) => _noContent('DELETE', '/me/sessions/$id');
   Future<void> logout() => _noContent('POST', '/auth/logout');
+
+  /// Konto samt Playlists, Lieblingssongs und Verlauf endgültig löschen (Passwort zur Bestätigung).
+  Future<void> deleteAccount(String password) => _noContent('POST', '/me/delete', body: {'password': password});
+
+  // ------------------------------------------------------------ Premium, Wünsche, Fehler melden
+
+  Future<PremiumStatus> premium() => _get('/premium', (d) => PremiumStatus.fromJson(d as Json));
+
+  /// Löst einen Premium-Code ein (Groß-/Kleinschreibung und Bindestriche sind egal).
+  Future<PremiumStatus> redeemPremium(String code) =>
+      _send('POST', '/premium/redeem', (d) => PremiumStatus.fromJson(d as Json), body: {'code': code});
+
+  Future<List<SongWish>> wishes() => _get('/requests', (d) => _listOf(d, SongWish.fromJson));
+  Future<SongWish> createWish({required String title, String artist = '', String note = ''}) =>
+      _send('POST', '/requests', (d) => SongWish.fromJson(d as Json),
+          body: {'title': title, 'artist': artist, 'note': note});
+  Future<void> deleteWish(int id) => _noContent('DELETE', '/requests/$id');
+
+  /// Schickt eine Fehlermeldung an den Betreiber. [log] nur, wenn der Benutzer es erlaubt hat.
+  Future<void> sendBugReport({
+    required String message,
+    String appVersion = '',
+    int? appBuild,
+    String platform = '',
+    String channel = '',
+    String device = '',
+    String log = '',
+  }) =>
+      _noContent('POST', '/bugreports', body: {
+        'message': message,
+        'app_version': appVersion,
+        'app_build': appBuild,
+        'platform': platform,
+        'channel': channel,
+        'device': device,
+        'log': log,
+      });
 
   // ------------------------------------------------------------ Benutzer (Admin)
 

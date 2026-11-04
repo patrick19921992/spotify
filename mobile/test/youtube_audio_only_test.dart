@@ -260,6 +260,9 @@ void main() {
       await pumpScreen(tester, const SettingsScreen());
       final tile = find.text('YouTube-Videos holen als');
       await tester.scrollUntilVisible(tile, 200, scrollable: find.byType(Scrollable).first);
+      // Die Einstellungen sind länger geworden (Premium, Hilfe): Eintrag ganz ins Bild holen
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
       expect(find.text('Jedes Mal fragen'), findsOneWidget);
       await tester.tap(tile);
       await tester.pumpAndSettle();
@@ -347,6 +350,9 @@ void main() {
       await pumpScreen(tester, const SettingsScreen(), prefs: {'s.videoFetch': 'audio'});
       final tile = find.text('YouTube-Videos holen als');
       await tester.scrollUntilVisible(tile, 200, scrollable: find.byType(Scrollable).first);
+      // Die Einstellungen sind länger geworden (Premium, Hilfe): Eintrag ganz ins Bild holen
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
       for (final (label, value) in [
         ('Immer als Video', 'video'),
         ('Jedes Mal fragen', 'ask'),

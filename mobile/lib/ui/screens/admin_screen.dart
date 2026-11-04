@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/flavor.dart';
 import '../../core/theme.dart';
 import '../../state/auth.dart';
 import '../../state/connectivity.dart';
@@ -22,7 +23,13 @@ class AdminScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminScreenState extends ConsumerState<AdminScreen> with SingleTickerProviderStateMixin {
-  static const _tabTitles = ['Benutzer', 'Rubriken', 'Bibliothek', 'Downloader'];
+  // Der Downloader (YouTube) gehört nur zur GitHub-Version
+  static List<String> get _tabTitles => [
+    'Benutzer',
+    'Rubriken',
+    'Bibliothek',
+    if (youtubeFeaturesEnabled) 'Downloader',
+  ];
 
   late final TabController _tabs = TabController(length: _tabTitles.length, vsync: this)..addListener(_onTab);
   int _index = 0;
@@ -139,11 +146,11 @@ class _AdminScreenState extends ConsumerState<AdminScreen> with SingleTickerProv
         bottom: false,
         child: TabBarView(
           controller: _tabs,
-          children: const [
-            AdminUsersTab(),
-            AdminCategoriesTab(),
-            AdminLibraryTab(),
-            AdminDownloaderTab(),
+          children: [
+            const AdminUsersTab(),
+            const AdminCategoriesTab(),
+            const AdminLibraryTab(),
+            if (youtubeFeaturesEnabled) const AdminDownloaderTab(),
           ],
         ),
       ),

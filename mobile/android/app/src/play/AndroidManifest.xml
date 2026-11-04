@@ -1,0 +1,24 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Google-Play-Version: kein Selbst-Update. Apps dürfen sich nicht selbst per Download installieren
+         (REQUEST_INSTALL_PACKAGES ist für Play-Apps verboten) – Updates liefert Google Play. Die Berechtigungen
+         und Bauteile kommen vom Update-Plugin (ota_update) bzw. aus der Haupt-Datei und werden hier entfernt. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+
+    <application>
+        <provider
+            android:name="sk.fourq.otaupdate.OtaUpdateFileProvider"
+            tools:node="remove" />
+        <receiver
+            android:name="sk.fourq.otaupdate.InstallResultReceiver"
+            tools:node="remove" />
+
+        <!-- Werbung: Messung erst starten, wenn die App das SDK nach der Einwilligung selbst startet -->
+        <meta-data
+            android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT"
+            android:value="true" />
+    </application>
+</manifest>

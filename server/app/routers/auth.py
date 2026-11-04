@@ -8,6 +8,7 @@ from app.models import User
 from app.schemas.user import LoginIn, RefreshIn, TokenOut, UserOut
 from app.security import hash_password, password_needs_rehash, verify_password
 from app.services.auth import IssuedTokens, refresh_session, revoke_session, start_session
+from app.services.clients import CLIENT_HEADER, parse_client
 
 router = APIRouter(prefix="/auth", tags=["Anmeldung"])
 
@@ -53,6 +54,7 @@ def login(body: LoginIn, request: Request, db: DbSession, settings: AppSettings)
         device_name=body.device_name,
         user_agent=request.headers.get("user-agent", ""),
         ip_address=ip,
+        client=parse_client(request.headers.get(CLIENT_HEADER)),
     )
     db.commit()
     return token_out(issued)

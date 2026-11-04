@@ -19,10 +19,12 @@ import 'screens/mix_screen.dart';
 import 'screens/offline_screen.dart';
 import 'screens/player_screen.dart';
 import 'screens/playlist_screen.dart';
+import 'screens/premium_screen.dart';
 import 'screens/queue_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/video_screen.dart';
+import 'screens/wishes_screen.dart';
 import 'screens/youtube_album_screen.dart';
 import 'shell.dart';
 
@@ -103,7 +105,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings',
         builder: (_, _) => const SettingsScreen(),
-        routes: [GoRoute(path: 'devices', builder: (_, _) => const DevicesScreen())],
+        routes: [
+          GoRoute(path: 'devices', builder: (_, _) => const DevicesScreen()),
+          GoRoute(path: 'premium', builder: (_, _) => const PremiumScreen()),
+          GoRoute(path: 'wishes', builder: (_, _) => const WishesScreen()),
+        ],
       ),
       GoRoute(path: '/admin', builder: (_, _) => const AdminScreen()),
     ],

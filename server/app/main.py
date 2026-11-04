@@ -20,7 +20,22 @@ from app.library.covers import CoverStore
 from app.library.scanner import LibraryScanner
 from app.library.transcode import TranscodeCache
 from app.ratelimit import LoginRateLimiter
-from app.routers import auth, categories, downloads, library, me, media, personal, playlists, system, users
+from app.routers import (
+    admin,
+    auth,
+    categories,
+    downloads,
+    library,
+    me,
+    media,
+    personal,
+    playlists,
+    premium,
+    support,
+    system,
+    users,
+    web,
+)
 from app.security import load_or_create_secret_key
 from app.services.bootstrap import run_bootstrap
 
@@ -88,6 +103,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_per_ip=settings.login_max_failures_per_ip,
         window_seconds=settings.login_window_minutes * 60,
     )
+    # Premium-Codes einlösen: gleiche Grenzen wie beim Login (falsche Codes zählen als Raten)
+    app.state.redeem_limiter = LoginRateLimiter(
+        max_per_user=settings.login_max_failures_per_user,
+        max_per_ip=settings.login_max_failures_per_ip,
+        window_seconds=settings.login_window_minutes * 60,
+    )
 
     if settings.cors_origins:
         app.add_middleware(
@@ -108,6 +129,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         playlists.router,
         personal.router,
         downloads.router,
+        premium.router,
+        premium.admin_router,
+        support.router,
+        support.admin_router,
+        admin.router,
     ):
         app.include_router(router, prefix="/api")
+    # Web-Seiten (Dashboard, Datenschutz, Impressum, Konto löschen) liegen bewusst außerhalb von /api
+    app.include_router(web.router)
     return app

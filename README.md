@@ -123,6 +123,10 @@ und IPA.
 
 ### Android
 
+> **Google Play:** Es gibt auch eine Play-Store-Version (ohne YouTube-Funktionen, mit „Song wünschen“, Premium
+> und Werbung). Wie du sie veröffentlichst, steht in **[docs/PLAYSTORE.md](docs/PLAYSTORE.md)**. Das Bundle
+> `selfify-play.aab` liegt im selben Release wie die APK – zum Installieren auf dem Handy ist es **nicht** gedacht.
+
 1. `selfify.apk` aus dem Release herunterladen, am besten direkt am Handy (GitHub-App oder Browser, angemeldet).
 2. Installieren. Android fragt einmalig, ob Apps aus dieser Quelle erlaubt sind.
 3. Bei der ersten Wiedergabe die Benachrichtigungen erlauben (für die Steuerung auf dem Sperrbildschirm).
@@ -366,6 +370,45 @@ sich abbrechen und bei einem Fehler erneut starten.
 
 ---
 
+## Dashboard, Premium und Play-Store-Funktionen (Server)
+
+Der Server bringt eine Verwaltungsseite für Admins mit: **`https://deine-domain/dashboard`** (oder
+`http://<Unraid-IP>:8080/dashboard`). Anmelden kannst du dich mit jedem Admin-Konto; die Seite läuft ohne
+Zusatzsoftware im Browser (Handy und PC).
+
+| Ansicht | Was du dort siehst und tust |
+|---------|-----------------------------|
+| Übersicht | Zahlen (Benutzer, Songs, Downloads, Premium, offene Wünsche …), Diagramme der letzten 14 Tage, wer am meisten holt, welche App-Versionen im Umlauf sind |
+| Downloads | Alle Downloads aller Benutzer live, abbrechen / nochmal / entfernen, yt-dlp aktualisieren |
+| Wünsche | Songs, die sich Benutzer wünschen: „Suchen & holen“ startet den Download auf deinem Server, „Ablehnen“ (mit Nachricht), „Erledigt“ |
+| Benutzer | Anlegen, sperren, Passwort setzen, Downloads erlauben, löschen – und **Premium vergeben oder entziehen** |
+| Premium-Codes | Codes erzeugen (beliebig viele, **Laufzeit frei in Tagen oder unbegrenzt**, mehrfach einlösbar, optional „einlösbar bis“), kopieren, sperren (auf Wunsch samt schon vergebenem Premium), Liste aller aktuellen Premium-Nutzer |
+| Fehlermeldungen | „Fehler melden“ aus der App, mit Geräteinfo und Fehlerprotokoll; als gesehen/erledigt markieren |
+| Geräte & Versionen | Welche App-Version (Play oder GitHub) auf wie vielen Geräten läuft, wer ein Update braucht |
+| App-Einstellungen | Werbung an/aus, Premium-Bereich an/aus, „Song wünschen“ an/aus, Update-Hinweis und Pflicht-Update der Play-Version, Wartungshinweis |
+
+**Premium-Regeln**
+
+- Ein Code besteht aus 12 Zeichen (`XXXX-XXXX-XXXX`, Groß-/Kleinschreibung und Bindestriche sind beim
+  Eintippen egal). Verwechselbare Zeichen (0/O, 1/I/L) kommen nicht vor.
+- Du legst fest: Laufzeit in Tagen **oder** unbegrenzt, wie oft der Code einlösbar ist (ein Benutzer löst
+  denselben Code höchstens einmal ein) und optional bis wann er eingelöst werden darf.
+- Die Laufzeit beginnt beim Einlösen. Wer schon Premium hat, bekommt die neue Laufzeit **hinten angehängt**.
+  Wer schon unbegrenzt hat, kann keinen befristeten Code mehr einlösen (der Code bleibt unverbraucht).
+- Entziehen geht je Lizenz, je Benutzer („Alles entziehen“) und je Code. Entzogenes Premium gilt sofort nicht
+  mehr.
+- Premium direkt an einen Benutzer vergeben (ohne Code): Benutzer → **Premium**.
+- Falsche Codes werden wie falsche Passwörter gebremst (nach zu vielen Fehlversuchen kurze Sperre).
+- **Wichtig für den Play Store:** Verschenke Codes. Wer Codes gegen Geld außerhalb von Google Play verkauft und
+  in der App einlösen lässt, verstößt gegen die Zahlungsregeln von Google.
+
+**Pflichtseiten für den Play Store:** `/datenschutz`, `/impressum` und `/konto-loeschen` (der Benutzer kann
+sein Konto auch ohne App löschen). Trage dafür `OPERATOR_NAME`, `OPERATOR_ADDRESS` und `OPERATOR_EMAIL` ein –
+die Texte sind eine Vorlage und ersetzen keine Rechtsberatung. Alle diese Seiten laden nur eigene Dateien
+(strenge Content-Security-Policy, kein Inline-Code); Texte von Benutzern werden nur als Text angezeigt.
+
+---
+
 ## Einstellungen (Umgebungsvariablen)
 
 | Variable | Standard | Bedeutung |
@@ -397,6 +440,8 @@ sich abbrechen und bei einem Fehler erneut starten.
 | `LOGIN_MAX_FAILURES_PER_IP` | `30` | Fehlversuche je IP-Adresse |
 | `LOGIN_WINDOW_MINUTES` | `15` | Zeitfenster bzw. Sperrdauer |
 | `ENABLE_API_DOCS` | `true` | Test-Oberfläche unter `/api/docs` (ohne Login nutzlos) |
+| `DASHBOARD_ENABLED` | `true` | Verwaltungsseite unter `/dashboard` (`false` = abgeschaltet; die Daten dahinter sind ohnehin nur für Admins) |
+| `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` | leer | Betreiberangaben für `/datenschutz` und `/impressum` (Pflicht, sobald die App öffentlich angeboten wird) |
 | `FORWARDED_ALLOW_IPS` | private Netze | Von welchen Proxys die echte Client-IP übernommen wird |
 | `SECRET_KEY` | leer | Leer = wird erzeugt und in `/data/secret.key` gespeichert |
 | `DATA_DIR` / `MEDIA_DIR` | `/data` / `/media` | Pfade **im** Container (nicht ändern) |
@@ -442,6 +487,11 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Downloads | `POST /downloads`, `POST /downloads/album`, `POST /downloads/url`, `GET /downloads`, `POST /downloads/{id}/cancel\|retry`, `DELETE /downloads/{id}` |
 | Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse (eigene Downloads; Admins mit `&scope=all` alle) |
 | Admin | `DELETE /tracks/{id}?delete_file=true`, `GET /downloads-system`, `POST /downloads-system/update` |
+| App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links |
+| Premium | `GET /premium`, `POST /premium/redeem` {code} |
+| Wünsche & Fehler melden | `POST/GET /requests`, `DELETE /requests/{id}`, `POST /bugreports` |
+| Konto löschen | `POST /me/delete` {password} |
+| Dashboard (Admin) | `GET /admin/stats`, `/admin/users`, `/admin/clients`, `GET/PUT /admin/config`, `/admin/premium/codes`, `/admin/premium/licenses`, `/admin/users/{id}/premium`, `/admin/requests`, `/admin/bugreports` |
 
 Listen sind seitenweise (`limit`, `offset`) und sortierbar (`sort=title|recent|…`). Streams und Cover
 akzeptieren statt des `Authorization`-Headers auch den **Medien-Token** aus dem Login als `?t=…`. So
@@ -479,13 +529,18 @@ cd mobile
 flutter pub get
 flutter analyze
 flutter test
-flutter run            # Handy/Emulator angeschlossen
+flutter run --flavor full           # Android-Handy/Emulator angeschlossen (GitHub-Version)
+flutter run --flavor play --dart-define=CHANNEL=play   # Android: die Play-Version (ohne YouTube)
 flutter run -d windows # auf einem Windows-PC (Visual Studio mit „Desktopentwicklung mit C++“ und
                        # unter Windows „Entwicklermodus“ eingeschaltet – nötig für die Plugins)
 ```
 
 Aufbau: `lib/data` (Modelle, Server-Client), `lib/state` (Anmeldung, Einstellungen, Downloads,
-Offline-Speicher), `lib/player` (Hintergrund-Wiedergabe), `lib/ui` (Navigation, Bildschirme, Bausteine).
+Offline-Speicher, Server-Einstellungen/Premium), `lib/player` (Hintergrund-Wiedergabe), `lib/ui` (Navigation,
+Bildschirme, Bausteine), `lib/ads` (Werbung, nur Play-Version), `lib/core/flavor.dart` (welche Version läuft).
+
+Android hat zwei **Flavors**: `full` (GitHub-Version) und `play` (Google Play, Paketname `….play`). Ohne `--flavor`
+bricht ein Android-Bau ab. Windows und iPhone brauchen keinen Flavor und sind immer die GitHub-Version.
 
 ---
 

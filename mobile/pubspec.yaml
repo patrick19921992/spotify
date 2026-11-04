@@ -71,6 +71,10 @@ dependencies:
   flutter_rust_bridge: 2.11.1
   # Windows-Update: Prüfsumme des heruntergeladenen Installers
   crypto: ^3.0.7
+  # Links öffnen (Datenschutzerklärung, Play-Store-Seite)
+  url_launcher: ^6.3.3
+  # Werbung (Google AdMob) – nur in der Play-Version aktiv
+  google_mobile_ads: ^9.2.0
 
 dev_dependencies:
   flutter_test:

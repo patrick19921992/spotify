@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import User, UserSession, utcnow
 from app.security import decode_access_token, decode_media_token
 from app.services.auth import active_session
+from app.services.clients import CLIENT_HEADER, ClientInfo, apply_client, parse_client
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -46,7 +47,7 @@ def _issued_at(payload: dict[str, object]) -> int:
         return 0
 
 
-def auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
+def auth_from_payload(db: Session, payload: dict[str, object], client: ClientInfo | None = None) -> AuthContext:
     try:
         user_id, session_id = int(str(payload["sub"])), int(str(payload["sid"]))
     except (KeyError, TypeError, ValueError):
@@ -58,6 +59,10 @@ def auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
     session = active_session(db, session_id, user_id)
     if session is None:
         raise _unauthorized("Dieses Gerät wurde abgemeldet.")
+    # SQLite vergibt freie IDs neu: Wurde ein Konto gelöscht und später ein neues angelegt, kann es dieselbe Benutzer-
+    # und Geräte-Nummer bekommen. Ein Token, das älter ist als dieses Gerät, gehört dem früheren Konto.
+    if _issued_at(payload) < int(session.created_at.timestamp()):
+        raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
     now = utcnow()
     changed = False
     # Token aus der letzten Erneuerung benutzt -> sie ist angekommen, der vorige Refresh-Token gilt nicht mehr
@@ -67,6 +72,9 @@ def auth_from_payload(db: Session, payload: dict[str, object]) -> AuthContext:
     # "Zuletzt aktiv" höchstens minütlich schreiben
     if (now - session.last_used_at).total_seconds() > 60:
         session.last_used_at = now
+        changed = True
+    # Welche App-Version meldet sich (für das Dashboard)
+    if apply_client(session, client):
         changed = True
     if changed:
         db.commit()
@@ -83,7 +91,7 @@ def get_auth(
     payload = decode_access_token(request.app.state.secret_key, credentials.credentials)
     if payload is None:
         raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
-    return auth_from_payload(db, payload)
+    return auth_from_payload(db, payload, parse_client(request.headers.get(CLIENT_HEADER)))
 
 
 Auth = Annotated[AuthContext, Depends(get_auth)]

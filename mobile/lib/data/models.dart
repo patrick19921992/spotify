@@ -1034,3 +1034,134 @@ class DownloaderStatus {
         queuedJobs: _int(j['queued_jobs']),
       );
 }
+
+// ---------------------------------------------------------------- Play-Store-Funktionen
+// (Konfiguration, Premium, Song-Wünsche – siehe server/app/schemas/support.py und premium.py)
+
+/// Wie dringend ein Update der Play-Version ist (vom Server nach der Build-Nummer berechnet).
+enum UpdateLevel { none, available, required }
+
+class UpdateInfo {
+  final UpdateLevel level;
+  final int latestBuild;
+  final int minBuild;
+  final String storeUrl;
+  final String message;
+
+  const UpdateInfo({
+    this.level = UpdateLevel.none,
+    this.latestBuild = 0,
+    this.minBuild = 0,
+    this.storeUrl = '',
+    this.message = '',
+  });
+
+  factory UpdateInfo.fromJson(Json j) => UpdateInfo(
+        level: switch (j['level']) {
+          'available' => UpdateLevel.available,
+          'required' => UpdateLevel.required,
+          _ => UpdateLevel.none,
+        },
+        latestBuild: _int(j['latest_build']),
+        minBuild: _int(j['min_build']),
+        storeUrl: j['store_url'] as String? ?? '',
+        message: j['message'] as String? ?? '',
+      );
+}
+
+/// Einstellungen, die der Admin im Dashboard für alle Apps festlegt (`GET /api/app/config`).
+class AppConfig {
+  final bool adsEnabled;
+  final bool premiumEnabled;
+  final bool wishlistEnabled;
+  final String maintenanceMessage;
+  final UpdateInfo update;
+
+  /// Datenschutzerklärung und „Konto löschen“ im Browser (leer, wenn der Server keine öffentliche Adresse kennt).
+  final String privacyUrl;
+  final String deletionUrl;
+
+  const AppConfig({
+    this.adsEnabled = false,
+    this.premiumEnabled = true,
+    this.wishlistEnabled = true,
+    this.maintenanceMessage = '',
+    this.update = const UpdateInfo(),
+    this.privacyUrl = '',
+    this.deletionUrl = '',
+  });
+
+  factory AppConfig.fromJson(Json j) => AppConfig(
+        adsEnabled: j['ads_enabled'] == true,
+        premiumEnabled: j['premium_enabled'] != false,
+        wishlistEnabled: j['wishlist_enabled'] != false,
+        maintenanceMessage: j['maintenance_message'] as String? ?? '',
+        update: j['update'] is Map ? UpdateInfo.fromJson(Map<String, dynamic>.from(j['update'] as Map)) : const UpdateInfo(),
+        privacyUrl: j['privacy_url'] as String? ?? '',
+        deletionUrl: j['deletion_url'] as String? ?? '',
+      );
+}
+
+/// Premium-Stand des angemeldeten Benutzers.
+class PremiumStatus {
+  final bool active;
+
+  /// Gilt ohne Ablaufdatum.
+  final bool unlimited;
+
+  /// Bis wann Premium läuft (nur bei begrenztem Premium).
+  final DateTime? until;
+
+  const PremiumStatus({this.active = false, this.unlimited = false, this.until});
+
+  factory PremiumStatus.fromJson(Json j) => PremiumStatus(
+        active: j['active'] == true,
+        unlimited: j['unlimited'] == true,
+        until: _dateOrNull(j['until']),
+      );
+}
+
+/// Ein Song-Wunsch des Benutzers: open | accepted | done | declined.
+class SongWish {
+  final int id;
+  final String title;
+  final String artist;
+  final String note;
+  final String status;
+  final String adminNote;
+  final DateTime createdAt;
+
+  /// Zustand des Downloads, falls der Admin den Wunsch angenommen hat (queued, downloading, done, failed …).
+  final String? jobStatus;
+
+  const SongWish({
+    required this.id,
+    required this.title,
+    required this.artist,
+    required this.note,
+    required this.status,
+    required this.adminNote,
+    required this.createdAt,
+    this.jobStatus,
+  });
+
+  factory SongWish.fromJson(Json j) => SongWish(
+        id: _int(j['id']),
+        title: j['title'] as String? ?? '',
+        artist: j['artist'] as String? ?? '',
+        note: j['note'] as String? ?? '',
+        status: j['status'] as String? ?? 'open',
+        adminNote: j['admin_note'] as String? ?? '',
+        createdAt: _date(j['created_at']),
+        jobStatus: j['job_status'] as String?,
+      );
+
+  bool get isOpen => status == 'open';
+  bool get isAccepted => status == 'accepted';
+  bool get isDone => status == 'done';
+  bool get isDeclined => status == 'declined';
+
+  /// Darf der Benutzer den Wunsch aus seiner Liste löschen? Der Server verweigert es nur, solange der
+  /// Wunsch gerade erfüllt wird (accepted).
+  bool get canRemove => !isAccepted;
+}

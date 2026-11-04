@@ -2,17 +2,18 @@
 
 import asyncio
 import shutil
+import threading
 import time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import delete, select
+from sqlalchemy import select, update
 
 from app.deps import AdminUser, CurrentUser, DbSession, auth_from_payload
 from app.downloads import ytdlp
 from app.downloads.youtube import YouTubeError, YouTubeItem, is_youtube_url
-from app.models import ACTIVE_STATES, Category, DownloadJob, Playlist, Track, User
+from app.models import ACTIVE_STATES, Category, DownloadJob, Playlist, Track, User, utcnow
 from app.schemas.downloads import (
     AlbumDownloadIn,
     BrowseId,
@@ -28,6 +29,7 @@ from app.security import decode_access_token
 from app.services.playlists import can_edit_items
 
 router = APIRouter(tags=["YouTube & Downloads"])
+_update_running = threading.Lock()
 
 
 def _manager(request: Request):  # type: ignore[no-untyped-def]
@@ -237,7 +239,7 @@ def list_downloads(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[JobOut]:
     """Eigene Downloads (Admins mit scope=all: alle). Aktive zuerst."""
-    query = select(DownloadJob)
+    query = select(DownloadJob).where(DownloadJob.hidden_at.is_(None))
     if scope == "mine" or not user.is_admin:
         query = query.where(DownloadJob.user_id == user.id)
     if state == "active":
@@ -270,6 +272,7 @@ def cancel_download(job_id: int, request: Request, user: CurrentUser, db: DbSess
 def retry_download(job_id: int, request: Request, user: CurrentUser, db: DbSession) -> JobOut:
     _require_download_right(user)
     job = _visible_job(db, user, job_id)
+    job.hidden_at = None  # ein wiederholter Auftrag soll in der Liste erscheinen
     manager = _manager(request)
     manager.retry(db, job)
     return manager.out(db, job)
@@ -281,7 +284,7 @@ def remove_download(job_id: int, user: CurrentUser, db: DbSession) -> Response:
     job = _visible_job(db, user, job_id)
     if job.status in ACTIVE_STATES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Laufende Downloads bitte zuerst abbrechen.")
-    db.delete(job)
+    job.hidden_at = utcnow()  # nur ausblenden: Statistik und Wünsche brauchen die Zeile weiter
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -289,7 +292,15 @@ def remove_download(job_id: int, user: CurrentUser, db: DbSession) -> Response:
 @router.delete("/downloads", status_code=status.HTTP_204_NO_CONTENT)
 def clear_finished(user: CurrentUser, db: DbSession) -> Response:
     """Alle eigenen fertigen/fehlgeschlagenen Einträge aus der Liste entfernen."""
-    db.execute(delete(DownloadJob).where(DownloadJob.user_id == user.id, DownloadJob.status.not_in(ACTIVE_STATES)))
+    db.execute(
+        update(DownloadJob)
+        .where(
+            DownloadJob.user_id == user.id,
+            DownloadJob.status.not_in(ACTIVE_STATES),
+            DownloadJob.hidden_at.is_(None),
+        )
+        .values(hidden_at=utcnow())
+    )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -406,7 +417,13 @@ async def downloader_status(request: Request, _: AdminUser, db: DbSession) -> Do
 @router.post("/downloads-system/update", response_model=DownloaderStatusOut)
 async def update_ytdlp(request: Request, admin: AdminUser, db: DbSession) -> DownloaderStatusOut:
     """yt-dlp sofort aktualisieren (passiert sonst automatisch einmal am Tag)."""
-    ok, message = await run_in_threadpool(_manager(request).update_ytdlp)
+    # Nur ein Update gleichzeitig: Zwei parallele pip-Installationen ins selbe Verzeichnis würden sich zerstören
+    if not _update_running.acquire(blocking=False):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Ein Update läuft bereits – bitte einen Moment warten.")
+    try:
+        ok, message = await run_in_threadpool(_manager(request).update_ytdlp)
+    finally:
+        _update_running.release()
     if not ok:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Aktualisierung fehlgeschlagen: {message}")
     return await downloader_status(request, admin, db)

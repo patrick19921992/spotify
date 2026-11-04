@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/flavor.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -672,7 +673,7 @@ class _AboutCard extends ConsumerWidget {
       _InfoRow(icon: Icons.schedule_rounded, label: 'Länge', value: formatDuration(track.length)),
       if (format.isNotEmpty) _InfoRow(icon: Icons.graphic_eq_rounded, label: 'Format', value: format),
       if (track.fileSize > 0) _InfoRow(icon: Icons.sd_storage_outlined, label: 'Dateigröße', value: formatBytes(track.fileSize)),
-      if (track.source == 'youtube')
+      if (track.source == 'youtube' && youtubeFeaturesEnabled)
         const _InfoRow(icon: Icons.smart_display_outlined, label: 'Quelle', value: 'Von YouTube geladen'),
       if (downloaded)
         const _InfoRow(icon: Icons.download_done_rounded, label: 'Offline', value: 'Auf dem Handy gespeichert', accent: true),

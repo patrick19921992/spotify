@@ -13,17 +13,23 @@ from app.models.personal import (
     PlaylistItem,
     TrackLike,
 )
+from app.models.premium import PremiumCode, PremiumLicense
+from app.models.support import BUG_STATES, REQUEST_STATES, AppSetting, BugReport, SongRequest
 from app.models.user import User, UserSession
 
 __all__ = [
     "ACTIVE_STATES",
+    "BUG_STATES",
     "JOB_STATES",
     "MEDIA_TYPES",
+    "REQUEST_STATES",
     "Album",
     "AlbumSave",
+    "AppSetting",
     "Artist",
     "ArtistFollow",
     "Base",
+    "BugReport",
     "Category",
     "Cover",
     "DownloadJob",
@@ -31,6 +37,9 @@ __all__ = [
     "Playlist",
     "PlaylistFollow",
     "PlaylistItem",
+    "PremiumCode",
+    "PremiumLicense",
+    "SongRequest",
     "Track",
     "TrackArtist",
     "TrackLike",

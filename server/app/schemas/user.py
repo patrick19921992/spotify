@@ -76,3 +76,7 @@ class UserUpdateIn(BaseModel):
     is_admin: bool | None = None
     is_active: bool | None = None
     can_download: bool | None = None
+
+
+class AccountDeleteIn(BaseModel):
+    password: Annotated[str, StringConstraints(max_length=128)]

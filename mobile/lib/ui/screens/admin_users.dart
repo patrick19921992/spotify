@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/flavor.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -371,14 +372,15 @@ class _CreateUserSheetState extends ConsumerState<_CreateUserSheet> {
           title: const Text('Admin'),
           subtitle: const Text('Darf Benutzer, Rubriken und die Bibliothek verwalten', style: AppText.caption),
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _canDownload,
-          onChanged: _busy ? null : (value) => setState(() => _canDownload = value),
-          secondary: const Icon(Icons.download_rounded),
-          title: const Text('Darf YouTube-Downloads starten'),
-          subtitle: const Text('Neue Songs und Videos von YouTube in die Bibliothek holen', style: AppText.caption),
-        ),
+        if (youtubeFeaturesEnabled)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _canDownload,
+            onChanged: _busy ? null : (value) => setState(() => _canDownload = value),
+            secondary: const Icon(Icons.download_rounded),
+            title: const Text('Darf YouTube-Downloads starten'),
+            subtitle: const Text('Neue Songs und Videos von YouTube in die Bibliothek holen', style: AppText.caption),
+          ),
         if (_error != null) ...[
           const SizedBox(height: 12),
           AdminNotice(_error!),
@@ -670,14 +672,15 @@ class _EditUserSheetState extends ConsumerState<_EditUserSheet> {
             style: AppText.caption,
           ),
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: user.canDownload,
-          onChanged: _busy ? null : _setCanDownload,
-          secondary: Icon(user.canDownload ? Icons.download_rounded : Icons.file_download_off_rounded),
-          title: const Text('Darf YouTube-Downloads starten'),
-          subtitle: const Text('Neue Songs und Videos von YouTube in die Bibliothek holen', style: AppText.caption),
-        ),
+        if (youtubeFeaturesEnabled)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: user.canDownload,
+            onChanged: _busy ? null : _setCanDownload,
+            secondary: Icon(user.canDownload ? Icons.download_rounded : Icons.file_download_off_rounded),
+            title: const Text('Darf YouTube-Downloads starten'),
+            subtitle: const Text('Neue Songs und Videos von YouTube in die Bibliothek holen', style: AppText.caption),
+          ),
         const Divider(height: 24),
         if (isMe)
           const Padding(

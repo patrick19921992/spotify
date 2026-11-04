@@ -1,0 +1,193 @@
+"""Schemas für Song-Wünsche, Fehlermeldungen, App-Konfiguration und das Dashboard."""
+
+from datetime import datetime
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field, StringConstraints
+
+from app.schemas.premium import PremiumStatusOut
+
+Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
+LongText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+RequestStatus = Literal["open", "accepted", "done", "declined"]
+BugStatus = Literal["new", "seen", "done"]
+
+
+class RequestIn(BaseModel):
+    title: Title
+    artist: ShortText = ""
+    note: LongText = ""
+
+
+class RequestOut(BaseModel):
+    id: int
+    title: str
+    artist: str
+    note: str
+    status: RequestStatus
+    admin_note: str
+    created_at: datetime
+    updated_at: datetime
+    # Zustand des Downloads, falls der Admin den Wunsch angenommen hat (queued, downloading, done, failed …)
+    job_status: str | None = None
+
+
+class UserBrief(BaseModel):
+    id: int
+    username: str
+    display_name: str
+
+
+class AdminRequestOut(RequestOut):
+    user: UserBrief
+    job_id: int | None
+
+
+class RequestPatchIn(BaseModel):
+    status: RequestStatus | None = None
+    admin_note: LongText | None = None
+    # Download, der für diesen Wunsch gestartet wurde (setzt den Status auf „accepted“)
+    job_id: int | None = None
+
+
+class BugReportIn(BaseModel):
+    message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=4000)]
+    app_version: Annotated[str, StringConstraints(max_length=32)] = ""
+    app_build: Annotated[int, Field(ge=0, le=100_000_000)] | None = None
+    platform: Annotated[str, StringConstraints(max_length=20)] = ""
+    channel: Annotated[str, StringConstraints(max_length=10)] = ""
+    device: Annotated[str, StringConstraints(max_length=200)] = ""
+    # Letzte Fehlermeldungen der App – nur, wenn der Benutzer sie mitschicken will
+    log: Annotated[str, StringConstraints(max_length=20_000)] = ""
+
+
+class BugReportOut(BaseModel):
+    id: int
+    user: UserBrief
+    message: str
+    app_version: str
+    app_build: int | None
+    platform: str
+    channel: str
+    device: str
+    log: str
+    status: BugStatus
+    admin_note: str
+    created_at: datetime
+
+
+class BugPatchIn(BaseModel):
+    status: BugStatus | None = None
+    admin_note: LongText | None = None
+
+
+class AppConfigOut(BaseModel):
+    ads_enabled: bool
+    premium_enabled: bool
+    wishlist_enabled: bool
+    play_latest_build: int
+    play_min_build: int
+    play_store_url: str
+    update_message: str
+    maintenance_message: str
+
+
+class AppConfigIn(BaseModel):
+    """Nur die mitgeschickten Felder werden geändert."""
+
+    ads_enabled: bool | None = None
+    premium_enabled: bool | None = None
+    wishlist_enabled: bool | None = None
+    play_latest_build: int | None = None
+    play_min_build: int | None = None
+    play_store_url: str | None = None
+    update_message: str | None = None
+    maintenance_message: str | None = None
+
+
+class UpdateInfoOut(BaseModel):
+    # none | available | required
+    level: Literal["none", "available", "required"]
+    latest_build: int
+    min_build: int
+    store_url: str
+    message: str
+
+
+class PublicConfigOut(BaseModel):
+    """Was die App beim Start ohne Anmeldung abfragt."""
+
+    server_name: str
+    ads_enabled: bool
+    premium_enabled: bool
+    wishlist_enabled: bool
+    maintenance_message: str
+    update: UpdateInfoOut
+    privacy_url: str
+    deletion_url: str
+
+
+class MyStatusOut(BaseModel):
+    premium: PremiumStatusOut
+
+
+class ClientVersionOut(BaseModel):
+    platform: str
+    channel: str
+    version: str
+    build: int | None
+    devices: int
+    users: int
+    last_seen: datetime
+
+
+class DayCountOut(BaseModel):
+    day: str
+    count: int
+
+
+class TopUserOut(BaseModel):
+    user_id: int
+    display_name: str
+    count: int
+
+
+class StatsOut(BaseModel):
+    users_total: int
+    users_active: int
+    tracks_total: int
+    videos_total: int
+    downloads_total: int
+    downloads_done: int
+    downloads_failed: int
+    downloads_active: int
+    downloads_last_24h: int
+    downloads_last_7d: int
+    downloads_by_day: list[DayCountOut]
+    plays_by_day: list[DayCountOut]
+    top_downloaders: list[TopUserOut]
+    premium_users: int
+    premium_unlimited: int
+    codes_available: int
+    requests_open: int
+    bugs_new: int
+    devices_active_7d: int
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    display_name: str
+    is_admin: bool
+    is_active: bool
+    can_download: bool
+    created_at: datetime
+    last_login_at: datetime | None
+    # Zuletzt aktiv (jüngste Nutzung eines Geräts) – die App meldet sich nur selten neu an, daher aussagekräftiger
+    last_active_at: datetime | None = None
+    premium: PremiumStatusOut
+    downloads: int
+    devices: int
+    # Zuletzt gemeldete App dieses Benutzers (z. B. „play 1.0.0 (54)“), falls bekannt
+    last_client: str

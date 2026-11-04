@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UTCDateTime, utcnow
@@ -43,6 +43,11 @@ class UserSession(Base):
     device_name: Mapped[str] = mapped_column(String(100), default="")
     user_agent: Mapped[str] = mapped_column(String(255), default="")
     ip_address: Mapped[str] = mapped_column(String(64), default="")
+    # Welche App-Version das Gerät zuletzt gemeldet hat (Header X-Selfify-Client) – für das Dashboard
+    client_platform: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    client_channel: Mapped[str] = mapped_column(String(10), default="", server_default="")
+    client_version: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    client_build: Mapped[int | None] = mapped_column(Integer, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_used_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)

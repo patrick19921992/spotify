@@ -45,5 +45,7 @@ class DownloadJob(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # „Entfernen“ in der Liste blendet nur aus (die Zeile bleibt für Statistik und Wünsche erhalten)
+    hidden_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
 
     user: Mapped[User | None] = relationship(lazy="joined")
