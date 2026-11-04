@@ -1,9 +1,9 @@
 """Schemas für Premium: Status, Einlösen, Codes und Lizenzen."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 from app.services.premium import MAX_DURATION_DAYS
 
@@ -43,6 +43,20 @@ class CodeCreateIn(_Duration):
     # Bis wann der Code eingelöst werden kann (leer = beliebig lange)
     valid_until: datetime | None = None
     label: Label = ""
+
+    @field_validator("valid_until")
+    @classmethod
+    def _utc(cls, value: datetime | None) -> datetime | None:
+        """Ohne Zeitzone gilt UTC; alles wird nach UTC umgerechnet. Unsinnige Jahre werden abgelehnt (statt 500)."""
+        if value is None:
+            return None
+        try:
+            value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+        except (OverflowError, ValueError):
+            raise ValueError("„Einlösbar bis“ ist kein gültiger Zeitpunkt.") from None
+        if value.year > 2100:
+            raise ValueError("„Einlösbar bis“ darf höchstens im Jahr 2100 liegen.")
+        return value
 
 
 class GrantIn(_Duration):

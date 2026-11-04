@@ -39,6 +39,9 @@ def list_users(_: AdminUser, db: DbSession) -> list[AdminUserOut]:
             .group_by(UserSession.user_id)
         ).all()
     )
+    last_active = dict(
+        db.execute(select(UserSession.user_id, func.max(UserSession.last_used_at)).group_by(UserSession.user_id)).all()
+    )
     last_sessions: dict[int, UserSession] = {}
     for session in db.scalars(
         select(UserSession).where(UserSession.client_version != "").order_by(UserSession.last_used_at)
@@ -58,6 +61,7 @@ def list_users(_: AdminUser, db: DbSession) -> list[AdminUserOut]:
                 can_download=user.can_download,
                 created_at=user.created_at,
                 last_login_at=user.last_login_at,
+                last_active_at=last_active.get(user.id),
                 premium=PremiumStatusOut(active=state.active, unlimited=state.unlimited, until=state.until),
                 downloads=int(downloads.get(user.id, 0)),
                 devices=int(devices.get(user.id, 0)),

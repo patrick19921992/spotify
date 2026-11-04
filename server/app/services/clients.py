@@ -37,7 +37,8 @@ def parse_client(value: str | None) -> ClientInfo | None:
     if not _PLATFORM.match(platform) or not _CHANNEL.match(channel) or not _VERSION.match(version):
         return None
     build_text = parts.get("build", "")
-    build = int(build_text) if build_text.isdigit() and len(build_text) <= 9 else None
+    # Nur ASCII-Ziffern: str.isdigit() ließe auch „²“ durch, und int() würde daran scheitern (500 statt „ignoriert“)
+    build = int(build_text) if re.fullmatch(r"[0-9]{1,9}", build_text) else None
     return ClientInfo(platform=platform, channel=channel, version=version, build=build)
 
 

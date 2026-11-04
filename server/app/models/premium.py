@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UTCDateTime, utcnow
@@ -36,6 +36,9 @@ class PremiumLicense(Base):
     """Premium eines Benutzers – durch einen Code oder direkt vom Admin vergeben."""
 
     __tablename__ = "premium_licenses"
+    # Jeder Benutzer löst einen Code höchstens einmal ein – auch bei gleichzeitigen Anfragen (code_id NULL = vom Admin
+    # vergeben oder Code gelöscht: davon darf es viele geben)
+    __table_args__ = (UniqueConstraint("code_id", "user_id", name="uq_premium_licenses_code_id_user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)

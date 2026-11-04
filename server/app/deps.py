@@ -59,6 +59,10 @@ def auth_from_payload(db: Session, payload: dict[str, object], client: ClientInf
     session = active_session(db, session_id, user_id)
     if session is None:
         raise _unauthorized("Dieses Gerät wurde abgemeldet.")
+    # SQLite vergibt freie IDs neu: Wurde ein Konto gelöscht und später ein neues angelegt, kann es dieselbe Benutzer-
+    # und Geräte-Nummer bekommen. Ein Token, das älter ist als dieses Gerät, gehört dem früheren Konto.
+    if _issued_at(payload) < int(session.created_at.timestamp()):
+        raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
     now = utcnow()
     changed = False
     # Token aus der letzten Erneuerung benutzt -> sie ist angekommen, der vorige Refresh-Token gilt nicht mehr

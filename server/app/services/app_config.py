@@ -94,6 +94,15 @@ def get_all(db: Session) -> dict[str, Any]:
 def update(db: Session, changes: dict[str, Any]) -> dict[str, Any]:
     """Prüft alle Änderungen zuerst und schreibt erst dann – ein Fehler ändert nichts."""
     checked = {key: validate(key, value) for key, value in changes.items()}
+    merged = {**get_all(db), **checked}
+    # Zusammenhänge: Ein Pflicht-Update ohne Store-Link wäre für alle Nutzer eine Sackgasse (Vollbild „Update nötig“
+    # ohne Knopf), und eine Mindest-Version über der neuesten gibt es noch gar nicht
+    if merged["play_min_build"] > 0 and not merged["play_store_url"]:
+        raise ConfigError(
+            "play_store_url: Für ein Pflicht-Update (mindestens nötige Build-Nummer) fehlt der Link zur Store-Seite."
+        )
+    if merged["play_latest_build"] > 0 and merged["play_min_build"] > merged["play_latest_build"]:
+        raise ConfigError("play_min_build: darf nicht größer sein als die neueste Build-Nummer.")
     for key, value in checked.items():
         row = db.get(AppSetting, key)
         if row is None:

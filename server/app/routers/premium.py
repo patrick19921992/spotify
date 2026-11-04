@@ -1,9 +1,10 @@
 """Premium: Status, Code einlösen (Benutzer) und Codes/Lizenzen verwalten (Admin)."""
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
-from app.deps import AdminUser, CurrentUser, DbSession, client_ip
+from app.deps import AdminUser, CurrentUser, DbSession
+from app.locks import write_lock
 from app.models import PremiumCode, PremiumLicense, User, utcnow
 from app.schemas.premium import (
     CodeCreateIn,
@@ -114,7 +115,9 @@ def my_premium(user: CurrentUser, db: DbSession) -> PremiumStatusOut:
 def redeem_code(body: RedeemIn, request: Request, user: CurrentUser, db: DbSession) -> PremiumStatusOut:
     """Löst einen Premium-Code ein. Falsche Codes werden gezählt – nach zu vielen Fehlversuchen gibt es eine Pause."""
     limiter = request.app.state.redeem_limiter
-    ip = client_ip(request)
+    # Eingeloggte Benutzer werden nur je Benutzer gebremst, nicht je IP: Eine vorgetäuschte Adresse (X-Forwarded-For)
+    # würde sonst jede Sperre aushebeln
+    ip = ""
     key = f"redeem:{user.id}"
     retry_after = limiter.retry_after(key, ip)
     if retry_after is not None:
@@ -123,16 +126,18 @@ def redeem_code(body: RedeemIn, request: Request, user: CurrentUser, db: DbSessi
             f"Zu viele Versuche. Bitte in {max(1, retry_after // 60)} Minute(n) erneut versuchen.",
             headers={"Retry-After": str(retry_after)},
         )
-    try:
-        service.redeem(db, user, body.code)
-    except service.PremiumError as exc:
-        # Nur „gibt es nicht“ zählt als Raten; ein bekannter, aber verbrauchter Code ist kein Ratversuch
-        if exc.status_code == status.HTTP_404_NOT_FOUND:
-            limiter.record_failure(key, ip)
-        db.rollback()
-        raise HTTPException(exc.status_code, exc.message) from None
-    limiter.reset_user(key, ip)
-    db.commit()
+    # Prüfen, einfügen und speichern am Stück: Gleichzeitige Einlösungen laufen nacheinander
+    with write_lock:
+        try:
+            service.redeem(db, user, body.code)
+        except service.PremiumError as exc:
+            # Nur „gibt es nicht“ zählt als Raten; ein bekannter, aber verbrauchter Code ist kein Ratversuch
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                limiter.record_failure(key, ip)
+            db.rollback()
+            raise HTTPException(exc.status_code, exc.message) from None
+        limiter.reset_user(key, ip)
+        db.commit()
     return _status_out(service.premium_status(db, user))
 
 
@@ -189,11 +194,18 @@ def delete_code(code_id: int, _: AdminUser, db: DbSession) -> Response:
 @admin_router.get("/premium/licenses", response_model=list[LicenseOut])
 def list_licenses(_: AdminUser, db: DbSession, only_running: bool = False) -> list[LicenseOut]:
     now = utcnow()
+    query = select(PremiumLicense)
+    if only_running:
+        # Schon in der Abfrage filtern: Sonst fehlen laufende Lizenzen, sobald es mehr als 1000 gibt
+        query = query.where(
+            PremiumLicense.revoked_at.is_(None),
+            PremiumLicense.starts_at <= now,
+            or_(PremiumLicense.expires_at.is_(None), PremiumLicense.expires_at > now),
+        )
     licenses = db.scalars(
-        select(PremiumLicense).order_by(PremiumLicense.created_at.desc(), PremiumLicense.id.desc()).limit(1000)
+        query.order_by(PremiumLicense.created_at.desc(), PremiumLicense.id.desc()).limit(1000)
     ).unique()
-    out = [_license_out(lic, now) for lic in licenses]
-    return [lic for lic in out if lic.running] if only_running else out
+    return [_license_out(lic, now) for lic in licenses]
 
 
 @admin_router.post("/premium/licenses/{license_id}/revoke", response_model=RevokedOut)
@@ -215,8 +227,13 @@ def get_user_premium(user_id: int, _: AdminUser, db: DbSession) -> UserPremiumOu
 def grant_user_premium(user_id: int, body: GrantIn, _: AdminUser, db: DbSession) -> UserPremiumOut:
     """Premium direkt vergeben (ohne Code). Zeitlich begrenztes Premium verlängert ein laufendes."""
     user = _get_user(db, user_id)
-    service.grant(db, user, days=None if body.unlimited else body.duration_days, note=body.note)
-    db.commit()
+    with write_lock:
+        try:
+            service.grant(db, user, days=None if body.unlimited else body.duration_days, note=body.note)
+        except service.PremiumError as exc:
+            db.rollback()
+            raise HTTPException(exc.status_code, exc.message) from None
+        db.commit()
     return _user_premium_out(db, user)
 
 

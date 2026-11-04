@@ -184,6 +184,8 @@ class AdminUserOut(BaseModel):
     can_download: bool
     created_at: datetime
     last_login_at: datetime | None
+    # Zuletzt aktiv (jüngste Nutzung eines Geräts) – die App meldet sich nur selten neu an, daher aussagekräftiger
+    last_active_at: datetime | None = None
     premium: PremiumStatusOut
     downloads: int
     devices: int

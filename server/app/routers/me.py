@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
 from app.deps import AppSettings, Auth, DbSession
+from app.locks import write_lock
 from app.models import UserSession, utcnow
 from app.routers.auth import token_out
 from app.schemas.user import AccountDeleteIn, MeUpdateIn, PasswordChangeIn, SessionOut, TokenOut, UserOut
@@ -93,9 +94,12 @@ def delete_account(body: AccountDeleteIn, request: Request, auth: Auth, db: DbSe
     if not verify_password(auth.user.password_hash, body.password):
         limiter.record_failure(auth.user.username, ip)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Das Passwort stimmt nicht.")
-    if auth.user.is_admin and other_active_admins(db, auth.user.id) == 0:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Du bist der letzte Admin – lege zuerst einen weiteren an.")
-    limiter.reset_user(auth.user.username, ip)
-    db.delete(auth.user)
-    db.commit()
+    # Prüfung „letzter Admin?“ und Löschen am Stück – zwei Admins, die sich gleichzeitig löschen, ließen
+    # sonst keinen übrig
+    with write_lock:
+        if auth.user.is_admin and other_active_admins(db, auth.user.id) == 0:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Du bist der letzte Admin – lege zuerst einen weiteren an.")
+        limiter.reset_user(auth.user.username, ip)
+        db.delete(auth.user)
+        db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

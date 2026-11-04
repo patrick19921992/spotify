@@ -425,8 +425,8 @@
           kpi("Neue Fehlermeldungen", fmtNumber(s.bugs_new), "noch nicht gesehen", s.bugs_new > 0),
           kpi("Geräte", fmtNumber(s.devices_active_7d), "in den letzten 7 Tagen aktiv")));
         body.appendChild(h("div", { class: "grid cols-2 gap-top" },
-          h("div", { class: "card" }, h("h2", { text: "Downloads pro Tag" }), barChart(s.downloads_by_day, "")),
-          h("div", { class: "card" }, h("h2", { text: "Wiedergaben pro Tag" }), barChart(s.plays_by_day, "alt"))));
+          h("div", { class: "card" }, h("h2", { text: "Downloads pro Tag (UTC)" }), barChart(s.downloads_by_day, "")),
+          h("div", { class: "card" }, h("h2", { text: "Wiedergaben pro Tag (UTC)" }), barChart(s.plays_by_day, "alt"))));
         var top = s.top_downloaders.length
           ? s.top_downloaders.map(function (t) {
             return h("div", { class: "list-line" }, h("span", { text: t.display_name }), h("span", { class: "muted", text: fmtNumber(t.count) + " Downloads" }));
@@ -704,7 +704,14 @@
       return h("form", { class: "card", onsubmit: function (event) {
         event.preventDefault();
         api("POST", "/users", { username: username.value, password: password.value, display_name: display.value.trim() || null, is_admin: admin.checked, can_download: download.checked })
-          .then(function (user) { toast("Benutzer „" + user.username + "“ angelegt."); event.target.reset(); return load(); }).catch(showError);
+          .then(function (user) {
+            toast("Benutzer „" + user.username + "“ angelegt.");
+            // Von Hand zurücksetzen: form.reset() schaltet „Darf Downloads starten“ aus, weil das Häkchen im Skript
+            // (nicht im HTML) gesetzt wurde – der nächste Benutzer bekäme still kein Download-Recht
+            username.value = ""; display.value = ""; password.value = "";
+            admin.checked = false; download.checked = true;
+            return load();
+          }).catch(showError);
       } },
       h("h2", { text: "Benutzer anlegen" }),
       h("div", { class: "form-grid" },
@@ -731,7 +738,7 @@
           h("td", { class: "right", text: fmtNumber(user.downloads) }),
           h("td", { class: "right", text: fmtNumber(user.devices) }),
           h("td", { class: "small nowrap", text: user.last_client || "–" }),
-          h("td", { class: "small nowrap", text: user.last_login_at ? ago(user.last_login_at) : "nie" }),
+          h("td", { class: "small nowrap", text: user.last_active_at || user.last_login_at ? ago(user.last_active_at || user.last_login_at) : "nie" }),
           h("td", null, h("div", { class: "actions" },
             h("button", { class: "small", text: "Premium", onclick: function () { premiumModal(user); } }),
             h("button", { class: "secondary small", text: user.can_download ? "Downloads aus" : "Downloads an", onclick: function () { patchUser(user, { can_download: !user.can_download }, user.can_download ? "Downloads gesperrt." : "Downloads erlaubt."); } }),

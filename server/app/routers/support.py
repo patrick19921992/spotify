@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 
 from app.deps import AdminUser, CurrentUser, DbSession
+from app.locks import write_lock
 from app.models import BugReport, DownloadJob, SongRequest, utcnow
 from app.schemas.support import (
     AdminRequestOut,
@@ -68,11 +69,13 @@ def _bug_out(item: BugReport) -> BugReportOut:
 @router.post("/requests", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
 def create_request(body: RequestIn, user: CurrentUser, db: DbSession) -> RequestOut:
     """„Song wünschen“. Der Admin sieht den Wunsch im Dashboard und entscheidet."""
-    try:
-        item = service.create_request(db, user, title=body.title, artist=body.artist, note=body.note)
-    except service.SupportError as exc:
-        raise HTTPException(exc.status_code, exc.message) from None
-    db.commit()
+    # Zählen, einfügen und speichern am Stück – sonst umgehen gleichzeitige Anfragen die Grenzen
+    with write_lock:
+        try:
+            item = service.create_request(db, user, title=body.title, artist=body.artist, note=body.note)
+        except service.SupportError as exc:
+            raise HTTPException(exc.status_code, exc.message) from None
+        db.commit()
     return _request_out(item)
 
 
@@ -96,6 +99,10 @@ def withdraw_request(request_id: int, user: CurrentUser, db: DbSession) -> Respo
     if item is None or item.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Wunsch nicht gefunden.")
     if item.status == "accepted":
+        # Erst nachführen: Ein gescheiterter oder verschwundener Download macht den Wunsch wieder offen
+        service.sync_request_states(db)
+        db.refresh(item)
+    if item.status == "accepted":
         raise HTTPException(status.HTTP_409_CONFLICT, "Dieser Wunsch wird gerade erfüllt.")
     db.delete(item)
     db.commit()
@@ -104,21 +111,22 @@ def withdraw_request(request_id: int, user: CurrentUser, db: DbSession) -> Respo
 
 @router.post("/bugreports", status_code=status.HTTP_201_CREATED)
 def create_bug_report(body: BugReportIn, user: CurrentUser, db: DbSession) -> dict[str, int]:
-    try:
-        report = service.create_bug_report(
-            db,
-            user,
-            message=body.message,
-            app_version=body.app_version,
-            app_build=body.app_build,
-            platform=body.platform,
-            channel=body.channel,
-            device=body.device,
-            log=body.log,
-        )
-    except service.SupportError as exc:
-        raise HTTPException(exc.status_code, exc.message) from None
-    db.commit()
+    with write_lock:
+        try:
+            report = service.create_bug_report(
+                db,
+                user,
+                message=body.message,
+                app_version=body.app_version,
+                app_build=body.app_build,
+                platform=body.platform,
+                channel=body.channel,
+                device=body.device,
+                log=body.log,
+            )
+        except service.SupportError as exc:
+            raise HTTPException(exc.status_code, exc.message) from None
+        db.commit()
     return {"id": report.id}
 
 

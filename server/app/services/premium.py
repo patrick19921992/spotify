@@ -14,7 +14,8 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import PremiumCode, PremiumLicense, User, utcnow
@@ -23,6 +24,8 @@ from app.models import PremiumCode, PremiumLicense, User, utcnow
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 12
 MAX_DURATION_DAYS = 3650
+# So weit darf die Kette aus angehängten Lizenzen höchstens in die Zukunft reichen
+MAX_CHAIN_DAYS = 3650
 
 
 class PremiumError(Exception):
@@ -57,6 +60,11 @@ def generate_code() -> str:
 def _not_over(license_: PremiumLicense, now: datetime) -> bool:
     """Nicht entzogen und noch nicht abgelaufen (kann aber erst später beginnen, wenn sie angehängt wurde)."""
     return license_.revoked_at is None and (license_.expires_at is None or license_.expires_at > now)
+
+
+def _not_expired(now: datetime) -> ColumnElement[bool]:
+    """SQL-Bedingung: unbegrenzt oder noch nicht abgelaufen."""
+    return or_(PremiumLicense.expires_at.is_(None), PremiumLicense.expires_at > now)
 
 
 def _is_running(license_: PremiumLicense, now: datetime) -> bool:
@@ -106,13 +114,20 @@ def premium_statuses(db: Session, user_ids: list[int], now: datetime | None = No
 
 
 def _start_for_new_license(db: Session, user_id: int, now: datetime) -> datetime:
-    """Zeitlich begrenztes Premium hängt sich hinten an eine laufende begrenzte Lizenz an."""
-    latest = [lic.expires_at for lic in running_licenses(db, user_id, now) if lic.expires_at is not None]
+    """Zeitlich begrenztes Premium hängt sich hinten an die Kette an: nach der laufenden **und** nach schon
+    angehängten (noch nicht begonnenen) befristeten Lizenzen."""
+    latest = [lic.expires_at for lic in live_licenses(db, user_id, now) if lic.expires_at is not None]
     return max([now, *latest])
 
 
-def _expiry(start: datetime, days: int | None) -> datetime | None:
-    return None if days is None else start + timedelta(days=days)
+def _expiry(start: datetime, days: int | None, now: datetime) -> datetime | None:
+    """Ende einer befristeten Lizenz. Die ganze Kette darf höchstens MAX_CHAIN_DAYS ab jetzt reichen."""
+    if days is None:
+        return None
+    end = start + timedelta(days=days)
+    if end > now + timedelta(days=MAX_CHAIN_DAYS):
+        raise PremiumError(409, "Die gesamte Premium-Laufzeit darf zehn Jahre nicht überschreiten.")
+    return end
 
 
 def create_codes(
@@ -168,6 +183,23 @@ def redeem(db: Session, user: User, raw_code: str, now: datetime | None = None) 
     if code.duration_days is not None and any(lic.expires_at is None for lic in current):
         raise PremiumError(409, "Du hast schon unbegrenzt Premium – der Code bleibt unverbraucht.")
 
+    start = _start_for_new_license(db, user.id, now) if code.duration_days is not None else now
+    license_ = PremiumLicense(
+        user_id=user.id,
+        code_id=code.id,
+        source="code",
+        starts_at=start,
+        expires_at=_expiry(start, code.duration_days, now),
+        note=code.label,
+    )
+    # Erst die Lizenz anlegen: Die Datenbank erlaubt je Code und Benutzer nur eine – eine gleichzeitige zweite
+    # Einlösung desselben Benutzers scheitert hier, ohne einen Platz des Codes zu verbrauchen
+    db.add(license_)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise PremiumError(409, "Du hast diesen Code schon eingelöst.") from None
     # Zähler atomar erhöhen: Zwei gleichzeitige Einlösungen dürfen einen Einmal-Code nicht beide bekommen
     claimed = db.execute(
         update(PremiumCode)
@@ -179,20 +211,9 @@ def redeem(db: Session, user: User, raw_code: str, now: datetime | None = None) 
         .values(redeemed_count=PremiumCode.redeemed_count + 1)
     )
     if claimed.rowcount != 1:
+        db.rollback()  # die eben angelegte Lizenz wieder verwerfen
         raise PremiumError(409, "Dieser Code wurde schon so oft eingelöst, wie es erlaubt ist.")
     db.refresh(code)
-
-    start = _start_for_new_license(db, user.id, now) if code.duration_days is not None else now
-    license_ = PremiumLicense(
-        user_id=user.id,
-        code_id=code.id,
-        source="code",
-        starts_at=start,
-        expires_at=_expiry(start, code.duration_days),
-        note=code.label,
-    )
-    db.add(license_)
-    db.flush()
     return license_
 
 
@@ -201,7 +222,7 @@ def grant(db: Session, user: User, *, days: int | None, note: str, now: datetime
     now = now or utcnow()
     start = _start_for_new_license(db, user.id, now) if days is not None else now
     license_ = PremiumLicense(
-        user_id=user.id, source="admin", starts_at=start, expires_at=_expiry(start, days), note=note
+        user_id=user.id, source="admin", starts_at=start, expires_at=_expiry(start, days, now), note=note
     )
     db.add(license_)
     db.flush()
@@ -209,9 +230,11 @@ def grant(db: Session, user: User, *, days: int | None, note: str, now: datetime
 
 
 def revoke_license(db: Session, license_: PremiumLicense, now: datetime | None = None) -> bool:
-    if license_.revoked_at is not None:
+    """Entzieht eine Lizenz. False, wenn sie schon entzogen oder von selbst abgelaufen war (die Historie bleibt)."""
+    now = now or utcnow()
+    if license_.revoked_at is not None or not _not_over(license_, now):
         return False
-    license_.revoked_at = now or utcnow()
+    license_.revoked_at = now
     return True
 
 
@@ -220,7 +243,7 @@ def revoke_user(db: Session, user_id: int, now: datetime | None = None) -> int:
     now = now or utcnow()
     result = db.execute(
         update(PremiumLicense)
-        .where(PremiumLicense.user_id == user_id, PremiumLicense.revoked_at.is_(None))
+        .where(PremiumLicense.user_id == user_id, PremiumLicense.revoked_at.is_(None), _not_expired(now))
         .values(revoked_at=now)
     )
     return int(result.rowcount or 0)
@@ -235,7 +258,7 @@ def revoke_code(db: Session, code: PremiumCode, *, revoke_licenses: bool, now: d
         return 0
     result = db.execute(
         update(PremiumLicense)
-        .where(PremiumLicense.code_id == code.id, PremiumLicense.revoked_at.is_(None))
+        .where(PremiumLicense.code_id == code.id, PremiumLicense.revoked_at.is_(None), _not_expired(now))
         .values(revoked_at=now)
     )
     return int(result.rowcount or 0)

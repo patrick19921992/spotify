@@ -40,11 +40,16 @@ def create_request(db: Session, user: User, *, title: str, artist: str, note: st
 
 
 def sync_request_states(db: Session) -> None:
-    """Wunsch mit laufendem Download: sobald der Download fertig ist, gilt der Wunsch als erledigt."""
+    """Wunsch mit laufendem Download nachführen: fertig -> erledigt. Scheitert oder fehlt der Download, wartet der
+    Wunsch nicht ewig als „in Arbeit“ (der Benutzer könnte ihn sonst nie zurückziehen und käme ans Offen-Limit),
+    sondern ist wieder offen – der Admin sieht ihn im Dashboard erneut."""
     pending = db.scalars(select(SongRequest).where(SongRequest.status == "accepted")).unique().all()
     for request in pending:
-        if request.job is not None and request.job.status == "done":
+        job = request.job
+        if job is not None and job.status == "done":
             request.status = "done"
+        elif job is None or job.status in ("failed", "cancelled"):
+            request.status = "open"
     db.flush()
 
 
