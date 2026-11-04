@@ -330,6 +330,26 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       Abmelden/Anmelden liefen doppelte Listener und der Badge-Zeitgeber weiter → Listener einmalig, Zeitgeber
       wird beim Abmelden gestoppt
 
+### Play-Store-Version, Teil 2: App, CI, Anleitung
+
+- [x] Android-Flavors `full` (GitHub, `de.selfify.selfify`) und `play` (`….play`): Manifest-Overlay der Play-Version
+      entfernt `REQUEST_INSTALL_PACKAGES`, `INSTALL_PACKAGES`, `WRITE_EXTERNAL_STORAGE` und die Installer-Bauteile des
+      Update-Plugins; die GitHub-Version entfernt dafür die Werbe-ID und den Auto-Start des Werbe-SDKs
+- [x] `lib/core/flavor.dart` entscheidet zentral (Flavor oder `--dart-define=CHANNEL=play`): In der Play-Version
+      fehlen YouTube-Suche, Link einfügen, Downloads-Symbol/-Bildschirm-Einstieg, Downloader-Reiter, Download-
+      Rechte-Schalter und Selbst-Update; stattdessen „Song wünschen“ (Suche, „Meine Wünsche“)
+- [x] Premium-Code einlösen (Einstellungen › Premium, beide Versionen), Fehler melden (mit Fehlerprotokoll nur auf
+      Wunsch, Zugangsdaten vorher unkenntlich), Konto löschen (Passwort nötig), Datenschutz-Link, Wartungshinweis,
+      Update-Hinweis (Store-Link) und Pflicht-Update-Bildschirm; Header `X-Selfify-Client` an jeder Anfrage
+- [x] Werbung (AdMob, nur Play + Android): erst Einwilligungsabfrage (UMP), dann SDK; Banner nur, wenn vom Admin
+      eingeschaltet, **Premium geladen und nicht aktiv** (unklarer Stand = keine Werbung) und online; Test-IDs von
+      Google als Standard
+- [x] CI: Job „Play-Bundle“ (`selfify-play.aab` ins Release `app-latest`, nur signiert) mit Prüfung des
+      zusammengeführten Manifests auf Selbst-Installation und AdMob-App-ID; GitHub-APK wird mit `--flavor full`
+      gebaut und auf `REQUEST_INSTALL_PACKAGES` geprüft
+- [x] 45 neue App-Tests (`play_version_test.dart`), 446 App-Tests insgesamt grün, `flutter analyze` sauber.
+      Nicht lokal prüfbar (kein Android-SDK): Gradle-Bau, Manifest-Zusammenführung, echte Werbung – das prüft die CI
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

@@ -91,6 +91,13 @@ class AuthController extends AsyncNotifier<AuthState> {
     state = AsyncData(AuthState(serverUrl: current?.serverUrl ?? lastServerUrl));
   }
 
+  /// Nach „Konto löschen“: nur noch die lokale Anmeldung vergessen – der Server kennt sie nicht mehr.
+  Future<void> forgetSession({String? message}) async {
+    final current = state.value;
+    await _storage.delete(key: _sessionKey);
+    state = AsyncData(AuthState(serverUrl: current?.serverUrl ?? lastServerUrl, message: message));
+  }
+
   void _expire(String message) {
     final current = state.value;
     if (current == null || !current.isLoggedIn) return;

@@ -3,10 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../ads/ads.dart';
+import '../../core/flavor.dart';
 import '../../core/format.dart';
+import '../../core/links.dart';
 import '../../core/theme.dart';
 import '../../data/app_update.dart';
 import '../../data/models.dart';
+import '../../state/app_config.dart';
 import '../../state/app_update.dart';
 import '../../state/auth.dart';
 import '../../state/downloads.dart';
@@ -18,10 +22,20 @@ import '../widgets/app_update.dart';
 import '../widgets/common.dart';
 import 'account_widgets.dart';
 import 'devices_screen.dart';
+import 'premium_screen.dart';
+import 'support_dialogs.dart';
 
 final _serverInfoProvider = FutureProvider.autoDispose<ServerInfo>((ref) => requireApi(ref).serverInfo());
 
 final _packageInfoProvider = FutureProvider<PackageInfo>((ref) => PackageInfo.fromPlatform());
+
+/// Muss „Datenschutz-Einstellungen für Werbung“ angeboten werden? (Nur, wenn gerade Werbung läuft und die
+/// Einwilligungsabfrage es verlangt – EU/UK.)
+final _adPrivacyProvider = FutureProvider.autoDispose<bool>((ref) async {
+  if (!ref.watch(adsVisibleProvider)) return false;
+  if (!await AdsService.prepare()) return false;
+  return AdsService.privacyOptionsRequired();
+});
 
 /// Alle Stufen (inkl. "low") fürs Streamen, ohne "low" für Downloads.
 final _streamingQualities = qualityLabels.keys.toList();
@@ -365,12 +379,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: [
             _ProfileHeader(user: user, onEdit: () => _editName(user)),
             ..._accountSection(user),
+            ..._playStoreSection(),
             ..._playbackSection(settings),
             ..._offlineSection(settings),
-            ..._downloadSection(user, settings),
+            // YouTube-Downloads gibt es nur in der GitHub-Version
+            if (youtubeFeaturesEnabled) ..._downloadSection(user, settings),
             ..._historySection(),
             if (user.isAdmin) ..._adminSection(),
             ..._aboutSection(auth?.serverUrl),
+            ..._helpSection(user, auth?.serverUrl),
             const _Footer(),
           ],
         ),
@@ -407,6 +424,88 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           onTap: () => _logout(user),
         ),
       ];
+
+  /// Premium (beide Versionen) und Song-Wünsche (nur Play-Version) – jeweils nur, wenn der Admin sie eingeschaltet hat.
+  List<Widget> _playStoreSection() {
+    final premiumVisible = ref.watch(premiumVisibleProvider);
+    final wishlistVisible = ref.watch(wishlistVisibleProvider);
+    if (!premiumVisible && !wishlistVisible) return const [];
+    final premium = ref.watch(premiumProvider).value;
+    return [
+      AccountSectionTitle(premiumVisible && wishlistVisible ? 'Premium & Wünsche' : (premiumVisible ? 'Premium' : 'Wünsche')),
+      if (premiumVisible)
+        AccountTile(
+          icon: Icons.workspace_premium_rounded,
+          title: 'Premium',
+          subtitle: premium == null ? 'Code einlösen, Werbung abschalten' : premiumLabel(premium),
+          chevron: true,
+          onTap: () => Nav.premium(context),
+        ),
+      if (wishlistVisible)
+        AccountTile(
+          icon: Icons.playlist_add_rounded,
+          title: 'Meine Wünsche',
+          subtitle: 'Wünsch dir Songs, die noch fehlen',
+          chevron: true,
+          onTap: () => Nav.wishes(context),
+        ),
+    ];
+  }
+
+  /// Fehler melden, Datenschutz, Konto löschen.
+  List<Widget> _helpSection(User user, String? serverUrl) {
+    final adPrivacy = ref.watch(_adPrivacyProvider).value ?? false;
+    return [
+      const AccountSectionTitle('Hilfe & Datenschutz'),
+      AccountTile(
+        icon: Icons.bug_report_outlined,
+        title: 'Fehler melden',
+        subtitle: 'Etwas funktioniert nicht? Schick dem Betreiber eine Nachricht',
+        onTap: _reportBug,
+      ),
+      AccountTile(
+        icon: Icons.privacy_tip_outlined,
+        title: 'Datenschutzerklärung',
+        subtitle: 'Welche Daten gespeichert werden',
+        chevron: true,
+        onTap: () => _openWebPage('/datenschutz', serverUrl),
+      ),
+      if (adPrivacy)
+        AccountTile(
+          icon: Icons.ads_click_rounded,
+          title: 'Datenschutz-Einstellungen für Werbung',
+          subtitle: 'Deine Auswahl zur Werbung ändern',
+          onTap: AdsService.showPrivacyOptions,
+        ),
+      AccountTile(
+        icon: Icons.delete_forever_rounded,
+        title: 'Konto löschen',
+        subtitle: 'Konto samt Playlists, Lieblingssongs und Verlauf endgültig löschen',
+        danger: true,
+        onTap: _deleteAccount,
+      ),
+    ];
+  }
+
+  Future<void> _reportBug() async {
+    if (await showBugReportDialog(context) && mounted) {
+      showMessage(context, 'Danke! Deine Meldung ist angekommen.');
+    }
+  }
+
+  /// Seite des eigenen Servers im Browser öffnen (Datenschutz). Bevorzugt die öffentliche Adresse aus den
+  /// Einstellungen des Servers.
+  Future<void> _openWebPage(String path, String? serverUrl) async {
+    final config = ref.read(appConfigValueProvider);
+    final configured = path == '/datenschutz' ? config.privacyUrl : config.deletionUrl;
+    final url = configured.isNotEmpty ? configured : (serverUrl == null ? '' : '$serverUrl$path');
+    final opened = url.isNotEmpty && await ref.read(linkOpenerProvider)(url);
+    if (!opened && mounted) showMessage(context, 'Die Seite lässt sich nicht öffnen. Adresse: $url');
+  }
+
+  /// Bei Erfolg meldet sich die App von selbst ab (der Router wechselt zur Anmeldung). Dem letzten Admin
+  /// verweigert der Server das Löschen – die Meldung dazu kommt im Dialog.
+  Future<void> _deleteAccount() => showDeleteAccountDialog(context);
 
   List<Widget> _playbackSection(AppSettings settings) => [
         const AccountSectionTitle('Wiedergabe'),
@@ -538,7 +637,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         AccountTile(
           icon: Icons.admin_panel_settings_rounded,
           title: 'Admin-Bereich',
-          subtitle: 'Benutzer, Rubriken, Bibliothek und Downloader verwalten',
+          subtitle: youtubeFeaturesEnabled
+              ? 'Benutzer, Rubriken, Bibliothek und Downloader verwalten'
+              : 'Benutzer, Rubriken und Bibliothek verwalten',
           chevron: true,
           onTap: () => Nav.admin(context),
         ),

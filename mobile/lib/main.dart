@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/client_info.dart';
+import 'core/error_log.dart';
 import 'player/player.dart';
 import 'player/windows_audio.dart';
 import 'player/windows_media_controls.dart';
@@ -14,6 +16,12 @@ import 'state/auth.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ErrorLog.install(); // letzte Fehler merken (für „Fehler melden“)
+  try {
+    currentClient = await ClientInfo.detect(); // Version/Build für den Header X-Selfify-Client
+  } catch (_) {
+    // ohne die Angabe läuft die App ganz normal – das Dashboard zeigt dann nur keine Version
+  }
   setupWindowsAudio(); // nur Windows: Wiedergabe über libmpv
   await initializeDateFormatting('de_DE');
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

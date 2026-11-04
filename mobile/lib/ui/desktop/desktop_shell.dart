@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../state/connectivity.dart';
 import '../../state/settings.dart';
 import '../widgets/app_update.dart';
+import '../widgets/play_notices.dart';
 import 'desktop_layout.dart';
 import 'desktop_player_bar.dart';
 import 'desktop_right_panel.dart';
@@ -44,6 +45,7 @@ class DesktopShell extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: Column(
                   children: [
+                    const MaintenanceBanner(padTop: false),
                     if (offline || offlineMode)
                       Container(
                         width: double.infinity,

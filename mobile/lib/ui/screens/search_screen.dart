@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/flavor.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../player/player.dart';
+import '../../state/app_config.dart';
 import '../../state/auth.dart';
 import '../../state/connectivity.dart';
 import '../../state/library.dart';
@@ -20,6 +22,7 @@ import '../widgets/common.dart';
 import '../widgets/track_tile.dart';
 import 'search_widgets.dart';
 import 'search_youtube.dart';
+import 'wishes_screen.dart';
 
 /// Offline-Modus an oder kein Netz → nur heruntergeladene Musik durchsuchen.
 final _searchOfflineProvider = Provider<bool>(
@@ -313,13 +316,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ),
         )
       else ...[
-        if (canDownload)
+        // YouTube-Link einfügen gibt es nur in der GitHub-Version
+        if (canDownload && youtubeFeaturesEnabled)
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.only(top: recent.isEmpty ? 0 : 12),
               child: const YouTubeLinkTile(),
             ),
           ),
+        // Play-Version: Songs wünschen statt von YouTube holen
+        if (!youtubeFeaturesEnabled && ref.watch(wishlistVisibleProvider))
+          SliverToBoxAdapter(child: Padding(padding: EdgeInsets.only(top: recent.isEmpty ? 0 : 4), child: const WishSuggestionTile())),
         const SliverToBoxAdapter(child: SectionHeader('Rubriken durchsuchen')),
         const CategoryGridSliver(),
       ],
@@ -394,19 +401,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       ),
       ..._resultSlivers(result, shownQuery),
       if (shownQuery.length >= 2)
-        YouTubeSearchSection(
-          query: shownQuery,
-          type: _youtubeType,
-          onTypeChanged: (type) => setState(() => _youtubeType = type),
-          onOpen: _remember,
-        ),
+        if (youtubeFeaturesEnabled)
+          YouTubeSearchSection(
+            query: shownQuery,
+            type: _youtubeType,
+            onTypeChanged: (type) => setState(() => _youtubeType = type),
+            onOpen: _remember,
+          )
+        else
+          SliverToBoxAdapter(child: WishSuggestionTile(query: shownQuery)),
     ];
   }
 
   List<Widget> _resultSlivers(SearchResult result, String query) {
     final top = result.topResult;
     if (result.isEmpty && top == null) {
-      return [SliverToBoxAdapter(child: _NoLibraryHits(query: query, youtubeFollows: query.length >= 2))];
+      return [
+        SliverToBoxAdapter(
+          child: _NoLibraryHits(
+            query: query,
+            youtubeFollows: youtubeFeaturesEnabled && query.length >= 2,
+            wishFollows: !youtubeFeaturesEnabled && query.length >= 2 && ref.watch(wishlistVisibleProvider),
+          ),
+        ),
+      ];
     }
     final songs = result.tracks.take(5).toList();
     return [
@@ -498,7 +516,10 @@ class _NoLibraryHits extends StatelessWidget {
   final String query;
   final bool youtubeFollows;
 
-  const _NoLibraryHits({required this.query, required this.youtubeFollows});
+  /// Play-Version: Darunter folgt „Wünsch dir den Song“.
+  final bool wishFollows;
+
+  const _NoLibraryHits({required this.query, required this.youtubeFollows, this.wishFollows = false});
 
   @override
   Widget build(BuildContext context) {
@@ -517,7 +538,9 @@ class _NoLibraryHits extends StatelessWidget {
           Text(
             youtubeFollows
                 ? 'In deiner Bibliothek ist dazu noch nichts. Schau unten bei YouTube Music.'
-                : 'Prüf die Schreibweise oder versuch es mit einem anderen Suchbegriff.',
+                : wishFollows
+                    ? 'In deiner Bibliothek ist dazu noch nichts. Du kannst dir den Song unten wünschen.'
+                    : 'Prüf die Schreibweise oder versuch es mit einem anderen Suchbegriff.',
             textAlign: TextAlign.center,
             style: AppText.tileSubtitle,
           ),

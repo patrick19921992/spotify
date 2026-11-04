@@ -123,6 +123,10 @@ und IPA.
 
 ### Android
 
+> **Google Play:** Es gibt auch eine Play-Store-Version (ohne YouTube-Funktionen, mit „Song wünschen“, Premium
+> und Werbung). Wie du sie veröffentlichst, steht in **[docs/PLAYSTORE.md](docs/PLAYSTORE.md)**. Das Bundle
+> `selfify-play.aab` liegt im selben Release wie die APK – zum Installieren auf dem Handy ist es **nicht** gedacht.
+
 1. `selfify.apk` aus dem Release herunterladen, am besten direkt am Handy (GitHub-App oder Browser, angemeldet).
 2. Installieren. Android fragt einmalig, ob Apps aus dieser Quelle erlaubt sind.
 3. Bei der ersten Wiedergabe die Benachrichtigungen erlauben (für die Steuerung auf dem Sperrbildschirm).
@@ -525,13 +529,18 @@ cd mobile
 flutter pub get
 flutter analyze
 flutter test
-flutter run            # Handy/Emulator angeschlossen
+flutter run --flavor full           # Android-Handy/Emulator angeschlossen (GitHub-Version)
+flutter run --flavor play --dart-define=CHANNEL=play   # Android: die Play-Version (ohne YouTube)
 flutter run -d windows # auf einem Windows-PC (Visual Studio mit „Desktopentwicklung mit C++“ und
                        # unter Windows „Entwicklermodus“ eingeschaltet – nötig für die Plugins)
 ```
 
 Aufbau: `lib/data` (Modelle, Server-Client), `lib/state` (Anmeldung, Einstellungen, Downloads,
-Offline-Speicher), `lib/player` (Hintergrund-Wiedergabe), `lib/ui` (Navigation, Bildschirme, Bausteine).
+Offline-Speicher, Server-Einstellungen/Premium), `lib/player` (Hintergrund-Wiedergabe), `lib/ui` (Navigation,
+Bildschirme, Bausteine), `lib/ads` (Werbung, nur Play-Version), `lib/core/flavor.dart` (welche Version läuft).
+
+Android hat zwei **Flavors**: `full` (GitHub-Version) und `play` (Google Play, Paketname `….play`). Ohne `--flavor`
+bricht ein Android-Bau ab. Windows und iPhone brauchen keinen Flavor und sind immer die GitHub-Version.
 
 ---
 

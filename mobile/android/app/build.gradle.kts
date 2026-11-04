@@ -37,10 +37,32 @@ android {
         }
     }
 
+    // Zwei Versionen der App (Befehl: flutter build apk --flavor full / flutter build appbundle --flavor play):
+    //  full – GitHub-Version (APK): alles, auch YouTube-Downloads und Selbst-Update.
+    //  play – Google-Play-Version: ohne YouTube-Funktionen und ohne Selbst-Update (Play-Richtlinien),
+    //         dafür mit Song-Wünschen, Premium und Werbung. Eigene Kennung, damit sie sich neben der
+    //         GitHub-Version installieren lässt (die ist mit einem anderen Schlüssel signiert).
+    flavorDimensions += "channel"
+    productFlavors {
+        create("full") {
+            dimension = "channel"
+        }
+        create("play") {
+            dimension = "channel"
+            applicationIdSuffix = ".play"
+        }
+    }
+
     defaultConfig {
         applicationId = "de.selfify.selfify"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
+        // AdMob-App-ID (aus dem AdMob-Konto, Form ca-app-pub-1234567890123456~1234567890). Ohne Angabe gilt die
+        // Test-ID von Google – so zeigt die App nur gekennzeichnete Test-Anzeigen. Gesetzt wird sie beim Bauen
+        // über die Umgebungsvariable ORG_GRADLE_PROJECT_admobAppId (siehe docs/PLAYSTORE.md).
+        manifestPlaceholders["admobAppId"] =
+            (project.findProperty("admobAppId") as String?)?.takeIf { it.isNotBlank() }
+                ?: "ca-app-pub-3940256099942544~3347511713"
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`

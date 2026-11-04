@@ -6,13 +6,16 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:selfify/core/flavor.dart';
 import 'package:selfify/core/theme.dart';
 import 'package:selfify/data/api.dart';
 import 'package:selfify/data/models.dart';
 import 'package:selfify/player/player.dart';
+import 'package:selfify/state/app_config.dart';
 import 'package:selfify/state/app_update.dart';
 import 'package:selfify/state/auth.dart';
 import 'package:selfify/state/connectivity.dart';
@@ -364,6 +367,62 @@ class FakeApi extends ApiClient {
     _log('addToPlaylist:$id:$trackIds', null);
     return playlist(id);
   }
+  // ---------------------------------------------------------------- Premium, Wünsche, Fehler melden, Konto löschen
+  PremiumStatus premiumStatus = const PremiumStatus();
+  /// Antwort auf „Code einlösen“; null = Code gültig (30 Tage).
+  ApiException? redeemError;
+  final wishList = <SongWish>[];
+  ApiException? deleteAccountError;
+  Map<String, Object?>? lastBugReport;
+
+  @override
+  Future<PremiumStatus> premium() async => _log('premium', premiumStatus);
+  @override
+  Future<PremiumStatus> redeemPremium(String code) async {
+    _log('redeem:$code', null);
+    final error = redeemError;
+    if (error != null) throw error;
+    return premiumStatus = PremiumStatus(active: true, until: DateTime.utc(2026, 12, 10));
+  }
+
+  @override
+  Future<List<SongWish>> wishes() async => _log('wishes', List.of(wishList));
+  @override
+  Future<SongWish> createWish({required String title, String artist = '', String note = ''}) async {
+    _log('createWish:$title|$artist|$note', null);
+    final wish = SongWish(
+        id: wishList.length + 1, title: title, artist: artist, note: note, status: 'open', adminNote: '', createdAt: DateTime.utc(2026, 10, 10));
+    wishList.add(wish);
+    return wish;
+  }
+
+  @override
+  Future<void> deleteWish(int id) async {
+    _log('deleteWish:$id', null);
+    wishList.removeWhere((w) => w.id == id);
+  }
+
+  @override
+  Future<void> sendBugReport({
+    required String message,
+    String appVersion = '',
+    int? appBuild,
+    String platform = '',
+    String channel = '',
+    String device = '',
+    String log = '',
+  }) async {
+    _log('bugReport', null);
+    lastBugReport = {'message': message, 'channel': channel, 'log': log, 'platform': platform, 'device': device};
+  }
+
+  @override
+  Future<void> deleteAccount(String password) async {
+    _log('deleteAccount:$password', null);
+    final error = deleteAccountError;
+    if (error != null) throw error;
+  }
+
   @override
   Future<DownloaderStatus> downloaderStatus() async => _log(
       'downloaderStatus',
@@ -374,6 +433,20 @@ class FakeApi extends ApiClient {
       }));
 }
 
+/// Einstellungen vom Server ohne Netz.
+class FakeAppConfig extends AppConfigController {
+  AppConfig config;
+  FakeAppConfig(this.config);
+
+  @override
+  Future<AppConfig> build() async => config;
+
+  @override
+  Future<void> refresh() async {
+    state = AsyncData(config);
+  }
+}
+
 class FakeAuth extends AuthController {
   final FakeApi api;
   FakeAuth(this.api);
@@ -381,6 +454,12 @@ class FakeAuth extends AuthController {
   @override
   Future<AuthState> build() async =>
       AuthState(serverUrl: 'https://musik.test', user: User.fromJson(userJson(admin: api.admin)), api: api);
+
+  /// Nach „Konto löschen“: abgemeldet, ohne den Schlüsselspeicher des Handys anzufassen.
+  @override
+  Future<void> forgetSession({String? message}) async {
+    state = AsyncData(AuthState(serverUrl: 'https://musik.test', message: message));
+  }
 }
 
 /// Offline-Speicher ohne Dateisystem (path_provider gibt es im Test nicht).
@@ -454,9 +533,15 @@ Future<FakeApi> pumpScreen(
   SelfifyAudioHandler? handler,
   AppUpdateSource? updates,
   Map<String, Object> prefs = const {},
+  AppChannel? channel,
+  AppConfig? config,
+  List<Override> overrides = const [],
 }) async {
   final fakeApi = api ?? FakeApi(admin: admin);
   final audioHandler = handler ?? SelfifyAudioHandler();
+  // Play- oder GitHub-Version (ohne Angabe: GitHub-Version wie bisher)
+  channelOverride = channel;
+  addTearDown(() => channelOverride = null);
   await initializeDateFormatting('de_DE');
   SharedPreferences.setMockInitialValues({
     'search.recent': <String>['queen', 'abba'],
@@ -490,6 +575,8 @@ Future<FakeApi> pumpScreen(
       offlineProvider.overrideWith(() => FakeOffline(offlineState ?? const OfflineState(loaded: true))),
       downloadsProvider.overrideWith(FakeDownloads.new),
       if (updates != null) appUpdateSourceProvider.overrideWithValue(updates),
+      appConfigProvider.overrideWith(() => FakeAppConfig(config ?? const AppConfig())),
+      ...overrides,
     ],
     child: MediaQuery(
       data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale), padding: padding, viewPadding: padding),

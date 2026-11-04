@@ -1,4 +1,4 @@
-# App: Prüfung + Android-APK + Windows-App (bei jedem Lauf) + iOS-IPA für Sideloading (Tags/manuell)
+# App: Prüfung + Android-APK (GitHub-Version) + Play-Store-Bundle + Windows-App (bei jedem Lauf) + iOS-IPA für Sideloading (Tags/manuell)
 name: App
 
 on:
@@ -107,10 +107,17 @@ jobs:
           # Dort schaut die App nach neueren Versionen (Update-Hinweis). Nur mit festem Signaturschlüssel –
           # sonst lehnt Android das Update ohnehin ab und der Hinweis würde ins Leere führen.
           UPDATE_MANIFEST_URL: ${{ steps.signing.outputs.signed == 'true' && format('https://github.com/{0}/releases/download/app-latest/version.json', github.repository) || '' }}
+        # --flavor full: die GitHub-Version (die Play-Version baut der Job "Play-Bundle")
         run: >-
-          flutter build apk --release --build-number=${{ github.run_number }}
+          flutter build apk --release --flavor full --build-number=${{ github.run_number }}
           --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL"
-      - run: mv build/app/outputs/flutter-apk/app-release.apk build/selfify.apk
+      - run: mv build/app/outputs/flutter-apk/app-full-release.apk build/selfify.apk
+      - name: Prüfen, dass die GitHub-Version sich selbst aktualisieren darf
+        run: |
+          FILES=$(find build/app/intermediates -path '*merged_manifest*fullRelease*' -name AndroidManifest.xml)
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
+          # shellcheck disable=SC2086
+          grep -q 'REQUEST_INSTALL_PACKAGES' $FILES || { echo "::error::REQUEST_INSTALL_PACKAGES fehlt in der GitHub-Version - der Update-Hinweis könnte nicht installieren."; exit 1; }
       - name: APK als Artefakt (nur zum Testen, falls Speicher frei)
         uses: actions/upload-artifact@v7
         # Bei privaten Repositories teilen sich Artefakte und Images 500 MB – ist das voll,
@@ -157,6 +164,111 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: mobile/build/selfify.apk
+
+  play:
+    name: Play-Bundle
+    # Läuft erst nach der APK: Der Android-Job legt das Release "app-latest" bei jedem Stand auf main komplett neu
+    # an. Danach legt dieser Job das Bundle dazu. Schlägt der Bau fehl, ist die APK trotzdem schon veröffentlicht.
+    needs: android
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Signaturschlüssel aus den Secrets (Upload-Schlüssel für Google Play)
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::Kein Signaturschlüssel hinterlegt - das Bundle wird mit einem Test-Schlüssel signiert und von Google Play abgelehnt."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/selfify.keystore
+          cat > android/key.properties <<PROPS
+          storeFile=selfify.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          PROPS
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - run: flutter pub get
+      - name: Android-NDK laden (mit Wiederholung)
+        run: |
+          NDK_VERSION=$(grep -oP 'val ndkVersion: String = "\K[^"]+' \
+            "$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt" || true)
+          if [ -z "$NDK_VERSION" ]; then
+            echo "::warning::NDK-Version nicht gefunden - Gradle lädt das NDK selbst."
+            exit 0
+          fi
+          echo "NDK $NDK_VERSION"
+          for attempt in 1 2 3; do
+            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null; then
+              exit 0
+            fi
+            echo "::warning::NDK-Download fehlgeschlagen (Versuch $attempt), neuer Versuch ..."
+            rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION"
+            sleep 15
+          done
+          exit 1
+      - name: Play-Bundle bauen (Flavor play)
+        env:
+          # Werbung (AdMob): IDs aus dem AdMob-Konto, hinterlegt unter GitHub > Settings > Secrets and variables >
+          # Actions > Variables (ADMOB_APP_ID, ADMOB_BANNER_ID). Leer = Test-Anzeigen von Google (siehe docs/PLAYSTORE.md).
+          ORG_GRADLE_PROJECT_admobAppId: ${{ vars.ADMOB_APP_ID }}
+          ADMOB_BANNER_ID: ${{ vars.ADMOB_BANNER_ID }}
+        run: |
+          ARGS=()
+          # Ein leerer Wert würde die eingebaute Test-Kennung überschreiben - nur setzen, wenn vorhanden
+          if [ -n "$ADMOB_BANNER_ID" ]; then ARGS+=("--dart-define=ADMOB_BANNER_ID=$ADMOB_BANNER_ID"); fi
+          flutter build appbundle --release --flavor play --build-number=${{ github.run_number }} \
+            --dart-define=CHANNEL=play "${ARGS[@]}"
+          mv build/app/outputs/bundle/playRelease/app-play-release.aab build/selfify-play.aab
+      - name: Prüfen, dass die Play-Version keine Selbst-Installation enthält
+        run: |
+          # Google Play lehnt Apps mit REQUEST_INSTALL_PACKAGES ab (nur für Stores/Installer erlaubt)
+          FILES=$(find build/app/intermediates -path '*merged_manifest*playRelease*' -name AndroidManifest.xml)
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
+          echo "Geprüft: $FILES"
+          # shellcheck disable=SC2086
+          if grep -E 'INSTALL_PACKAGES|WRITE_EXTERNAL_STORAGE|OtaUpdate' $FILES; then
+            echo "::error::Die Play-Version enthält Berechtigungen/Bauteile zur Selbst-Installation - Google Play würde sie ablehnen."
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          grep -q 'com.google.android.gms.ads.APPLICATION_ID' $FILES || { echo "::error::AdMob-App-ID fehlt im Manifest - das Werbe-SDK würde beim Start abstürzen."; exit 1; }
+      - name: Bundle als Artefakt (nur zum Testen, falls Speicher frei)
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: selfify-play-bundle
+          path: mobile/build/selfify-play.aab
+          retention-days: 14
+      - name: Bundle ins Release "app-latest" legen (bei jedem Stand auf main, nur signiert)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.signing.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Nur in das Release dieses Stands - ein später neu gestarteter alter Lauf darf neuere Dateien nicht ersetzen
+          TARGET=$(gh release view app-latest --repo "$GITHUB_REPOSITORY" --json targetCommitish -q .targetCommitish)
+          if [ "$TARGET" != "$GITHUB_SHA" ]; then
+            echo "::warning::app-latest gehört inzwischen zu $TARGET - das Bundle dieses Laufs wird nicht hochgeladen."
+            exit 0
+          fi
+          gh release upload app-latest build/selfify-play.aab --clobber --repo "$GITHUB_REPOSITORY"
 
   windows:
     name: Windows-App

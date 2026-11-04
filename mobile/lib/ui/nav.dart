@@ -80,4 +80,6 @@ class Nav {
   static void settings(BuildContext context) => context.push('/settings');
   static void devices(BuildContext context) => context.push('/settings/devices');
   static void admin(BuildContext context) => context.push('/admin');
+  static void premium(BuildContext context) => context.push('/settings/premium');
+  static void wishes(BuildContext context) => context.push('/settings/wishes');
 }

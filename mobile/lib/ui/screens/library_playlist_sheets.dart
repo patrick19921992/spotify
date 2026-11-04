@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/flavor.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -483,7 +484,8 @@ class _AddSongsSheetState extends ConsumerState<_AddSongsSheet> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             slivers: [
               ...(_query.isEmpty ? _suggestions(liked) : _searchResults()),
-              SliverToBoxAdapter(child: _youtubeHint()),
+              // „Neue Songs von YouTube holen“ gibt es nur in der GitHub-Version
+              if (youtubeFeaturesEnabled) SliverToBoxAdapter(child: _youtubeHint()),
               SliverToBoxAdapter(child: SizedBox(height: 24 + bottomInset)),
             ],
           ),

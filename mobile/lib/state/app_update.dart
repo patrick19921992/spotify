@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ota_update/ota_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../core/flavor.dart';
 import '../data/app_update.dart';
 import 'auth.dart';
 import 'windows_update.dart';
@@ -23,8 +24,9 @@ abstract class AppUpdateSource {
 class _ReleaseUpdateSource implements AppUpdateSource {
   const _ReleaseUpdateSource();
 
+  // Die Play-Version aktualisiert Google Play – sie lädt und installiert nichts selbst (Play-Richtlinie)
   @override
-  bool get supported => (Platform.isAndroid || Platform.isWindows) && updateManifestUrl.isNotEmpty;
+  bool get supported => selfUpdateEnabled && (Platform.isAndroid || Platform.isWindows) && updateManifestUrl.isNotEmpty;
 
   @override
   UpdatePlatform get platform => Platform.isWindows ? UpdatePlatform.windows : UpdatePlatform.android;

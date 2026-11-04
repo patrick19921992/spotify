@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../ads/ad_banner.dart';
+import '../core/flavor.dart';
 import '../core/theme.dart';
 import '../data/models.dart';
 import '../player/player.dart';
+import '../state/app_config.dart';
 import '../state/auth.dart';
 import '../state/connectivity.dart';
 import '../state/downloads.dart';
@@ -16,6 +19,7 @@ import 'desktop/desktop_shell.dart';
 import 'widgets/app_update.dart';
 import 'widgets/common.dart';
 import 'widgets/mini_player.dart';
+import 'widgets/play_notices.dart';
 
 /// Grundgerüst mit unterer Leiste (Start, Suche, Bibliothek) und Mini-Player.
 class AppShell extends ConsumerStatefulWidget {
@@ -77,14 +81,18 @@ class _AppShellState extends ConsumerState<AppShell> {
     if (useDesktopLayout(context)) return DesktopShell(shell: widget.shell);
     final offline = ref.watch(isOfflineProvider);
     final offlineMode = ref.watch(settingsProvider.select((s) => s.offlineMode));
+    final maintenance = ref.watch(appConfigValueProvider.select((c) => c.maintenanceMessage.trim().isNotEmpty));
+    final topBanner = offline || offlineMode || maintenance;
     return Scaffold(
       body: Column(
         children: [
+          // Hinweis des Betreibers ganz oben (nimmt den Platz der Statusleiste ein)
+          const MaintenanceBanner(),
           if (offline || offlineMode)
             Container(
               width: double.infinity,
               color: AppColors.surfaceHighest,
-              padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 4, bottom: 6),
+              padding: EdgeInsets.only(top: (maintenance ? 0 : MediaQuery.paddingOf(context).top) + 4, bottom: 6),
               child: Text(
                 offline ? 'Keine Verbindung – nur Musik auf diesem Gerät' : 'Offline-Modus ist an',
                 textAlign: TextAlign.center,
@@ -94,12 +102,15 @@ class _AppShellState extends ConsumerState<AppShell> {
           Expanded(
             child: MediaQuery.removePadding(
               context: context,
-              removeTop: offline || offlineMode,
+              removeTop: topBanner,
               child: widget.shell,
             ),
           ),
           const UpdateBanner(),
+          const StoreUpdateBanner(),
           const MiniPlayer(),
+          // Werbung (nur Play-Version ohne Premium, vom Admin eingeschaltet)
+          const AdBanner(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -125,6 +136,8 @@ class DownloadsAction extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Play-Version: keine YouTube-Downloads, also auch kein Knopf dafür
+    if (!youtubeFeaturesEnabled) return const SizedBox.shrink();
     final count = ref.watch(activeDownloadCountProvider);
     return IconButton(
       tooltip: 'Downloads',
