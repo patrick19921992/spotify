@@ -91,7 +91,8 @@ def test_operator_details_are_escaped(operator_client: TestClient) -> None:
     imprint = operator_client.get("/impressum").text
     assert "Max &lt;b&gt;Muster&lt;/b&gt; &amp; &quot;Söhne&quot;" in imprint
     assert "post@example.org" in imprint
-    assert "noch nicht ausgefüllt" not in imprint
+    # Sind die Angaben gesetzt, erscheint kein Hinweis „Angaben fehlen“
+    assert "OPERATOR_NAME" not in imprint and "Hinweis für den Betreiber" not in imprint
 
 
 def test_missing_operator_details_are_pointed_out(client: TestClient) -> None:
@@ -129,3 +130,14 @@ def test_dashboard_api_needs_admin(client: TestClient, make_user) -> None:  # ty
         assert client.get(path).status_code == 401, path
         assert client.get(path, headers=member).status_code == 403, path
         assert client.get(path, headers=admin).status_code == 200, path
+
+
+def test_operator_email_cannot_break_out_of_the_mailto_attribute(settings: Settings) -> None:
+    configured = settings.model_copy(
+        update={"operator_name": "Max", "operator_email": 'a"onmouseover="alert(1)@example.org'}
+    )
+    with TestClient(create_app(configured)) as test_client:
+        for path in ("/impressum", "/datenschutz"):
+            text = test_client.get(path).text
+            assert 'onmouseover="alert' not in text, path
+            assert "&quot;onmouseover=" in text or "onmouseover" not in text, path

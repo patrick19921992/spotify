@@ -350,6 +350,37 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
 - [x] 45 neue App-Tests (`play_version_test.dart`), 446 App-Tests insgesamt grün, `flutter analyze` sauber.
       Nicht lokal prüfbar (kein Android-SDK): Gradle-Bau, Manifest-Zusammenführung, echte Werbung – das prüft die CI
 
+### Gegenprüfung der Play-Store-Version (PR #11)
+
+Fünf unabhängige Prüfer (Sicherheit, Premium-Logik, Wünsche/Konfiguration, Dashboard, Datenbank/Migration) fanden
+46 mögliche Fehler. Zwei Skeptiker je Fund versuchten, ihn zu widerlegen oder nachzustellen: **32 bestätigt, 14
+widerlegt** (u. a. „Cover bleiben nach Konto-Löschen“ – die bestehende Aufräum-Routine entfernt sie).
+
+- [x] **Einlöse-Rennen** (hoch): Gleichzeitige Anfragen desselben Benutzers vervielfachten Premium-Zeit und
+      verbrauchten Plätze eines Mehrfach-Codes → `UNIQUE(code_id, user_id)` (Migration 0006, bereinigt
+      vorhandene Doppelte), Lizenz zuerst anlegen, prozessweite Sperre (`app/locks.py`); Test mit 12 Threads
+- [x] **Stapeln** (hoch): Ab dem dritten Code/der dritten Vergabe wurde nichts mehr angehängt → die ganze Kette
+      zählt, Obergrenze zehn Jahre (409 statt 500)
+- [x] **Statistik** (hoch): „Fertige entfernen“ löschte die Zeilen, das Dashboard zeigte danach überall 0 →
+      Einträge werden nur noch ausgeblendet (`hidden_at`); Wünsche bleiben dadurch auch auffindbar
+- [x] **Dashboard** (hoch): Nach „Benutzer anlegen“ sprang „Darf Downloads starten“ auf AUS (`form.reset()`)
+- [x] Mittel: Token eines gelöschten Kontos galt für ein später angelegtes mit derselben Nummer (SQLite) →
+      Token älter als das Gerät werden abgelehnt; „letzter Admin“ unter Sperre; Wunsch blieb ewig „in Arbeit“;
+      Pflicht-Update ohne Store-Link (Sackgasse in der App) wird abgelehnt; Dashboard: Ladefehler machte Ansichten
+      dauerhaft tot, Statusabfrage startete alle 4 s einen yt-dlp-Prozess, „yt-dlp aktualisieren“ war nach 4 s wieder
+      klickbar (jetzt auch serverseitig gesperrt), Doppelklick erzeugte doppelte Codes/Lizenzen
+- [x] Niedrig: `valid_until` ohne Zeitzone → 500; Header `build=²` → 500; Entzug zählte abgelaufene Lizenzen;
+      laufende Lizenzen fielen hinter dem 1000er-Limit weg; Abmelden mit abgelaufenem Token ließ die Sitzung
+      bestehen; veraltete Antworten beim Filterwechsel; Fehlerprotokoll klappte alle 30 s zu; ungültiges verstecktes
+      Feld blockierte das Absenden; Tagesdiagramme als UTC beschriftet; „Zuletzt“ zeigt die letzte Aktivität
+- [x] 17 neue Regressionstests (`tests/test_review_fixes.py`), Browser-Test aller Dashboard-Korrekturen
+- Bewusst nicht geändert: `FORWARDED_ALLOW_IPS` (Standard: private Netze; nötig für Cloudflare-Tunnel/Proxy) – wer
+  den Container-Port direkt im Heimnetz anbietet, sollte ihn auf den Proxy begrenzen; die Einlöse-Bremse hängt
+  aber nicht mehr an der IP. Zahlen im Dashboard-Diagramm sind UTC-Tage.
+- Reste: Das Token-Alter wird auf die Sekunde verglichen (ein Token, das in derselben Sekunde wie das neue Gerät
+  ausgestellt wurde, bliebe gültig – praktisch ausgeschlossen); `INTEGER PRIMARY KEY AUTOINCREMENT` wäre die
+  vollständige Lösung, braucht aber einen riskanten Tabellen-Umbau.
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

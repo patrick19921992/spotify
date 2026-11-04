@@ -2,6 +2,7 @@
 
 import asyncio
 import shutil
+import threading
 import time
 from typing import Annotated, Literal
 
@@ -28,6 +29,7 @@ from app.security import decode_access_token
 from app.services.playlists import can_edit_items
 
 router = APIRouter(tags=["YouTube & Downloads"])
+_update_running = threading.Lock()
 
 
 def _manager(request: Request):  # type: ignore[no-untyped-def]
@@ -415,7 +417,13 @@ async def downloader_status(request: Request, _: AdminUser, db: DbSession) -> Do
 @router.post("/downloads-system/update", response_model=DownloaderStatusOut)
 async def update_ytdlp(request: Request, admin: AdminUser, db: DbSession) -> DownloaderStatusOut:
     """yt-dlp sofort aktualisieren (passiert sonst automatisch einmal am Tag)."""
-    ok, message = await run_in_threadpool(_manager(request).update_ytdlp)
+    # Nur ein Update gleichzeitig: Zwei parallele pip-Installationen ins selbe Verzeichnis würden sich zerstören
+    if not _update_running.acquire(blocking=False):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Ein Update läuft bereits – bitte einen Moment warten.")
+    try:
+        ok, message = await run_in_threadpool(_manager(request).update_ytdlp)
+    finally:
+        _update_running.release()
     if not ok:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Aktualisierung fehlgeschlagen: {message}")
     return await downloader_status(request, admin, db)

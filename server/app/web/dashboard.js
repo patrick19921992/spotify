@@ -72,6 +72,21 @@
     return p.unlimited ? "unbegrenzt" : "bis " + fmtDate(p.until);
   }
 
+  // Schutz vor Doppelklick/Doppel-Enter: Solange die Aktion läuft, ist der Knopf aus und weitere Auslöser zählen nicht
+  function guarded(button, work) {
+    var busy = false;
+    return function (event) {
+      if (event && event.preventDefault) event.preventDefault();
+      if (busy) return;
+      busy = true;
+      if (button) button.disabled = true;
+      Promise.resolve().then(work).catch(showError).then(function () {
+        busy = false;
+        if (button) button.disabled = false;
+      });
+    };
+  }
+
   function pill(text, kind) { return h("span", { class: "pill" + (kind ? " " + kind : ""), text: text }); }
 
   // ------------------------------------------------------------------ Meldungen und Dialoge
@@ -222,12 +237,30 @@
       });
   }
 
+  // Beendet die Sitzung auf dem Server. Ist das Zugriffs-Token abgelaufen (Ruhezustand), wird es erst erneuert –
+  // sonst bliebe die Sitzung (90 Tage) gültig, obwohl man „abgemeldet“ ist.
+  function revokeOnServer() {
+    if (!session) return Promise.resolve();
+    function call(token) {
+      return fetch("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + token } });
+    }
+    return call(session.access).then(function (res) {
+      if (res.status !== 401) return null;
+      return refresh().then(function (ok) { return ok && session ? call(session.access) : null; });
+    }).catch(function () { return null; });
+  }
+
   function logout(silent) {
-    if (!silent && session) fetch("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + session.access } }).catch(function () {});
-    saveSession(null);
-    if (shell) { clearInterval(shell.badgeTimer); shell = null; }
-    leaveView();
-    renderLogin(silent ? "Bitte melde dich neu an." : "");
+    // höchstens drei Sekunden auf den Server warten – danach wird lokal in jedem Fall abgemeldet
+    var revoked = silent ? Promise.resolve() : Promise.race([
+      revokeOnServer(), new Promise(function (resolve) { setTimeout(resolve, 3000); })
+    ]);
+    revoked.then(function () {
+      saveSession(null);
+      if (shell) { clearInterval(shell.badgeTimer); shell = null; }
+      leaveView();
+      renderLogin(silent ? "Bitte melde dich neu an." : "");
+    });
   }
 
   function renderLogin(notice) {
@@ -334,23 +367,33 @@
       a.classList.toggle("active", a.getAttribute("data-view") === view.id);
     });
     var body = h("div");
+    // Der Hinweis „Konnte nicht geladen werden“ liegt in einem eigenen Knoten über der Ansicht: Die Ansicht selbst
+    // bleibt unangetastet, und der Zeitgeber kann weiter in sie zeichnen – nach einem kurzen Netzausfall heilt sie sich
+    var noticeBox = h("div");
     clear(shell.content);
     shell.content.appendChild(h("div", { class: "topbar" }, shell.menuButton, h("h1", { text: view.label })));
+    shell.content.appendChild(noticeBox);
     shell.content.appendChild(body);
+    function showLoadError(error) {
+      if (!ctx.alive()) return;
+      clear(noticeBox);
+      noticeBox.appendChild(h("div", { class: "notice row" },
+        h("span", { class: "grow", text: "Konnte nicht geladen werden: " + (error && error.message ? error.message : "unbekannter Fehler") }),
+        h("button", { class: "secondary small", text: "Nochmal versuchen", onclick: route })));
+    }
+    function loaded() { if (ctx.alive()) clear(noticeBox); }
     var ctx = {
       alive: function () { return current.token === token; },
       every: function (fn, ms) {
-        var timer = setInterval(function () { if (ctx.alive()) fn(); }, ms);
+        var timer = setInterval(function () {
+          if (ctx.alive()) Promise.resolve().then(fn).then(loaded, showLoadError);
+        }, ms);
         var previous = current.cleanup;
         current.cleanup = function () { clearInterval(timer); if (previous) previous(); };
       },
       refreshBadges: refreshBadges
     };
-    Promise.resolve(view.render(body, ctx)).catch(function (error) {
-      if (!ctx.alive()) return;
-      clear(body);
-      body.appendChild(h("div", { class: "notice", text: "Konnte nicht geladen werden: " + (error && error.message ? error.message : "unbekannter Fehler") }));
-    });
+    Promise.resolve(view.render(body, ctx)).then(loaded, showLoadError);
   }
 
   // ------------------------------------------------------------------ Bausteine für Ansichten
@@ -460,6 +503,9 @@
     var listBox = h("div");
     var filterBox = h("div");
     var statusBox = h("div", { class: "card" });
+    var updating = false;
+    var lastStatus = null;
+    var statusLoadedAt = 0;
     var search = h("input", { type: "search", placeholder: "Titel, Interpret oder Benutzer suchen …", oninput: function () { query = search.value.trim().toLowerCase(); draw(); } });
 
     function matches(job) {
@@ -505,11 +551,18 @@
       listBox.appendChild(table(["Zeit", "Benutzer", "Titel", "Typ", "Status", ""], rows, "Keine Downloads in dieser Ansicht."));
     }
 
-    function load() {
-      return Promise.all([api("GET", "/downloads?scope=all&limit=300"), api("GET", "/downloads-system")]).then(function (result) {
+    // Die Liste wird alle 4 Sekunden geholt; der Downloader-Status (startet auf dem Server einen yt-dlp-Prozess) nur
+    // beim Öffnen, nach einem Update und danach höchstens einmal pro Minute
+    function load(forceStatus) {
+      var wantStatus = forceStatus === true || !lastStatus || Date.now() - statusLoadedAt > 60000;
+      return Promise.all([
+        api("GET", "/downloads?scope=all&limit=300"),
+        wantStatus ? api("GET", "/downloads-system") : Promise.resolve(lastStatus)
+      ]).then(function (result) {
         if (!ctx.alive()) return;
         jobs = result[0];
-        drawStatus(result[1]);
+        if (wantStatus) { lastStatus = result[1]; statusLoadedAt = Date.now(); }
+        drawStatus(lastStatus);
         draw();
       });
     }
@@ -520,11 +573,15 @@
         h("div", { class: "grow" },
           h("h2", { text: "Downloader" }),
           h("p", { class: "muted small", text: "yt-dlp " + (s.ytdlp_version || "?") + " · ffmpeg " + (s.ffmpeg_available ? "ok" : "fehlt") + " · " + s.active_jobs + " aktiv, " + s.queued_jobs + " wartend · letztes Update: " + (s.last_update ? fmtDateTime(s.last_update) : "–") })),
-        h("button", { class: "secondary", text: "yt-dlp aktualisieren", onclick: function (event) {
-          var button = event.currentTarget;
-          button.disabled = true;
+        h("button", { class: "secondary", text: updating ? "Aktualisiere …" : "yt-dlp aktualisieren", disabled: updating, onclick: function () {
+          if (updating) return;
+          updating = true;
+          drawStatus(lastStatus); // Knopf sofort sperren – und gesperrt lassen, wenn die Ansicht neu gezeichnet wird
           toast("Aktualisiere yt-dlp – das kann ein paar Minuten dauern …");
-          api("POST", "/downloads-system/update").then(function () { toast("yt-dlp ist aktuell."); return load(); }).catch(showError).then(function () { button.disabled = false; });
+          api("POST", "/downloads-system/update")
+            .then(function () { toast("yt-dlp ist aktuell."); })
+            .catch(showError)
+            .then(function () { updating = false; return load(true); });
         } })));
     }
 
@@ -629,7 +686,8 @@
     }
 
     function load() {
-      return api("GET", "/admin/requests?state=" + filter).then(function (items) { if (ctx.alive()) draw(items); });
+      var wanted = filter; // schnelle Filterwechsel: nur die Antwort zum aktuellen Filter darf die Liste zeichnen
+      return api("GET", "/admin/requests?state=" + wanted).then(function (items) { if (ctx.alive() && wanted === filter) draw(items); });
     }
 
     body.appendChild(h("p", { class: "muted", text: "Hier landen die Songs, die sich Benutzer in der App wünschen. „Suchen & holen“ startet den Download auf deinem Server – der Benutzer sieht danach, dass sein Wunsch erfüllt ist." }));
@@ -650,6 +708,7 @@
       var days = h("input", { type: "number", min: "1", max: "3650", value: "30" });
       var unlimited = h("input", { type: "checkbox" });
       var note = h("input", { type: "text", placeholder: "z. B. Geburtstag" });
+      var grantButton = null;
       unlimited.addEventListener("change", function () { days.disabled = unlimited.checked; });
 
       function draw(data) {
@@ -667,6 +726,12 @@
                 api("POST", "/admin/premium/licenses/" + lic.id + "/revoke").then(function () { toast("Lizenz entzogen."); return reload(); }).catch(showError);
               } }) : null));
         });
+        grantButton = h("button", { text: "Premium vergeben" });
+        grantButton.addEventListener("click", guarded(grantButton, function () {
+          var payload = unlimited.checked ? { unlimited: true } : { duration_days: parseInt(days.value, 10) };
+          payload.note = note.value.trim();
+          return api("POST", "/admin/users/" + user.id + "/premium", payload).then(function () { toast("Premium vergeben."); return reload(); });
+        }));
         content.appendChild(h("p", null, "Status: ", data.active ? pill(premiumText(data), "green") : pill("kein Premium", "")));
         content.appendChild(table(["Quelle", "Code", "Zeitraum", "Zustand", "Notiz", ""], rows, "Noch keine Lizenzen."));
         content.appendChild(h("h3", { text: "Premium vergeben" }));
@@ -675,11 +740,7 @@
           h("label", { class: "check" }, unlimited, "unbegrenzt"),
           h("label", { class: "field" }, "Notiz (optional)", note)));
         content.appendChild(h("div", { class: "row" },
-          h("button", { text: "Premium vergeben", onclick: function () {
-            var payload = unlimited.checked ? { unlimited: true } : { duration_days: parseInt(days.value, 10) };
-            payload.note = note.value.trim();
-            api("POST", "/admin/users/" + user.id + "/premium", payload).then(function () { toast("Premium vergeben."); return reload(); }).catch(showError);
-          } }),
+          grantButton,
           h("button", { class: "danger", text: "Alles entziehen", onclick: function () {
             confirmDialog("Premium entziehen?", user.display_name + " verliert sofort jedes Premium (alle Lizenzen).", "Entziehen", true).then(function (ok) {
               if (ok) api("DELETE", "/admin/users/" + user.id + "/premium").then(function (r) { toast(r.revoked + " Lizenz(en) entzogen."); return reload(); }).catch(showError);
@@ -701,9 +762,9 @@
       var password = h("input", { type: "text", required: true, value: "" });
       var admin = h("input", { type: "checkbox" });
       var download = h("input", { type: "checkbox", checked: true });
-      return h("form", { class: "card", onsubmit: function (event) {
-        event.preventDefault();
-        api("POST", "/users", { username: username.value, password: password.value, display_name: display.value.trim() || null, is_admin: admin.checked, can_download: download.checked })
+      var submit = h("button", { type: "submit", text: "Anlegen" });
+      return h("form", { class: "card", onsubmit: guarded(submit, function () {
+        return api("POST", "/users", { username: username.value, password: password.value, display_name: display.value.trim() || null, is_admin: admin.checked, can_download: download.checked })
           .then(function (user) {
             toast("Benutzer „" + user.username + "“ angelegt.");
             // Von Hand zurücksetzen: form.reset() schaltet „Darf Downloads starten“ aus, weil das Häkchen im Skript
@@ -711,8 +772,8 @@
             username.value = ""; display.value = ""; password.value = "";
             admin.checked = false; download.checked = true;
             return load();
-          }).catch(showError);
-      } },
+          });
+      }) },
       h("h2", { text: "Benutzer anlegen" }),
       h("div", { class: "form-grid" },
         h("label", { class: "field" }, "Benutzername", username),
@@ -720,7 +781,7 @@
         h("label", { class: "field" }, "Start-Passwort (mind. 8 Zeichen)", password),
         h("label", { class: "check" }, admin, "Admin"),
         h("label", { class: "check" }, download, "Darf Downloads starten"),
-        h("button", { type: "submit", text: "Anlegen" })));
+        submit));
     }
 
     function patchUser(user, data, text) {
@@ -786,17 +847,26 @@
         h("option", { value: "custom", text: "Eigene Tage …" }), h("option", { value: "unlimited", text: "Unbegrenzt" }));
       var custom = h("input", { type: "number", min: "1", max: "3650", value: "14", hidden: true });
       var uses = h("input", { type: "number", min: "1", max: "100000", value: "1" });
-      var until = h("input", { type: "date" });
+      var until = h("input", { type: "date", min: "2000-01-01", max: "2100-12-31" });
       var label = h("input", { type: "text", maxlength: "100", placeholder: "z. B. Freunde, Aktion Winter" });
-      duration.addEventListener("change", function () { custom.hidden = duration.value !== "custom"; });
+      duration.addEventListener("change", function () {
+        custom.hidden = duration.value !== "custom";
+        // ausgeblendet UND deaktiviert: Ein versteckter, ungültiger Wert würde sonst still das Absenden verhindern
+        custom.disabled = duration.value !== "custom";
+      });
 
-      return h("form", { class: "card", onsubmit: function (event) {
-        event.preventDefault();
+      var submit = h("button", { type: "submit", text: "Codes erzeugen" });
+      custom.disabled = true;
+      return h("form", { class: "card", onsubmit: guarded(submit, function () {
         var payload = { count: parseInt(count.value, 10), max_redemptions: parseInt(uses.value, 10), label: label.value.trim() };
         if (duration.value === "unlimited") payload.unlimited = true;
         else payload.duration_days = parseInt(duration.value === "custom" ? custom.value : duration.value, 10);
-        if (until.value) payload.valid_until = new Date(until.value + "T23:59:59").toISOString();
-        api("POST", "/admin/premium/codes", payload).then(function (codes) {
+        if (until.value) {
+          var date = new Date(until.value + "T23:59:59");
+          if (isNaN(date.getTime())) { toast("„Einlösbar bis“ ist kein gültiges Datum.", true); return null; }
+          payload.valid_until = date.toISOString();
+        }
+        return api("POST", "/admin/premium/codes", payload).then(function (codes) {
           var text = codes.map(function (c) { return c.code; }).join("\n");
           modal("Neue Codes", h("div", { class: "col" },
             h("p", { class: "muted", text: codes.length + " Code(s) – " + durationText(codes[0]) + ". Gib sie weiter; jeder Code lässt sich in der App unter Einstellungen › Premium einlösen." }),
@@ -805,8 +875,8 @@
             { label: "Alle kopieren", run: function () { copyText(text); } }
           ]);
           return load();
-        }).catch(showError);
-      } },
+        });
+      }) },
       h("h2", { text: "Neue Codes erzeugen" }),
       h("div", { class: "form-grid" },
         h("label", { class: "field" }, "Anzahl", count),
@@ -814,7 +884,7 @@
         h("label", { class: "field" }, "Wie oft einlösbar", uses),
         h("label", { class: "field" }, "Einlösbar bis (optional)", until),
         h("label", { class: "field" }, "Bezeichnung (optional)", label),
-        h("button", { type: "submit", text: "Codes erzeugen" })));
+        submit));
     }
 
     function drawCodes(codes) {
@@ -915,11 +985,14 @@
 
   function viewBugs(body, ctx) {
     var filter = "new";
+    var lastJson = "";
+    var lastFilter = "";
+    var openLogs = {};
     var box = h("div");
     var filterBox = h("div");
 
     function patch(item, data, text) {
-      return api("PATCH", "/admin/bugreports/" + item.id, data).then(function () { if (text) toast(text); ctx.refreshBadges(); return load(); }).catch(showError);
+      return api("PATCH", "/admin/bugreports/" + item.id, data).then(function () { if (text) toast(text); ctx.refreshBadges(); lastJson = ""; return load(); }).catch(showError);
     }
 
     function draw(items) {
@@ -935,7 +1008,7 @@
             h("span", { class: "grow" }),
             h("span", { class: "small muted", text: meta })),
           h("div", { class: "message", text: item.message }),
-          item.log ? h("details", null, h("summary", { class: "small muted", text: "Fehlerprotokoll der App" }), h("pre", { text: item.log })) : null,
+          item.log ? h("details", { open: openLogs[item.id], ontoggle: function (event) { openLogs[item.id] = event.currentTarget.open; } }, h("summary", { class: "small muted", text: "Fehlerprotokoll der App" }), h("pre", { text: item.log })) : null,
           item.admin_note ? h("div", { class: "small dim", text: "Deine Notiz: " + item.admin_note }) : null,
           h("div", { class: "actions row" },
             item.status === "new" ? h("button", { class: "secondary small", text: "Gesehen", onclick: function () { patch(item, { status: "seen" }); } }) : null,
@@ -945,7 +1018,7 @@
             } }),
             h("button", { class: "ghost small", text: "Löschen", onclick: function () {
               confirmDialog("Fehlermeldung löschen?", "Sie wird endgültig entfernt.", "Löschen", true).then(function (ok) {
-                if (ok) api("DELETE", "/admin/bugreports/" + item.id).then(function () { ctx.refreshBadges(); return load(); }).catch(showError);
+                if (ok) api("DELETE", "/admin/bugreports/" + item.id).then(function () { ctx.refreshBadges(); lastJson = ""; return load(); }).catch(showError);
               });
             } }))));
       });
@@ -959,7 +1032,15 @@
     }
 
     function load() {
-      return api("GET", "/admin/bugreports?state=" + filter).then(function (items) { if (ctx.alive()) draw(items); });
+      var wanted = filter;
+      return api("GET", "/admin/bugreports?state=" + wanted).then(function (items) {
+        if (!ctx.alive() || wanted !== filter) return;
+        // unverändert? Dann nicht neu zeichnen – ein aufgeklapptes Fehlerprotokoll soll offen und lesbar bleiben
+        var json = JSON.stringify(items);
+        if (json === lastJson && wanted === lastFilter) return;
+        lastJson = json; lastFilter = wanted;
+        draw(items);
+      });
     }
 
     body.appendChild(filterBox);

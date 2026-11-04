@@ -15,6 +15,16 @@
     return fallback;
   }
 
+  // Antwort als JSON lesen. Liefert ein Proxy (502/504) eine HTML-Seite, bleibt es bei null statt eines englischen
+  // Parser-Fehlers.
+  function readJson(response) {
+    return response.json().catch(function () { return null; });
+  }
+
+  function unreachable(response) {
+    return response.status >= 500 ? "Der Server ist gerade nicht erreichbar – bitte später noch einmal versuchen." : null;
+  }
+
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     var button = form.querySelector("button");
@@ -29,8 +39,8 @@
       body: JSON.stringify({ username: username, password: password, device_name: "Konto löschen (Web)" })
     })
       .then(function (response) {
-        return response.json().then(function (body) {
-          if (!response.ok) throw new Error(detail(body, "Anmeldung fehlgeschlagen."));
+        return readJson(response).then(function (body) {
+          if (!response.ok) throw new Error(detail(body, unreachable(response) || "Anmeldung fehlgeschlagen."));
           return body;
         });
       })
@@ -47,8 +57,8 @@
           show("Dein Konto wurde gelöscht.", true);
           return;
         }
-        return response.json().then(function (body) {
-          throw new Error(detail(body, "Das Konto konnte nicht gelöscht werden."));
+        return readJson(response).then(function (body) {
+          throw new Error(detail(body, unreachable(response) || "Das Konto konnte nicht gelöscht werden."));
         });
       })
       .catch(function (error) {
