@@ -1,12 +1,13 @@
 """Benutzerverwaltung – nur für Admins (z. B. Konten für die Kinder anlegen)."""
 
 from fastapi import APIRouter, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.deps import AdminUser, DbSession
 from app.models import User
 from app.schemas.user import UserCreateIn, UserOut, UserUpdateIn
 from app.security import hash_password
+from app.services.auth import other_active_admins as _other_active_admins
 from app.services.auth import revoke_all_sessions
 
 router = APIRouter(prefix="/users", tags=["Benutzerverwaltung"])
@@ -17,12 +18,6 @@ def _get_user(db: DbSession, user_id: int) -> User:
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Benutzer nicht gefunden.")
     return user
-
-
-def _other_active_admins(db: DbSession, user_id: int) -> int:
-    return db.scalar(
-        select(func.count(User.id)).where(User.is_admin.is_(True), User.is_active.is_(True), User.id != user_id)
-    ) or 0
 
 
 @router.get("", response_model=list[UserOut])

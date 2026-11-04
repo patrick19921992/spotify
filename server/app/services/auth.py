@@ -3,12 +3,13 @@
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import User, UserSession, utcnow
 from app.security import create_access_token, create_media_token, hash_token, new_refresh_token
+from app.services.clients import ClientInfo, apply_client
 
 # So lange gilt der vorherige Refresh-Token nach dem Erneuern noch (Antwort ging verloren)
 # So lange gilt der vorige Refresh-Token noch, solange die neuen Token nicht beim Gerät angekommen sind
@@ -58,6 +59,7 @@ def start_session(
     device_name: str,
     user_agent: str,
     ip_address: str,
+    client: ClientInfo | None = None,
 ) -> IssuedTokens:
     now = utcnow()
     session = UserSession(
@@ -70,6 +72,7 @@ def start_session(
         last_used_at=now,
         expires_at=now + timedelta(days=settings.refresh_token_days),
     )
+    apply_client(session, client)
     db.add(session)
     db.flush()
     issued = _issue(settings, secret, session, user)
@@ -107,6 +110,13 @@ def refresh_session(
     if ip_address:
         session.ip_address = ip_address[:64]
     return _issue(settings, secret, session, user)
+
+
+def other_active_admins(db: Session, user_id: int) -> int:
+    """Wie viele andere aktive Admins es gibt (der letzte darf sich nicht löschen oder abschalten)."""
+    return db.scalar(
+        select(func.count(User.id)).where(User.is_admin.is_(True), User.is_active.is_(True), User.id != user_id)
+    ) or 0
 
 
 def revoke_session(db: Session, session: UserSession) -> None:
