@@ -1,0 +1,16 @@
+# Platzhalter für das Werbe-Paket „google_mobile_ads“ in allen Versionen OHNE Werbung (GitHub-APK, Windows, iPhone).
+# Die Werbung läuft nur in der Play-Version. Ohne dieses Paket steckt das Werbe-SDK samt seiner Hintergrund-Dienste
+# in jeder App – und kann sie beim Start zum Absturz bringen. Die CI schaltet den Platzhalter per
+# pubspec_overrides.yaml ein (siehe .github/workflows/app.yml); lokal und in den Tests gilt das echte Paket.
+name: google_mobile_ads
+description: Platzhalter ohne native Teile – hat nur die Schnittstelle, die Selfify nutzt.
+version: 9.2.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
