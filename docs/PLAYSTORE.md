@@ -19,6 +19,9 @@ iPhone) bleibt unverändert.
 
 Beide Versionen lassen sich auf demselben Handy installieren (verschiedene Paketnamen).
 
+Das **Werbe-SDK steckt nur in der Play-Version**. Die GitHub-Version bekommt beim Bauen einen Platzhalter dafür
+(siehe README › Entwicklung), weil sie mit dem echten SDK am Handy nicht mehr startete.
+
 ---
 
 ## 1. Vorbereitung auf GitHub

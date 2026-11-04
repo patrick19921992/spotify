@@ -542,6 +542,18 @@ Bildschirme, Bausteine), `lib/ads` (Werbung, nur Play-Version), `lib/core/flavor
 Android hat zwei **Flavors**: `full` (GitHub-Version) und `play` (Google Play, Paketname `….play`). Ohne `--flavor`
 bricht ein Android-Bau ab. Windows und iPhone brauchen keinen Flavor und sind immer die GitHub-Version.
 
+**Werbe-SDK nur in der Play-Version:** Das Paket `google_mobile_ads` bringt native Dienste mit, die beim App-Start
+laufen – mit ihm startete die GitHub-App am Handy nicht mehr. Deshalb ersetzt die CI es in allen Versionen ohne
+Werbung (GitHub-APK, Windows, iPhone) durch einen Platzhalter (`mobile/packages/google_mobile_ads_stub`). Für einen
+lokalen Bau der GitHub-Version legst du dieselbe Datei an:
+
+```bash
+cd mobile
+printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
+flutter pub get && flutter run --flavor full
+rm pubspec_overrides.yaml   # zurück zum echten Paket (Tests und Play-Version)
+```
+
 ---
 
 ## Rechtlicher Hinweis

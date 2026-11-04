@@ -16,6 +16,12 @@
             android:name="sk.fourq.otaupdate.InstallResultReceiver"
             tools:node="remove" />
 
+        <!-- Werbung (Google AdMob, nur Play-Version): App-ID aus build.gradle.kts. Ohne diesen Eintrag stürzt das
+             Werbe-SDK beim Start ab. Die GitHub-Version enthält das SDK gar nicht (siehe .github/workflows/app.yml). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
+
         <!-- Werbung: Messung erst starten, wenn die App das SDK nach der Einwilligung selbst startet -->
         <meta-data
             android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT"
