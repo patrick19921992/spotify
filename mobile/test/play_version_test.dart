@@ -1,10 +1,14 @@
 // Play-Version: Flavor, Konfiguration vom Server, Premium, Song-Wünsche, Fehler melden, Konto löschen, Werbe-Regeln,
 // Wartungshinweis, Update-Hinweis – und dass die GitHub-Version unverändert bleibt.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:selfify/ads/ad_banner.dart';
 import 'package:selfify/core/client_info.dart';
 import 'package:selfify/core/error_log.dart';
@@ -16,6 +20,7 @@ import 'package:selfify/state/app_config.dart';
 import 'package:selfify/state/auth.dart';
 import 'package:selfify/state/connectivity.dart';
 import 'package:selfify/ui/screens/admin_screen.dart';
+import 'package:selfify/ui/screens/login_screen.dart';
 import 'package:selfify/ui/screens/premium_screen.dart';
 import 'package:selfify/ui/screens/search_screen.dart';
 import 'package:selfify/ui/screens/settings_screen.dart';
@@ -552,5 +557,164 @@ void main() {
       expect(find.text('Downloader'), findsWidgets);
       expectNoErrors(tester);
     });
+  });
+
+  group('Feste Server-Adresse (Play-Version)', () {
+    tearDown(() {
+      channelOverride = null;
+      serverUrlOverride = null;
+    });
+
+    test('ohne eingebaute Adresse fragt auch die Play-Version danach', () {
+      channelOverride = AppChannel.play;
+      expect(configuredServerUrl, '');
+      expect(fixedServerUrl, isNull);
+      serverUrlOverride = '   ';
+      expect(fixedServerUrl, isNull);
+    });
+
+    test('die Adresse wird wie eine eingetippte aufbereitet (https:// ergänzt, Anhängsel gekürzt)', () {
+      channelOverride = AppChannel.play;
+      serverUrlOverride = ' musik.example.org/ ';
+      expect(fixedServerUrl, 'https://musik.example.org');
+      serverUrlOverride = 'HTTPS://Musik.example.org/api/';
+      expect(fixedServerUrl, 'https://Musik.example.org');
+    });
+
+    test('die GitHub-Version ignoriert eine eingebaute Adresse', () {
+      serverUrlOverride = 'https://musik.example.org';
+      expect(appChannel, AppChannel.full);
+      expect(configuredServerUrl, '');
+      expect(fixedServerUrl, isNull);
+    });
+
+    testWidgets('Anmeldung (Play, feste Adresse): kein Feld „Server-Adresse“, gleich Benutzername und Passwort', (tester) async {
+      serverUrlOverride = 'https://musik.example.org';
+      await pumpScreen(tester, const LoginScreen(), channel: AppChannel.play);
+      expect(find.text('Server-Adresse'), findsNothing);
+      expect(find.text('Verbinden'), findsNothing);
+      expect(find.byIcon(Icons.dns_rounded), findsNothing);
+      expect(find.text('Benutzername'), findsOneWidget);
+      expect(find.text('Passwort'), findsOneWidget);
+      expect(find.text('Anmelden'), findsOneWidget);
+      expect(find.textContaining('Noch kein Konto'), findsOneWidget);
+      expect(find.byType(TextField), findsNWidgets(2)); // nur Benutzername und Passwort
+      expectNoErrors(tester);
+    });
+
+    testWidgets('Anmeldung (Play, feste Adresse): leere Eingaben werden angemahnt, ohne den Server zu fragen', (tester) async {
+      serverUrlOverride = 'https://musik.example.org';
+      await pumpScreen(tester, const LoginScreen(), channel: AppChannel.play);
+      await tester.tap(find.text('Anmelden'));
+      await tester.pump();
+      expect(find.text('Bitte gib deinen Benutzernamen ein.'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, 'lena');
+      await tester.tap(find.text('Anmelden'));
+      await tester.pump();
+      expect(find.text('Bitte gib dein Passwort ein.'), findsOneWidget);
+      expectNoErrors(tester);
+    });
+
+    testWidgets('Anmeldung (Play, ohne feste Adresse): Feld „Server-Adresse“ bleibt', (tester) async {
+      await pumpScreen(tester, const LoginScreen(), channel: AppChannel.play);
+      expect(find.text('Server-Adresse'), findsOneWidget);
+      expect(find.text('Verbinden'), findsOneWidget);
+      expect(find.text('Benutzername'), findsNothing);
+    });
+
+    testWidgets('Anmeldung (GitHub-Version): Feld „Server-Adresse“ bleibt trotz eingebauter Adresse', (tester) async {
+      serverUrlOverride = 'https://musik.example.org';
+      await pumpScreen(tester, const LoginScreen());
+      expect(find.text('Server-Adresse'), findsOneWidget);
+      expect(find.text('Verbinden'), findsOneWidget);
+      expect(find.textContaining('Noch kein Konto'), findsNothing);
+    });
+
+    testWidgets('Einstellungen (Play, feste Adresse): keine Kachel „Server-Adresse“', (tester) async {
+      serverUrlOverride = 'https://musik.example.org';
+      await pumpScreen(tester, const SettingsScreen(),
+          channel: AppChannel.play, config: config(), admin: false, size: const Size(400, 3000));
+      expect(find.text('Server-Adresse'), findsNothing);
+      expect(find.text('https://musik.test'), findsNothing);
+      expect(find.text('Server'), findsOneWidget); // Name und Version des Servers bleiben sichtbar
+      expectNoErrors(tester);
+    });
+
+    testWidgets('Einstellungen (Play, ohne feste Adresse und GitHub-Version): Kachel „Server-Adresse“ wie bisher', (tester) async {
+      await pumpScreen(tester, const SettingsScreen(),
+          channel: AppChannel.play, config: config(), admin: false, size: const Size(400, 3000));
+      expect(find.text('Server-Adresse'), findsOneWidget);
+      expect(find.text('https://musik.test'), findsOneWidget);
+    });
+
+    testWidgets('Einstellungen (GitHub-Version): Kachel „Server-Adresse“ trotz eingebauter Adresse', (tester) async {
+      serverUrlOverride = 'https://musik.example.org';
+      await pumpScreen(tester, const SettingsScreen(), config: config(), admin: false, size: const Size(400, 3000));
+      expect(find.text('Server-Adresse'), findsOneWidget);
+    });
+
+    group('gespeicherte Anmeldung', () {
+      String session(String server) => jsonEncode({
+            'server_url': server,
+            'tokens': Tokens(
+              accessToken: 'a',
+              refreshToken: 'r',
+              mediaToken: 'm',
+              accessExpiresAt: DateTime(2100),
+              mediaExpiresAt: DateTime(2100),
+            ).toJson(),
+            'user': User.fromJson(userJson()).toJson(),
+          });
+
+      Future<AuthState> loadAuth({String? stored, Map<String, Object> prefs = const {}}) async {
+        FlutterSecureStorage.setMockInitialValues({'selfify.session': ?stored});
+        SharedPreferences.setMockInitialValues(prefs);
+        final preferences = await SharedPreferences.getInstance();
+        final container = ProviderContainer(overrides: [sharedPreferencesProvider.overrideWithValue(preferences)]);
+        addTearDown(container.dispose);
+        return container.read(authProvider.future);
+      }
+
+      test('gleicher Server: Die Anmeldung bleibt bestehen', () async {
+        channelOverride = AppChannel.play;
+        serverUrlOverride = 'https://musik.example.org';
+        final auth = await loadAuth(stored: session('https://musik.example.org'));
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.serverUrl, 'https://musik.example.org');
+      });
+
+      test('anderer Server (z. B. Umzug des Betreibers): abgemeldet, mit der festen Adresse zum neuen Anmelden', () async {
+        channelOverride = AppChannel.play;
+        serverUrlOverride = 'https://neu.example.org';
+        final auth = await loadAuth(stored: session('https://alt.example.org'));
+        expect(auth.isLoggedIn, isFalse);
+        expect(auth.serverUrl, 'https://neu.example.org');
+      });
+
+      test('abgemeldet: die feste Adresse gewinnt gegen den zuletzt benutzten Server', () async {
+        channelOverride = AppChannel.play;
+        serverUrlOverride = 'https://musik.example.org';
+        final auth = await loadAuth(prefs: {'selfify.last_server': 'https://irgendwo.example.org'});
+        expect(auth.isLoggedIn, isFalse);
+        expect(auth.serverUrl, 'https://musik.example.org');
+      });
+
+      test('ohne feste Adresse bleibt alles wie bisher: Anmeldung bei beliebigem Server, zuletzt benutzter Server', () async {
+        channelOverride = AppChannel.play;
+        final auth = await loadAuth(stored: session('https://alt.example.org'));
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.serverUrl, 'https://alt.example.org');
+        final loggedOut = await loadAuth(prefs: {'selfify.last_server': 'https://irgendwo.example.org'});
+        expect(loggedOut.serverUrl, 'https://irgendwo.example.org');
+      });
+
+      test('GitHub-Version: eingebaute Adresse zählt nicht', () async {
+        serverUrlOverride = 'https://neu.example.org';
+        final auth = await loadAuth(stored: session('https://alt.example.org'));
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.serverUrl, 'https://alt.example.org');
+      });
+    });
+
   });
 }

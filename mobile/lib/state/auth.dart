@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/flavor.dart';
 import '../data/api.dart';
 import '../data/models.dart';
 
@@ -13,6 +14,12 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) => throw Uni
 const _sessionKey = 'selfify.session';
 const _lastServerKey = 'selfify.last_server';
 const _lastUserKey = 'selfify.last_user';
+
+/// Feste Server-Adresse der Play-Version (null = die Person trägt sie selbst ein, wie in der GitHub-Version).
+String? get fixedServerUrl {
+  final configured = configuredServerUrl;
+  return configured.isEmpty ? null : normalizeBaseUrl(configured);
+}
 
 class AuthState {
   final String? serverUrl;
@@ -32,7 +39,8 @@ class AuthController extends AsyncNotifier<AuthState> {
 
   SharedPreferences get _prefs => ref.read(sharedPreferencesProvider);
 
-  String? get lastServerUrl => _prefs.getString(_lastServerKey);
+  /// Mit fester Adresse (Play-Version) immer diese, sonst der zuletzt benutzte Server.
+  String? get lastServerUrl => fixedServerUrl ?? _prefs.getString(_lastServerKey);
   String? get lastUsername => _prefs.getString(_lastUserKey);
 
   @override
@@ -47,6 +55,13 @@ class AuthController extends AsyncNotifier<AuthState> {
     try {
       final data = jsonDecode(raw) as Json;
       final serverUrl = data['server_url'] as String;
+      // Eine gespeicherte Anmeldung bei einem anderen Server gilt nicht für eine App mit fester Adresse
+      // (z. B. wenn der Betreiber den Server umgezogen hat) – dann neu anmelden.
+      final fixed = fixedServerUrl;
+      if (fixed != null && normalizeBaseUrl(serverUrl) != fixed) {
+        await _storage.delete(key: _sessionKey);
+        return AuthState(serverUrl: fixed);
+      }
       final tokens = Tokens.fromJson(data['tokens'] as Json);
       final user = User.fromJson(data['user'] as Json);
       return AuthState(serverUrl: serverUrl, user: user, api: _client(serverUrl, tokens, user));
@@ -73,7 +88,8 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   Future<void> login(String serverInput, String username, String password) async {
-    final serverUrl = normalizeBaseUrl(serverInput);
+    // Mit fester Adresse (Play-Version) zählt nur sie, egal was übergeben wird
+    final serverUrl = fixedServerUrl ?? normalizeBaseUrl(serverInput);
     final result = await ApiClient.login(serverUrl, username.trim(), password);
     await _persist(serverUrl, result.tokens, result.user);
     await _prefs.setString(_lastServerKey, serverUrl);

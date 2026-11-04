@@ -396,6 +396,37 @@ widerlegt** (u. a. „Cover bleiben nach Konto-Löschen“ – die bestehende Au
       Hochladen in die Play Console auf einem Gerät prüfen (Test-APK `test-2-play.apk` im Release `app-test`)
 - Lehre: Neue native Bauteile (SDKs mit eigenem Start-Code) brauchen einen Start-Test auf einem echten Gerät, bevor sie
   in die Version kommen, die Nutzer per Update bekommen.
+### Play-Version: feste Server-Adresse
+
+- [x] **Wunsch:** Im Play Store soll niemand eine Server-Adresse eintippen müssen („server einfügen muss dann im
+      Playstore-Release nicht mehr sein“).
+- [x] **Umsetzung:** `--dart-define=SERVER_URL=…` (nur wirksam in der Play-Version; CI nimmt die GitHub-Variable
+      `PLAY_SERVER_URL`, verlangt `https://` und warnt, wenn sie fehlt). Anmeldung ohne Server-Feld (gleich Benutzername
+      und Passwort, keine Vorab-Prüfung), Einstellungen ohne Kachel „Server-Adresse“ (die Kachel „Server“ mit Name und
+      Version bleibt). Die Adresse steckt in `fixedServerUrl` (`state/auth.dart`) und gilt für Anmeldung, zuletzt
+      benutzten Server und den Konfig-Abruf vor der Anmeldung.
+- [x] **Randfall:** Eine gespeicherte Anmeldung bei einem *anderen* Server als der festen Adresse (Umzug des Betreibers)
+      wird verworfen – einmal neu anmelden.
+- [x] **Unverändert:** GitHub-Version, Windows und iPhone (auch wenn dort `SERVER_URL` gesetzt wäre); Play-Version ohne
+      Variable verhält sich wie bisher.
+- [x] **Tests:** 15 neue Tests in `play_version_test.dart` (Anmeldung, Einstellungen, gespeicherte Anmeldung,
+      GitHub-Version unverändert); gegengeprüft, dass sie ohne die Änderung fehlschlagen.
+- [ ] **Offen:** Der Bau mit gesetzter Variable `PLAY_SERVER_URL` ist in der CI noch nicht gelaufen (die Variable war
+      beim Prüfen nicht gesetzt, der Bau lief im Zweig „fragt nach der Adresse“); das Verhalten auf einem echten Gerät
+      ist ungeprüft (kein Android-Emulator hier). Nach dem Setzen der Variable neu bauen (siehe docs/PLAYSTORE.md).
+- [x] **Gegenprüfung (4 Prüfer, je Fund 2 Skeptiker):** 11 Funde, kein Fehler im Code für die GitHub-Version oder
+      Play ohne Variable. Umgesetzt: CI verlangt einen Servernamen hinter `https://`; Doku zum Neubau nach geänderter
+      Variable und zur fehlenden Vorab-Prüfung. Bewusst nicht geändert (klein, selten, Änderung würde auch die
+      GitHub-Version berühren):
+      - Der Konfig-Abruf vor der Anmeldung wird nach dem Anmelden nicht wiederholt. Scheitert er beim allerersten
+        Start, gelten bis zum nächsten Abruf (Rückkehr in die App nach 10 Minuten, spätestens nach einer Stunde) die
+        Standardwerte (keine Werbung/Hinweise). Gleiches gilt schon lange für jeden Kaltstart mit gemerktem Server.
+      - Ohne Vorab-Prüfung fehlen bei einer Netzsperre (z. B. Cloudflare „Bot fight mode“) die ausführlichen Hinweise
+        samt „Technische Details“ der Server-Prüfung; die Anmeldung zeigt dann nur ihre allgemeine Meldung. Dieselbe
+        Domain muss für die GitHub-Version ohnehin freigegeben sein.
+      - Ein Abbruch mitten im TLS-Handshake meldet (wie schon vorher überall) „… Adresse mit http:// versuchen“; in der
+        Play-Version gibt es kein Adressfeld dafür. Erneutes Anmelden hilft.
+- Für die Google-Prüfer: Die App zeigt fest auf diesen Server → Demo-Server-Hinweise in `docs/PLAYSTORE.md` (Abschnitt 7).
 
 ## Weitermachen nach einer Unterbrechung
 
