@@ -1,0 +1,81 @@
+# Fehlersuche: baut die App aus dem Stand VOR der Play-Store-Version (letzter funktionierender Stand) als Test-APK und
+# legt sie ins Release "app-test". Nur vorübergehend – wird nach der Fehlersuche wieder entfernt.
+name: Diagnose (Vergleichsstand)
+
+on:
+  pull_request:
+    paths: [".github/workflows/diagnose-baseline.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: "3.47.7"
+  # Stand von main direkt vor PR #11 (Videos als Ton, PR #10)
+  BASELINE_SHA: 2d1b9e6dbff8f7e8abc99f61564c66399e1cb84a
+
+jobs:
+  baseline:
+    name: test-5-vor-dem-update.apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASELINE_SHA }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Signaturschlüssel aus den Secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Kein Signaturschlüssel hinterlegt."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/selfify.keystore
+          cat > android/key.properties <<PROPS
+          storeFile=selfify.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          PROPS
+      - run: flutter pub get
+      - name: Android-NDK laden (mit Wiederholung)
+        run: |
+          NDK_VERSION=$(grep -oP 'val ndkVersion: String = "\K[^"]+' \
+            "$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt" || true)
+          if [ -z "$NDK_VERSION" ]; then exit 0; fi
+          for attempt in 1 2 3; do
+            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null; then exit 0; fi
+            rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION"; sleep 15
+          done
+          exit 1
+      - name: APK bauen (Stand vor dem Update, Build-Nummer 58 wie die installierte App)
+        run: |
+          flutter build apk --release --build-number=58 \
+            --dart-define=UPDATE_MANIFEST_URL=https://github.com/${{ github.repository }}/releases/download/app-latest/version.json
+          cp build/app/outputs/flutter-apk/app-release.apk build/test-5-vor-dem-update.apk
+      - name: APK ins Release "app-test" legen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Das Release gibt es schon (Diagnose-Lauf); falls nicht, wird es angelegt
+          gh release view app-test --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
+            gh release create app-test --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" \
+              --title "Test-Versionen (Fehlersuche)" --notes "Test-Versionen zur Fehlersuche."
+          gh release upload app-test build/test-5-vor-dem-update.apk --clobber --repo "$GITHUB_REPOSITORY"
