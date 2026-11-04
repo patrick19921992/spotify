@@ -75,12 +75,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Werbung (Google AdMob, nur Play-Version): App-ID aus build.gradle.kts. Ohne diesen Eintrag stürzt
-             das Werbe-SDK beim Start ab. -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="${admobAppId}" />
-
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

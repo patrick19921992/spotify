@@ -381,6 +381,22 @@ widerlegt** (u. a. „Cover bleiben nach Konto-Löschen“ – die bestehende Au
   ausgestellt wurde, bliebe gültig – praktisch ausgeschlossen); `INTEGER PRIMARY KEY AUTOINCREMENT` wäre die
   vollständige Lösung, braucht aber einen riskanten Tabellen-Umbau.
 
+### Absturz beim Start der GitHub-App (Build 58)
+
+- [x] **Fehler:** Nach dem Update auf Build 58 (Play-Store-Version) zeigte die GitHub-App nur das Logo und schloss sich
+      – auch nach einer Neuinstallation. Die Tests und alle CI-Jobs waren grün; ein Absturz beim Start lässt sich ohne
+      Gerät oder Emulator dort nicht sehen.
+- [x] **Eingrenzung:** Vier Test-APKs (Release `app-test`): Die Version **ohne Werbe-SDK startet**. Ursache ist also das
+      Werbe-SDK (`google_mobile_ads` samt WorkManager und Werbe-Diensten), das auch ohne Aufruf beim Start
+      mitläuft. Das Paket war ohnehin nur für die Play-Version gedacht.
+- [x] **Behebung:** GitHub-APK, Windows und iPhone werden mit einem Platzhalter-Paket gebaut
+      (`mobile/packages/google_mobile_ads_stub`, per `pubspec_overrides.yaml` in der CI); die CI prüft, dass im Manifest
+      der GitHub-APK nichts vom Werbe-SDK steht, und analysiert die App zusätzlich gegen den Platzhalter
+- [ ] **Offen:** Ob die **Play-Version** (mit dem echten SDK) am Handy startet, ist noch nicht bestätigt – vor dem
+      Hochladen in die Play Console auf einem Gerät prüfen (Test-APK `test-2-play.apk` im Release `app-test`)
+- Lehre: Neue native Bauteile (SDKs mit eigenem Start-Code) brauchen einen Start-Test auf einem echten Gerät, bevor sie
+  in die Version kommen, die Nutzer per Update bekommen.
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

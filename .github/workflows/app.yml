@@ -42,6 +42,12 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      # Der Platzhalter fürs Werbe-Paket (nur in Versionen ohne Werbung) muss zu dem passen, was die App davon nutzt
+      - name: Analyse mit dem Platzhalter für das Werbe-Paket
+        run: |
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
+          flutter pub get
+          flutter analyze
 
   android:
     name: Android-APK
@@ -81,6 +87,11 @@ jobs:
           keyPassword=$KEY_PASSWORD
           PROPS
           echo "signed=true" >> "$GITHUB_OUTPUT"
+      # Die GitHub-Version hat keine Werbung. Das Werbe-SDK (google_mobile_ads) gehört nur in die Play-Version: Mit ihm
+      # startete die GitHub-App am Handy nicht mehr. Hier wird es durch einen Platzhalter ersetzt.
+      - name: Werbe-SDK weglassen (Werbung gibt es nur in der Play-Version)
+        run: |
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
       - run: flutter pub get
       # Flutter braucht ein NDK, das auf den GitHub-Rechnern fehlt. Gradle würde es beim Bauen ohne
       # Wiederholung laden – ein abgebrochener Download ließ dann den ganzen Build scheitern.
@@ -118,6 +129,15 @@ jobs:
           if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
           # shellcheck disable=SC2086
           grep -q 'REQUEST_INSTALL_PACKAGES' $FILES || { echo "::error::REQUEST_INSTALL_PACKAGES fehlt in der GitHub-Version - der Update-Hinweis könnte nicht installieren."; exit 1; }
+      - name: Prüfen, dass kein Werbe-SDK in der GitHub-Version steckt
+        run: |
+          FILES=$(find build/app/intermediates -path '*merged_manifest*fullRelease*' -name AndroidManifest.xml)
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
+          # shellcheck disable=SC2086
+          if grep -q 'com.google.android.gms.ads' $FILES; then
+            echo "::error::Die GitHub-Version enthält das Werbe-SDK - sie startete damit am Handy nicht mehr."
+            exit 1
+          fi
       - name: APK als Artefakt (nur zum Testen, falls Speicher frei)
         uses: actions/upload-artifact@v7
         # Bei privaten Repositories teilen sich Artefakte und Images 500 MB – ist das voll,
@@ -291,6 +311,13 @@ jobs:
           cache: true
       # smtc_windows (Medientasten, Windows-Medienübersicht) wird beim Bauen aus Rust-Quellcode übersetzt
       - uses: dtolnay/rust-toolchain@stable
+      - name: Werbe-SDK weglassen (Werbung gibt es nur in der Play-Version)
+        run: |
+          @"
+          dependency_overrides:
+            google_mobile_ads:
+              path: packages/google_mobile_ads_stub
+          "@ | Set-Content pubspec_overrides.yaml -Encoding utf8
       - run: flutter pub get
       - name: Windows-App bauen
         # UPDATE_MANIFEST_URL: Dort schaut die App nach neueren Versionen (Update-Hinweis)
@@ -413,6 +440,9 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - name: Werbe-SDK weglassen (Werbung gibt es nur in der Play-Version)
+        run: |
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
       - run: flutter pub get
       - name: iOS bauen (ohne Signatur)
         run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
