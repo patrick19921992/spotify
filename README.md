@@ -126,6 +126,11 @@ und IPA.
 > **Google Play:** Es gibt auch eine Play-Store-Version (ohne YouTube-Funktionen, mit „Song wünschen“, Premium
 > und Werbung). Wie du sie veröffentlichst, steht in **[docs/PLAYSTORE.md](docs/PLAYSTORE.md)**. Das Bundle
 > `selfify-play.aab` liegt im selben Release wie die APK – zum Installieren auf dem Handy ist es **nicht** gedacht.
+>
+> Die Play-Version kennt die **Server-Adresse fest**: Setze dafür unter *GitHub › Settings › Secrets and variables ›
+> Actions › Variables* die Variable `PLAY_SERVER_URL` (z. B. `https://musik.technologyplanet.org`). Dann fragt die
+> App im Store nicht mehr danach – nur noch Benutzername und Passwort. Ohne die Variable fragt sie wie die
+> GitHub-Version.
 
 1. `selfify.apk` aus dem Release herunterladen, am besten direkt am Handy (GitHub-App oder Browser, angemeldet).
 2. Installieren. Android fragt einmalig, ob Apps aus dieser Quelle erlaubt sind.
@@ -531,6 +536,7 @@ flutter analyze
 flutter test
 flutter run --flavor full           # Android-Handy/Emulator angeschlossen (GitHub-Version)
 flutter run --flavor play --dart-define=CHANNEL=play   # Android: die Play-Version (ohne YouTube)
+flutter run --flavor play --dart-define=CHANNEL=play --dart-define=SERVER_URL=https://musik.example.de   # … mit fester Server-Adresse
 flutter run -d windows # auf einem Windows-PC (Visual Studio mit „Desktopentwicklung mit C++“ und
                        # unter Windows „Entwicklermodus“ eingeschaltet – nötig für die Plugins)
 ```

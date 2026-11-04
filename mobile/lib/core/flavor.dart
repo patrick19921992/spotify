@@ -28,6 +28,21 @@ AppChannel get appChannel {
 
 bool get isPlayChannel => appChannel == AppChannel.play;
 
+/// Fest eingebaute Server-Adresse der Play-Version, gesetzt beim Bauen: `--dart-define=SERVER_URL=https://…`
+/// (die CI nimmt sie aus der GitHub-Variable `PLAY_SERVER_URL`). Ohne Angabe fragt die App wie bisher danach.
+const _serverUrlDefine = String.fromEnvironment('SERVER_URL');
+
+/// In Tests ersetzbar (null = wie gebaut).
+String? serverUrlOverride;
+
+/// Die eingebaute Adresse, so wie angegeben – leer, wenn es keine gibt. Nur die Play-Version hat eine feste Adresse;
+/// die GitHub-Version (und Windows/iPhone) lässt immer eintragen, mit welchem Server sie sich verbindet.
+/// Aufbereitet (`https://` ergänzt, Anhängsel gekürzt) wird sie in `fixedServerUrl` (state/auth.dart).
+String get configuredServerUrl {
+  if (!isPlayChannel) return '';
+  return (serverUrlOverride ?? _serverUrlDefine).trim();
+}
+
 /// YouTube-Suche, Link einfügen, Downloads und Downloader-Verwaltung. In der Play-Version aus.
 bool get youtubeFeaturesEnabled => !isPlayChannel;
 

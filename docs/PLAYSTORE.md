@@ -16,6 +16,7 @@ iPhone) bleibt unverändert.
 | Premium-Code einlösen | ja | ja |
 | Fehler melden, Konto löschen, Datenschutz | ja | ja |
 | Paketname | `de.selfify.selfify` | `de.selfify.selfify.play` |
+| Server-Adresse | wird bei der Anmeldung eingetragen | **fest eingebaut** (Variable `PLAY_SERVER_URL`), kein Eingabefeld – bleibt leer = Feld wie in der GitHub-Version |
 
 Beide Versionen lassen sich auf demselben Handy installieren (verschiedene Paketnamen).
 
@@ -30,15 +31,28 @@ Der Bau läuft automatisch bei jedem Stand auf `main` (Job **Play-Bundle** in `.
 Ergebnis ist die Datei **`selfify-play.aab`** im Release **„App – aktuelle Version“** (`app-latest`) – sie
 erscheint dort nur, wenn die Signatur-Secrets hinterlegt sind (dieselben wie für die APK, siehe README).
 
-Für die Werbung (erst in Schritt 5 nötig) legst du unter *GitHub › Settings › Secrets and variables › Actions ›
-**Variables*** zwei Variablen an. Es sind keine Geheimnisse, deshalb „Variables“ und nicht „Secrets“:
+Vor dem ersten Bundle legst du unter *GitHub › Settings › Secrets and variables › Actions › **Variables***
+Variablen an. Es sind keine Geheimnisse, deshalb „Variables“ und nicht „Secrets“:
 
-| Variable | Wert |
-|---|---|
-| `ADMOB_APP_ID` | App-ID aus AdMob, z. B. `ca-app-pub-1234567890123456~1234567890` |
-| `ADMOB_BANNER_ID` | Anzeigenblock-ID des Banners, z. B. `ca-app-pub-1234567890123456/1234567890` |
+| Variable | Wert | Wann |
+|---|---|---|
+| `PLAY_SERVER_URL` | Adresse deines Servers mit `https://`, z. B. `https://musik.technologyplanet.org` | **vor dem ersten Bundle** |
+| `ADMOB_APP_ID` | App-ID aus AdMob, z. B. `ca-app-pub-1234567890123456~1234567890` | erst für die Werbung (Schritt 5) |
+| `ADMOB_BANNER_ID` | Anzeigenblock-ID des Banners, z. B. `ca-app-pub-1234567890123456/1234567890` | erst für die Werbung (Schritt 5) |
 
-Ohne diese Variablen zeigt die App nur **Test-Anzeigen** von Google (mit dem Hinweis „Test Ad“). Das ist
+**Feste Server-Adresse (`PLAY_SERVER_URL`):** Die Play-Version zeigt dann kein Feld „Server-Adresse“ mehr – weder
+bei der Anmeldung (nur Benutzername und Passwort) noch in den Einstellungen. Nutzer aus dem Store sollen keine
+Adresse abtippen müssen. Regeln dazu:
+
+- Die Adresse muss mit `https://` beginnen (sonst bricht der Bau ab) und gilt nur für die Play-Version; die
+  GitHub-Version, Windows und iPhone fragen weiter nach der Adresse.
+- Ist die Variable leer, baut die CI die Play-Version trotzdem (mit Warnung) – die App fragt dann wie die
+  GitHub-Version nach der Adresse.
+- Ziehst du mit dem Server um und änderst die Variable, werden Nutzer der neuen App-Version einmal abgemeldet und
+  melden sich neu an; ältere App-Versionen zeigen weiter auf die alte Adresse. Halte die Domain deshalb stabil.
+- Sie ist in die App eingebaut und damit für jeden lesbar, der die App entpackt – sie ist keine geheime Angabe.
+
+Ohne die AdMob-Variablen zeigt die App nur **Test-Anzeigen** von Google (mit dem Hinweis „Test Ad“). Das ist
 ungefährlich, bringt aber kein Geld.
 
 ## 2. Server vorbereiten
@@ -133,15 +147,28 @@ der Ziel-API des verwendeten Flutter (derzeit 36) – du musst nichts tun.
 ## 7. Zugang für die Google-Prüfer
 
 Google prüft die App und braucht dafür ein **Konto**, mit dem man sich anmelden kann (Play Console › *App-Inhalte
-› App-Zugriff*). Der Prüfer sieht eine Anmeldemaske mit „Server-Adresse“, Benutzername und Passwort.
+› App-Zugriff*). Mit gesetzter `PLAY_SERVER_URL` sieht der Prüfer nur Benutzername und Passwort – die App
+verbindet sich fest mit dem Server aus dieser Variable. Ohne die Variable sieht er zusätzlich das Feld
+„Server-Adresse“.
 
 1. Lege im Dashboard (*Benutzer*) ein Konto an, z. B. `playtest`.
-2. Trage in der Play Console Server-Adresse, Benutzername und Passwort ein.
+2. Trage in der Play Console Benutzername und Passwort ein (ohne feste Adresse auch die Server-Adresse).
 
 **Dringende Empfehlung:** Nimm dafür einen **eigenen Demo-Server mit lizenzfreier Musik** (z. B. Creative-Commons-
 Titel), nicht deinen privaten Server. Grund: Der Prüfer (und bei Bekanntwerden jeder) bekommt sonst Zugriff auf
 deine ganze Bibliothek – und urheberrechtlich geschützte Musik öffentlich zugänglich zu machen, kann
 abgemahnt werden. Ein zweiter Selfify-Container mit einem kleinen Ordner Beispiel-Musik genügt.
+
+**Wichtig mit fester Adresse:** Die App im Store zeigt immer auf `PLAY_SERVER_URL` – der Prüfer kommt also auf
+genau diesen Server und nirgends sonst hin. Zwei saubere Wege:
+
+- *Eigene Bibliothek öffentlich vermeiden:* Beim Einreichen `PLAY_SERVER_URL` auf den **Demo-Server** stellen,
+  Bundle bauen und prüfen lassen. Danach `PLAY_SERVER_URL` auf deinen echten Server stellen und die
+  freigegebene Version mit einem neuen Bundle aktualisieren (der Wechsel lässt sich unter „Hinweise für Prüfer“
+  erklären).
+- *Einfacher:* `PLAY_SERVER_URL` bleibt dein echter Server, und das Prüfer-Konto `playtest` bekommt dort nur,
+  was du öffentlich zeigen darfst. Eine Rechteverwaltung pro Benutzer für einzelne Titel gibt es nicht – bei
+  urheberrechtlich geschützter Musik ist das also nicht empfehlenswert.
 
 ## 8. Realistische Hinweise
 
@@ -171,6 +198,7 @@ Welche Versionen wie oft laufen, siehst du im Dashboard unter **Geräte & Versio
 ## Checkliste
 
 - [ ] Server aktualisiert, `PUBLIC_URL` und `OPERATOR_*` gesetzt, `/datenschutz` und `/impressum` angesehen
+- [ ] GitHub-Variable `PLAY_SERVER_URL` gesetzt (`https://…`), Anmeldung in der Play-Version zeigt kein Server-Feld
 - [ ] Demo-Server mit lizenzfreier Musik und Konto `playtest`
 - [ ] Play Console: App angelegt, Bundle im geschlossenen Test, 12 Tester über 14 Tage
 - [ ] Datenschutz-Link, Konto-löschen-Link, Datensicherheit, Zielgruppe, Inhaltseinstufung, App-Zugriff ausgefüllt

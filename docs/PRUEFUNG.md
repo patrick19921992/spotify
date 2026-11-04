@@ -396,6 +396,24 @@ widerlegt** (u. a. „Cover bleiben nach Konto-Löschen“ – die bestehende Au
       Hochladen in die Play Console auf einem Gerät prüfen (Test-APK `test-2-play.apk` im Release `app-test`)
 - Lehre: Neue native Bauteile (SDKs mit eigenem Start-Code) brauchen einen Start-Test auf einem echten Gerät, bevor sie
   in die Version kommen, die Nutzer per Update bekommen.
+### Play-Version: feste Server-Adresse
+
+- [x] **Wunsch:** Im Play Store soll niemand eine Server-Adresse eintippen müssen („server einfügen muss dann im
+      Playstore-Release nicht mehr sein“).
+- [x] **Umsetzung:** `--dart-define=SERVER_URL=…` (nur wirksam in der Play-Version; CI nimmt die GitHub-Variable
+      `PLAY_SERVER_URL`, verlangt `https://` und warnt, wenn sie fehlt). Anmeldung ohne Server-Feld (gleich Benutzername
+      und Passwort, keine Vorab-Prüfung), Einstellungen ohne Kachel „Server-Adresse“ (die Kachel „Server“ mit Name und
+      Version bleibt). Die Adresse steckt in `fixedServerUrl` (`state/auth.dart`) und gilt für Anmeldung, zuletzt
+      benutzten Server und den Konfig-Abruf vor der Anmeldung.
+- [x] **Randfall:** Eine gespeicherte Anmeldung bei einem *anderen* Server als der festen Adresse (Umzug des Betreibers)
+      wird verworfen – einmal neu anmelden.
+- [x] **Unverändert:** GitHub-Version, Windows und iPhone (auch wenn dort `SERVER_URL` gesetzt wäre); Play-Version ohne
+      Variable verhält sich wie bisher.
+- [x] **Tests:** 15 neue Tests in `play_version_test.dart` (Anmeldung, Einstellungen, gespeicherte Anmeldung,
+      GitHub-Version unverändert); gegengeprüft, dass sie ohne die Änderung fehlschlagen.
+- [ ] **Offen:** Der Bau mit gesetzter Variable ist erst durch die CI nach dem Merge und mit gesetzter Variable
+      `PLAY_SERVER_URL` sichtbar; das Verhalten auf einem echten Gerät ist ungeprüft (kein Android-Emulator hier).
+- Für die Google-Prüfer: Die App zeigt fest auf diesen Server → Demo-Server-Hinweise in `docs/PLAYSTORE.md` (Abschnitt 7).
 
 ## Weitermachen nach einer Unterbrechung
 

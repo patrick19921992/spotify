@@ -250,10 +250,24 @@ jobs:
           # Actions > Variables (ADMOB_APP_ID, ADMOB_BANNER_ID). Leer = Test-Anzeigen von Google (siehe docs/PLAYSTORE.md).
           ORG_GRADLE_PROJECT_admobAppId: ${{ vars.ADMOB_APP_ID }}
           ADMOB_BANNER_ID: ${{ vars.ADMOB_BANNER_ID }}
+          # Feste Server-Adresse der Play-Version (z. B. https://musik.technologyplanet.org), GitHub > Settings >
+          # Secrets and variables > Actions > Variables (PLAY_SERVER_URL). Leer = die App fragt nach der Adresse.
+          PLAY_SERVER_URL: ${{ vars.PLAY_SERVER_URL }}
         run: |
           ARGS=()
           # Ein leerer Wert würde die eingebaute Test-Kennung überschreiben - nur setzen, wenn vorhanden
           if [ -n "$ADMOB_BANNER_ID" ]; then ARGS+=("--dart-define=ADMOB_BANNER_ID=$ADMOB_BANNER_ID"); fi
+          if [ -n "$PLAY_SERVER_URL" ]; then
+            # Passwörter dürfen nicht unverschlüsselt durchs Internet gehen - in der Store-Version nur https://
+            case "$PLAY_SERVER_URL" in
+              https://*) ;;
+              *) echo "::error::PLAY_SERVER_URL muss mit https:// beginnen (ist: $PLAY_SERVER_URL)."; exit 1 ;;
+            esac
+            echo "Feste Server-Adresse: $PLAY_SERVER_URL"
+            ARGS+=("--dart-define=SERVER_URL=$PLAY_SERVER_URL")
+          else
+            echo "::warning::PLAY_SERVER_URL nicht gesetzt - die Play-Version fragt nach der Server-Adresse."
+          fi
           flutter build appbundle --release --flavor play --build-number=${{ github.run_number }} \
             --dart-define=CHANNEL=play "${ARGS[@]}"
           mv build/app/outputs/bundle/playRelease/app-play-release.aab build/selfify-play.aab

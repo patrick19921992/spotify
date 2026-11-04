@@ -705,7 +705,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         subtitle: serverText,
         onTap: server.hasError && server.value == null ? () => ref.invalidate(_serverInfoProvider) : null,
       ),
-      if (serverUrl != null)
+      // Play-Version: Die Adresse ist eingebaut und nichts, was man ändern oder weitergeben muss
+      if (serverUrl != null && fixedServerUrl == null)
         AccountTile(
           icon: Icons.link_rounded,
           title: 'Server-Adresse',

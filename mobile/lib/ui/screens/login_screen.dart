@@ -48,8 +48,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final lastServer = auth.lastServerUrl ?? ref.read(authProvider).value?.serverUrl ?? '';
     _server = TextEditingController(text: lastServer);
     _username = TextEditingController(text: auth.lastUsername ?? '');
-    // Bekannten Server gleich prüfen – dann reicht nach einer Abmeldung das Passwort
-    if (lastServer.isNotEmpty) {
+    final fixed = fixedServerUrl;
+    if (fixed != null) {
+      // Play-Version: Die Adresse ist eingebaut – keine Eingabe, keine Vorab-Prüfung. Ob der Server erreichbar ist,
+      // zeigt die Anmeldung selbst mit ihrer Fehlermeldung.
+      _connectedUrl = fixed;
+    } else if (lastServer.isNotEmpty) {
+      // Bekannten Server gleich prüfen – dann reicht nach einer Abmeldung das Passwort
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _connect(automatic: true);
       });
@@ -190,6 +195,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final notice = ref.watch(authProvider).value?.message;
     final connected = _info != null;
+    final fixedServer = fixedServerUrl != null;
 
     return Scaffold(
       // Auch abgemeldet sichtbar: Klappt die Anmeldung mit dieser Version nicht, hilft oft die neue
@@ -224,35 +230,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             AccountNotice(text: notice, icon: Icons.lock_clock_rounded),
                             const SizedBox(height: 20),
                           ],
-                          const _FieldLabel('Server-Adresse'),
-                          TextField(
-                            controller: _server,
-                            focusNode: _serverFocus,
-                            enabled: !_loggingIn,
-                            keyboardType: TextInputType.url,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            autofillHints: const [AutofillHints.url],
-                            textInputAction: TextInputAction.go,
-                            onChanged: _onServerChanged,
-                            onSubmitted: (_) => _connect(),
-                            decoration: InputDecoration(
-                              hintText: 'https://musik.example.de oder http://192.168.1.10:8080',
-                              hintMaxLines: 2,
-                              prefixIcon: const Icon(Icons.dns_rounded, color: AppColors.textSecondary),
-                              suffixIcon: connected
-                                  ? const Icon(Icons.check_circle_rounded, color: AppColors.accent)
-                                  : null,
+                          if (fixedServer)
+                            // Play-Version: gleich Benutzername und Passwort – die Server-Adresse ist eingebaut
+                            _loginForm(topGap: 0, fixedServer: true)
+                          else ...[
+                            const _FieldLabel('Server-Adresse'),
+                            TextField(
+                              controller: _server,
+                              focusNode: _serverFocus,
+                              enabled: !_loggingIn,
+                              keyboardType: TextInputType.url,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              autofillHints: const [AutofillHints.url],
+                              textInputAction: TextInputAction.go,
+                              onChanged: _onServerChanged,
+                              onSubmitted: (_) => _connect(),
+                              decoration: InputDecoration(
+                                hintText: 'https://musik.example.de oder http://192.168.1.10:8080',
+                                hintMaxLines: 2,
+                                prefixIcon: const Icon(Icons.dns_rounded, color: AppColors.textSecondary),
+                                suffixIcon: connected
+                                    ? const Icon(Icons.check_circle_rounded, color: AppColors.accent)
+                                    : null,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          _ServerStatus(info: _info, error: _serverError, details: _serverDetails, probing: _probing),
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                            alignment: Alignment.topCenter,
-                            child: connected ? _loginForm() : _connectButton(),
-                          ),
+                            const SizedBox(height: 10),
+                            _ServerStatus(info: _info, error: _serverError, details: _serverDetails, probing: _probing),
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              alignment: Alignment.topCenter,
+                              child: connected ? _loginForm() : _connectButton(),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -273,11 +284,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _loginForm() {
+  Widget _loginForm({double topGap = 24, bool fixedServer = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 24),
+        SizedBox(height: topGap),
         const _FieldLabel('Benutzername'),
         TextField(
           controller: _username,
@@ -333,10 +344,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         const SizedBox(height: 28),
         AccountButton(label: 'Anmelden', loading: _loggingIn, onPressed: _login),
         const SizedBox(height: 20),
-        const Text(
-          'Passwort vergessen? Frag die Person, die euren Selfify-Server verwaltet.',
+        Text(
+          // Ein Konto legt der Betreiber an – in der Play-Version gibt es keine Registrierung in der App
+          fixedServer
+              ? 'Noch kein Konto oder Passwort vergessen? Frag die Person, die euren Selfify-Server verwaltet.'
+              : 'Passwort vergessen? Frag die Person, die euren Selfify-Server verwaltet.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
         ),
       ],
     );
