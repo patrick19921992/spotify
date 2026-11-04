@@ -11,7 +11,7 @@
   <Project>https://github.com/patrick19921992/spotify</Project>
   <Overview>Selfify – dein eigenes Spotify: Musik, Hörspiele und Videos vom Unraid streamen, mit Playlists, Lieblingssongs, Offline-Modus und mehreren Konten. Fehlt ein Song, holt der Server ihn in bester Qualität von YouTube (Music) – mit Live-Fortschritt in der App.</Overview>
   <Category>MediaServer:Music MediaServer:Video Downloaders:</Category>
-  <WebUI>http://[IP]:[PORT:8080]/api/docs</WebUI>
+  <WebUI>http://[IP]:[PORT:8080]/dashboard</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/patrick19921992/spotify/main/unraid/selfify.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/patrick19921992/spotify/main/docs/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
@@ -39,5 +39,9 @@
   <Config Name="Songtexte laden" Target="LYRICS_ENABLED" Default="true|false" Mode="" Description="Beim Download Songtexte (zeitsynchron) mitladen." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="Scan-Intervall (Minuten)" Target="SCAN_INTERVAL_MINUTES" Default="30" Mode="" Description="Regelmäßiger Sicherheits-Scan der Medienordner (0 = aus). Neue Dateien werden zusätzlich sofort erkannt." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
   <Config Name="Zwischenspeicher iPhone/Datensparen (MB)" Target="TRANSCODE_CACHE_MB" Default="2048" Mode="" Description="Platz für umgewandelte Titel (Opus → AAC fürs iPhone, Datensparmodus)." Type="Variable" Display="advanced" Required="false" Mask="false">2048</Config>
+  <Config Name="Dashboard" Target="DASHBOARD_ENABLED" Default="true|false" Mode="" Description="Verwaltungsseite unter /dashboard (Downloads, Wünsche, Benutzer, Premium-Codes …)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Betreiber: Name" Target="OPERATOR_NAME" Default="" Mode="" Description="Für Datenschutzerklärung und Impressum (Pflicht, wenn die App im Play Store ist)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Betreiber: Anschrift" Target="OPERATOR_ADDRESS" Default="" Mode="" Description="Postanschrift für das Impressum." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Betreiber: E-Mail" Target="OPERATOR_EMAIL" Default="" Mode="" Description="Kontakt für Datenschutzanfragen und Impressum." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="API-Testseite" Target="ENABLE_API_DOCS" Default="true|false" Mode="" Description="Testoberfläche unter /api/docs (ohne Login nutzlos)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
 </Container>

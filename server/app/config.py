@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     login_max_failures_per_ip: int = Field(default=30, ge=1)
     login_window_minutes: int = Field(default=15, ge=1)
 
+    # Web-Dashboard für Admins unter /dashboard (Zahlen, Downloads, Wünsche, Premium, Fehlermeldungen)
+    dashboard_enabled: bool = True
+    # Angaben für /datenschutz und /impressum (Pflicht, sobald die App öffentlich angeboten wird)
+    operator_name: str = ""
+    operator_address: str = ""
+    operator_email: str = ""
+
     # Swagger-Oberfläche unter /api/docs (praktisch zum Testen, ohne Login nutzlos)
     enable_api_docs: bool = True
     # Nur nötig, falls später ein Web-Client aus einer anderen Domain zugreift

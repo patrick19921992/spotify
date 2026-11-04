@@ -34,6 +34,7 @@ from app.routers import (
     support,
     system,
     users,
+    web,
 )
 from app.security import load_or_create_secret_key
 from app.services.bootstrap import run_bootstrap
@@ -135,4 +136,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         admin.router,
     ):
         app.include_router(router, prefix="/api")
+    # Web-Seiten (Dashboard, Datenschutz, Impressum, Konto löschen) liegen bewusst außerhalb von /api
+    app.include_router(web.router)
     return app

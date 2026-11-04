@@ -311,6 +311,25 @@ quer; Statusleiste oben, 3-Tasten-Navigation unten; Roboto), gesichtet von 8 Pr�
       Ersatz-Handler und merkten es nicht → Filter im Handler entfernt, „Zur Warteschlange“/„Als Nächstes“
       nehmen Videos mit, Radio/Autoplay bleiben reine Musik; Tests laufen jetzt mit dem echten Handler
 
+### Play-Store-Version, Teil 1: Server und Dashboard
+
+- [x] Premium: Codes mit freier Laufzeit (Tage oder unbegrenzt), Mehrfach-Einlösung, „einlösbar bis“, Sperren;
+      Lizenzen stapeln sich, Entzug je Lizenz/Benutzer/Code; Zähler atomar (`UPDATE … WHERE`), Ratebremse
+      (nur „gibt es nicht“ zählt als Fehlversuch); 20 Tests
+- [x] Song-Wünsche (Admin entscheidet, Download läuft im Hintergrund auf dem Server), „Fehler melden“, Konto
+      löschen (Passwort nötig, letzter Admin geschützt), App-Konfiguration (Werbung/Premium/Wunschliste,
+      Update-Stufe none/available/required nur für die Play-Version, Wartungshinweis), gemeldete App-Versionen,
+      Statistik; 16 Tests
+- [x] Dashboard `/dashboard` (acht Ansichten) und Rechtsseiten `/datenschutz`, `/impressum`, `/konto-loeschen`:
+      kein `innerHTML`, strenge Content-Security-Policy (nur eigene Dateien), Whitelist für Dateien, HTML-Escaping
+      der Betreiberangaben; 14 Tests. Im Headless-Chromium durchgeklickt (Anmeldung, Codes erzeugen/sperren,
+      Premium vergeben/entziehen, Wunsch ablehnen, Fehlermeldung, Einstellungen, Handy-Ansicht): Schadcode in
+      Wünschen/Meldungen erscheint nur als Text
+- [x] Beim Browser-Test gefunden und behoben: Such-Dialog „Wunsch erfüllen“ schloss über einen unsicheren
+      Umweg (`.overlay:last-of-type`) → Dialoge geben ihre Schließen-Funktion jetzt selbst heraus; nach
+      Abmelden/Anmelden liefen doppelte Listener und der Badge-Zeitgeber weiter → Listener einmalig, Zeitgeber
+      wird beim Abmelden gestoppt
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich
