@@ -411,8 +411,21 @@ widerlegt** (u. a. „Cover bleiben nach Konto-Löschen“ – die bestehende Au
       Variable verhält sich wie bisher.
 - [x] **Tests:** 15 neue Tests in `play_version_test.dart` (Anmeldung, Einstellungen, gespeicherte Anmeldung,
       GitHub-Version unverändert); gegengeprüft, dass sie ohne die Änderung fehlschlagen.
-- [ ] **Offen:** Der Bau mit gesetzter Variable ist erst durch die CI nach dem Merge und mit gesetzter Variable
-      `PLAY_SERVER_URL` sichtbar; das Verhalten auf einem echten Gerät ist ungeprüft (kein Android-Emulator hier).
+- [ ] **Offen:** Der Bau mit gesetzter Variable `PLAY_SERVER_URL` ist in der CI noch nicht gelaufen (die Variable war
+      beim Prüfen nicht gesetzt, der Bau lief im Zweig „fragt nach der Adresse“); das Verhalten auf einem echten Gerät
+      ist ungeprüft (kein Android-Emulator hier). Nach dem Setzen der Variable neu bauen (siehe docs/PLAYSTORE.md).
+- [x] **Gegenprüfung (4 Prüfer, je Fund 2 Skeptiker):** 11 Funde, kein Fehler im Code für die GitHub-Version oder
+      Play ohne Variable. Umgesetzt: CI verlangt einen Servernamen hinter `https://`; Doku zum Neubau nach geänderter
+      Variable und zur fehlenden Vorab-Prüfung. Bewusst nicht geändert (klein, selten, Änderung würde auch die
+      GitHub-Version berühren):
+      - Der Konfig-Abruf vor der Anmeldung wird nach dem Anmelden nicht wiederholt. Scheitert er beim allerersten
+        Start, gelten bis zum nächsten Abruf (Rückkehr in die App nach 10 Minuten, spätestens nach einer Stunde) die
+        Standardwerte (keine Werbung/Hinweise). Gleiches gilt schon lange für jeden Kaltstart mit gemerktem Server.
+      - Ohne Vorab-Prüfung fehlen bei einer Netzsperre (z. B. Cloudflare „Bot fight mode“) die ausführlichen Hinweise
+        samt „Technische Details“ der Server-Prüfung; die Anmeldung zeigt dann nur ihre allgemeine Meldung. Dieselbe
+        Domain muss für die GitHub-Version ohnehin freigegeben sein.
+      - Ein Abbruch mitten im TLS-Handshake meldet (wie schon vorher überall) „… Adresse mit http:// versuchen“; in der
+        Play-Version gibt es kein Adressfeld dafür. Erneutes Anmelden hilft.
 - Für die Google-Prüfer: Die App zeigt fest auf diesen Server → Demo-Server-Hinweise in `docs/PLAYSTORE.md` (Abschnitt 7).
 
 ## Weitermachen nach einer Unterbrechung

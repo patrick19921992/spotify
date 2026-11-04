@@ -260,8 +260,8 @@ jobs:
           if [ -n "$PLAY_SERVER_URL" ]; then
             # Passwörter dürfen nicht unverschlüsselt durchs Internet gehen - in der Store-Version nur https://
             case "$PLAY_SERVER_URL" in
-              https://*) ;;
-              *) echo "::error::PLAY_SERVER_URL muss mit https:// beginnen (ist: $PLAY_SERVER_URL)."; exit 1 ;;
+              https://?*) ;;
+              *) echo "::error::PLAY_SERVER_URL muss mit https:// beginnen und einen Servernamen enthalten (ist: $PLAY_SERVER_URL)."; exit 1 ;;
             esac
             echo "Feste Server-Adresse: $PLAY_SERVER_URL"
             ARGS+=("--dart-define=SERVER_URL=$PLAY_SERVER_URL")

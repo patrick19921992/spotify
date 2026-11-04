@@ -51,6 +51,14 @@ Adresse abtippen müssen. Regeln dazu:
 - Ziehst du mit dem Server um und änderst die Variable, werden Nutzer der neuen App-Version einmal abgemeldet und
   melden sich neu an; ältere App-Versionen zeigen weiter auf die alte Adresse. Halte die Domain deshalb stabil.
 - Sie ist in die App eingebaut und damit für jeden lesbar, der die App entpackt – sie ist keine geheime Angabe.
+- **Eine geänderte Variable startet keinen Bau von selbst.** Setze sie am besten, bevor ein Stand auf `main` kommt.
+  Danach (oder bei jeder Änderung): *Actions › App › letzter Lauf auf `main` › Re-run all jobs* – oder eine
+  beliebige Änderung unter `mobile/` auf `main`. Im Protokoll des Schritts „Play-Bundle bauen“ steht dann
+  „Feste Server-Adresse: …“; daran erkennst du, dass sie eingebaut wurde. Ein manueller Lauf („Run workflow“) legt
+  das Bundle nur als Artefakt unter dem Lauf ab (14 Tage), nicht ins Release `app-latest`.
+- Es gibt in dieser Version **keine Vorab-Prüfung** der Adresse (die gibt es nur beim Eintippen): Ein Tippfehler in
+  der Variable zeigt sich erst bei der ersten Anmeldung als Fehlermeldung. Melde dich deshalb vor dem Hochladen
+  einmal mit dem gebauten Stand an (siehe Checkliste).
 
 Ohne die AdMob-Variablen zeigt die App nur **Test-Anzeigen** von Google (mit dem Hinweis „Test Ad“). Das ist
 ungefährlich, bringt aber kein Geld.
@@ -198,7 +206,7 @@ Welche Versionen wie oft laufen, siehst du im Dashboard unter **Geräte & Versio
 ## Checkliste
 
 - [ ] Server aktualisiert, `PUBLIC_URL` und `OPERATOR_*` gesetzt, `/datenschutz` und `/impressum` angesehen
-- [ ] GitHub-Variable `PLAY_SERVER_URL` gesetzt (`https://…`), Anmeldung in der Play-Version zeigt kein Server-Feld
+- [ ] GitHub-Variable `PLAY_SERVER_URL` gesetzt (`https://…`), danach neu gebaut (Protokoll: „Feste Server-Adresse: …“), Anmeldung in der Play-Version zeigt kein Server-Feld und klappt mit einem echten Konto
 - [ ] Demo-Server mit lizenzfreier Musik und Konto `playtest`
 - [ ] Play Console: App angelegt, Bundle im geschlossenen Test, 12 Tester über 14 Tage
 - [ ] Datenschutz-Link, Konto-löschen-Link, Datensicherheit, Zielgruppe, Inhaltseinstufung, App-Zugriff ausgefüllt
