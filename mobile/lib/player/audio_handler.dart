@@ -79,6 +79,33 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   /// Wird gerufen, wenn der Player einen Titel nicht abspielen kann (z. B. weist der Server den Stream ab).
   void Function()? onPlaybackError;
 
+  /// Überspring-Grenze ohne Premium: liefert false, wenn gerade nicht übersprungen werden darf (zählt dabei einen
+  /// erlaubten Sprung mit). null = keine Grenze (wie bisher). Gezählt wird nur das Vorspringen ([skipToNext] und die
+  /// Wahl eines späteren Titels) – nicht das Weiterspielen am Titelende, [skipToPrevious] oder Spulen.
+  bool Function()? allowSkip;
+
+  /// Ein Sprung wurde wegen der Grenze verweigert.
+  void Function()? onSkipBlocked;
+
+  /// Darf jetzt vorgesprungen werden? (Grenze aus: immer)
+  bool _skipAllowed() {
+    final check = allowSkip;
+    if (check == null || check()) return true;
+    onSkipBlocked?.call();
+    return false;
+  }
+
+  /// Liegt [index] in der Abspiel-Reihenfolge hinter dem aktuellen Titel?
+  bool _isAhead(int index) {
+    final current = player.currentIndex;
+    if (current == null) return false;
+    if (!player.shuffleModeEnabled) return index > current;
+    final order = playOrder;
+    final from = order.indexOf(current);
+    final to = order.indexOf(index);
+    return from >= 0 && to > from;
+  }
+
   final List<Track> _tracks = [];
   PlayContext? _context;
   int? _lastIndex;
@@ -357,6 +384,7 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   @override
   Future<void> skipToQueueItem(int index) async {
     if (index < 0 || index >= _tracks.length) return;
+    if (allowSkip != null && _isAhead(index) && !_skipAllowed()) return;
     await player.seek(Duration.zero, index: index);
     if (!player.playing) await player.play();
   }
@@ -375,6 +403,7 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   @override
   Future<void> skipToNext() async {
+    if (!_skipAllowed()) return;
     if (player.hasNext) {
       await player.seekToNext();
     } else if (_tracks.isNotEmpty) {

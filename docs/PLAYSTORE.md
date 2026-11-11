@@ -14,8 +14,9 @@ iPhone) bleibt unverändert.
 | Berechtigung „Apps installieren“ | ja | **entfernt** (sonst lehnt Google ab) |
 | Werbung | nein | ja – **nur ohne Premium** und nur, wenn du sie im Dashboard einschaltest |
 | Premium-Code einlösen | ja | ja |
-| Premium kaufen (Abo über Google Play) | **nein** – Premium gibt es per Code oder vom Admin | ja – wenn du es im Dashboard einschaltest (Schritt 10) |
+| Premium kaufen (Abo über Google Play) | **nein** – Premium gibt es per Code oder vom Admin | ja – wenn du es im Dashboard einschaltest (Schritt 10), mit bis zu drei Laufzeiten (z. B. monatlich, halbjährlich, jährlich) |
 | Offline-Hören | wie im Dashboard eingestellt (frei oder nur mit Premium) | wie im Dashboard eingestellt |
+| Tonqualität, Videos, Songtexte, Wünsche, Überspringen, Abzeichen | wie im Dashboard eingestellt (Standard: für alle, wie bisher – Schritt 10.13) | wie im Dashboard eingestellt |
 | Fehler melden, Konto löschen, Datenschutz | ja | ja |
 | Paketname | `de.selfify.selfify` | `de.selfify.selfify.play` |
 | Server-Adresse | wird bei der Anmeldung eingetragen | **fest eingebaut** (Variable `PLAY_SERVER_URL`), kein Eingabefeld – bleibt leer = Feld wie in der GitHub-Version |
@@ -158,8 +159,25 @@ der Ziel-API des verwendeten Flutter (derzeit 36) – du musst nichts tun.
   die Sperre der App. Verkaufen darfst du Premium in der Play-Version nur über **Google Play Billing** – das ist
   eingebaut und wird in Schritt 10 eingerichtet. Codes und die Vergabe im Dashboard bleiben daneben bestehen und
   zählen genauso wie ein Kauf.
-- **Codes schalten auch das Offline-Hören frei.** Ist „Offline-Hören nur mit Premium“ eingeschaltet (Schritt 10.6),
-  darf jeder mit Premium Musik aufs Gerät laden – egal ob das Premium aus einem Code, aus deiner Vergabe im Dashboard
+- **Was ein Code freischaltet, legst du beim Erzeugen fest.** Im Formular „Neue Codes erzeugen“ gibt es den Block
+  **„Schaltet frei“**: Standard ist „Alle Leistungen“. Nimmst du den Haken weg, wählst du einzelne Leistungen aus
+  (Offline-Hören, Keine Werbung, Höhere Tonqualität, Videos ansehen, Songtexte, Mehr Song-Wünsche, Unbegrenzt
+  überspringen, Premium-Abzeichen – was sie bewirken, steht in Schritt 10.13). Mindestens eine muss angehakt sein.
+  - Das Dashboard zeigt den Umfang bei jedem Code, in „Wer hat gerade Premium?“ und bei den Lizenzen eines Benutzers
+    (Spalte **„Umfang“**: „Alle Leistungen“ oder die Liste). In der Benutzerliste steht bei Teil-Premium zusätzlich
+    „Teilumfang“.
+  - **Alle Codes und Lizenzen von vor diesem Update schalten alle Leistungen frei** – an ihnen ändert sich nichts.
+    Ebenso Premium, das du unter *Benutzer › Premium* vergibst, und ein Abo über Google Play: Die schalten **immer
+    alles** frei.
+  - Eine Leistung wirkt nur, wenn sie unter *App-Einstellungen › Premium-Leistungen* auf „Nur Premium“ steht. Steht
+    sie auf „Für alle“, hat sie ohnehin jeder – auch ohne Code.
+  - **Zeiten:** Ein Code mit Teilumfang hängt sich nur hinter laufende Lizenzen, die **alles davon schon enthalten**;
+    sonst beginnt er sofort beim Einlösen (ein Code „nur Videos“ wartet also nicht, bis ein „nur Songtexte“-Code
+    abgelaufen ist). Wer schon **unbegrenzt** Premium mit allen Leistungen hat, kann keinen Code mehr einlösen (der
+    Code bleibt unverbraucht); mit unbegrenztem **Teil**-Premium geht es.
+  - Ältere Apps kennen den Umfang nicht: Dort macht **jedes** Premium werbefrei, auch ein Code ohne „Keine Werbung“.
+- **Codes schalten auch das Offline-Hören frei** (wenn es in ihrem Umfang steht). Steht Offline-Hören auf „Nur
+  Premium“ (Schritt 10.6), darf jeder mit Premium Musik aufs Gerät laden – egal ob das Premium aus einem Code, aus deiner Vergabe im Dashboard
   oder aus einem Kauf stammt. Umgekehrt gilt dasselbe Ende: **Läuft der Code ab, sperrst du ihn samt vergebenem
   Premium oder entziehst du die Lizenz, löscht die App die Offline-Musik vom Gerät**, sobald sie den Stand beim
   Server geprüft hat.
@@ -217,7 +235,8 @@ Welche Versionen wie oft laufen, siehst du im Dashboard unter **Geräte & Versio
 
 ## 10. Premium verkaufen (Google Play Billing)
 
-Damit bietet die Play-Version Premium als **Abo über Google Play** an (gedacht: 1 € im Monat für das Offline-Hören).
+Damit bietet die Play-Version Premium als **Abo über Google Play** an – ein Abo mit bis zu drei Laufzeiten
+(z. B. monatlich, halbjährlich, jährlich; die Preise legst du in der Play Console fest).
 Gekauft wird nur in der Play-Version; GitHub-Version, Windows und iPhone bekommen Premium weiter per Code oder von dir
 im Dashboard. Alles hier ist **standardmäßig aus** – solange du nichts einschaltest, ändert sich an deinem Server und
 an den Apps nichts.
@@ -235,21 +254,73 @@ erreichbar – was nicht belegt werden konnte, steht unten unter „Nicht geprü
 Um etwas zu verkaufen, verlangt Google ein **Zahlungsprofil** (Händlerangaben, Bankverbindung für die Auszahlung,
 Steuerangaben). Richte es ein, bevor du das Abo anlegst – die Play Console weist dich darauf hin, wenn es fehlt.
 
-### 10.2 Abo für 1 € anlegen
+### 10.2 Abo mit drei Laufzeiten anlegen
+
+Bei Google heißt das: **ein Abo** (ein Produkt) mit **mehreren Basis-Abos** – je Laufzeit eins. Ein Basis-Abo legt
+Abrechnungszeitraum, Verlängerung und Preis fest. Dazu kannst du je Basis-Abo **Angebote** anlegen (z. B. erster
+Monat gratis).
 
 1. Lade zuerst ein Bundle der Play-Version in einen Test-Track (Schritt 3) – es enthält die Berechtigung für Käufe
    (`com.android.vending.BILLING`); die CI prüft das bei jedem Bau.
 2. Play Console › deine App › **Monetarisieren mit Play › Produkte › Abos** › *Abo erstellen*.
-   - **Produkt-ID:** z. B. `premium_monat`. Nur Kleinbuchstaben, Ziffern, Punkt und Unterstrich – genau diese ID
-     trägst du später im Dashboard ein. Sie lässt sich nachträglich nicht ändern.
+   - **Produkt-ID:** z. B. `premium`. Erlaubt sind Kleinbuchstaben, Ziffern, Punkt und Unterstrich (höchstens 40
+     Zeichen) – genau diese ID trägst du später im Dashboard ein. Sie lässt sich nachträglich nicht ändern. Hast du
+     schon ein Abo `premium_monat` aus Teil 1 angelegt, nimm einfach das weiter – die ID ist nur ein Name, die
+     Laufzeiten kommen als Basis-Abos dazu.
    - **Name:** z. B. „Selfify Premium“ (sieht der Käufer im Kaufdialog von Google).
-3. Im Abo **ein Basis-Abo** anlegen: automatische Verlängerung, Abrechnungszeitraum **monatlich**, Preis **0,99 €**
-   (oder 1,00 €). **Der Preis wird hier festgelegt – und nur hier.** Die App zeigt den Preis an, den der Store
-   liefert; im Dashboard steht kein Preis.
-4. Das Basis-Abo **aktivieren**. Erst dann kann man es kaufen. (Nach dem Aktivieren lässt sich die Kennung des
-   Basis-Abos nicht mehr ändern, und ein Abo mit Basis-Abo lässt sich nicht mehr löschen – nur deaktivieren.)
-5. **Keine** Angebote, Testphasen oder ein zweites Basis-Abo anlegen: Diese Version der App zeigt genau einen Preis
-   je Produkt. (Mehrere Laufzeiten kommen in einem späteren Schritt.)
+3. Im Abo **drei Basis-Abos** anlegen, jeweils mit **automatischer Verlängerung** (nicht „Prepaid“, nicht
+   „Ratenzahlung“ – solche Basis-Abos zeigt die App nicht an):
+
+   | Kennung des Basis-Abos | Abrechnungszeitraum | Preis (Beispiel) | Die App zeigt |
+   |---|---|---|---|
+   | `monatlich` | Monatlich | 0,99 € | „Monatlich – 0,99 € pro Monat“ |
+   | `halbjaehrlich` | Alle 6 Monate | 4,99 € | „Halbjährlich – 4,99 € pro Halbjahr, entspricht 0,83 € pro Monat, spare 15 %“ |
+   | `jaehrlich` | Jährlich | 8,99 € | „Jährlich – 8,99 € pro Jahr, entspricht 0,75 € pro Monat, spare 24 %“ |
+
+   - **Kennungen:** nur Kleinbuchstaben, Ziffern und Bindestrich, am Anfang ein Buchstabe oder eine Ziffer, höchstens
+     63 Zeichen – **keine Umlaute** (also `halbjaehrlich`, nicht `halbjährlich`). Nach dem Aktivieren lässt sich die
+     Kennung nicht mehr ändern oder wiederverwenden. Du kannst andere Kennungen nehmen; im Dashboard trägst du dann
+     genau diese ein (Schritt 10.6).
+   - **Ersparnis:** Die App rechnet „entspricht … pro Monat“ und „spare … %“ selbst aus – immer gegenüber dem
+     monatlichen Basis-Abo (gleiche Währung) und **abgerundet**, damit nie zu viel versprochen wird. Ist ein Plan
+     nicht billiger als monatlich, zeigt sie keine Ersparnis. Gibt es kein monatliches Basis-Abo (oder zeigst du es
+     nicht an), fehlt die Ersparnis ganz; „entspricht … pro Monat“ bleibt.
+   - Google bietet als Abrechnungszeitraum u. a. wöchentlich, alle 4 Wochen, monatlich, alle 2, 3, 4, 6 und 8 Monate
+     und jährlich an. Die App kann alle anzeigen; gedacht sind die drei oben.
+4. **Preise festlegen.** Der Preis wird **nur in der Play Console** festgelegt (je Basis-Abo; Google rechnet ihn in
+   andere Länder um, du kannst Länderpreise anpassen). Im Dashboard steht kein Preis – die App zeigt immer den Preis,
+   den der Store liefert.
+5. Alle drei Basis-Abos **aktivieren**. Erst dann kann man sie kaufen. (Ein Abo mit aktivem Basis-Abo lässt sich
+   nicht mehr löschen – nur deaktivieren.)
+6. **Angebote (freiwillig)** – je Basis-Abo, z. B.:
+   - **Gratis-Testzeitraum:** „Erster Monat gratis“ (Phase „kostenlos“, Dauer 1 Monat). Die App zeigt dann
+     „1 Monat gratis, danach 0,99 € pro Monat“ und auf dem Knopf **„Gratis testen“**.
+   - **Einführungspreis:** z. B. „3 Monate für 0,49 € pro Monat“ (wiederkehrend) oder ein einmaliger Preis für einen
+     Zeitraum. Die App zeigt z. B. „0,49 € pro Monat für 3 Monate, danach 0,99 € pro Monat“.
+   - **Berechtigung:** **„Neukunden gewinnen“** (Google entscheidet, wer berechtigt ist – in der Regel nur, wer das
+     Abo noch nie hatte). **Nicht** „Vom Entwickler festgelegt“: Solche Angebote liefert Google jedem Käufer, und die
+     App würde sie allen anzeigen – sie prüft selbst nichts.
+   - Die App zeigt je Laufzeit **höchstens ein** Angebot: bevorzugt ein Gratis-Angebot (bei mehreren das längste),
+     sonst das günstigste. Wer nicht berechtigt ist, sieht nur den normalen Preis.
+   - Ratenzahlungs-Pläne und Prepaid-Basis-Abos zeigt die App nicht.
+7. **Laufzeit wechseln** brauchst du nicht einzurichten: Der Käufer wechselt in der App („Zu Jährlich wechseln“), Google
+   rechnet die Restzeit an (siehe Schritt 10.14). Lies dort aber den Hinweis zum **Ersatzmodus** – das ist der Punkt,
+   der beim ersten Testkauf am ehesten hakt.
+
+**Preise später ändern:** Jederzeit in der Play Console beim Basis-Abo. Laut Google gilt der neue Preis **für neue
+Käufer** innerhalb weniger Stunden; die App zeigt ihn von selbst (Ersparnis wird neu gerechnet). **Bestehende
+Abonnenten** zahlen erst einmal weiter den alten Preis (Google nennt das „Legacy-Preiskohorte“). Willst du auch sie
+umstellen, beendest du diese Kohorte in der Play Console:
+
+- **Preissenkung:** gilt für sie ab der nächsten Zahlung; Google informiert per E-Mail.
+- **Preiserhöhung:** in der Regel müssen die Abonnenten **zustimmen**. Google benachrichtigt sie (die erste Zahlung
+  zum neuen Preis frühestens nach etwa 37 Tagen); wer nicht zustimmt, dessen Abo wird zur nächsten Verlängerung
+  **beendet** – dann endet bei dir auch Premium (und ggf. die Offline-Musik). In manchen Ländern geht eine Erhöhung
+  ohne Zustimmung (mit Vorankündigung, Grenzen für Höhe und Häufigkeit); dafür verlangt Google aber einen Hinweis
+  **in der App** – einen eigenen Baustein dafür hat Selfify nicht. Nimm deshalb die Variante mit Zustimmung.
+- Preise von **Angeboten** (Gratis-Zeit, Einführungspreis) gelten immer nur für neue Käufer.
+- Ändere Preise nicht „zum Testen“ bei echten Abonnenten. Mehr: Googles Seite
+  [Abopreise ändern](https://developer.android.com/google/play/billing/price-changes?hl=de).
 
 ### 10.3 Lizenztester eintragen (zum Ausprobieren ohne Geld)
 
@@ -337,18 +408,34 @@ Offline-Musik, bevor sie Premium haben.
 
    Der Test prüft nur die Anmeldung bei Google. Ob das Dienstkonto wirklich auf die **Käufe deiner App** zugreifen
    darf, zeigt erst der erste Testkauf (Schritt 10.7).
-2. **„Produkt-ID des Abos“**: genau wie in der Play Console, z. B. `premium_monat`.
+2. **„Produkt-ID des Abos“**: genau wie in der Play Console, z. B. `premium` (oder `premium_monat`).
+   Darunter der Abschnitt **„Laufzeiten“**:
+   - Je Zeile eine **„Kennung des Basis-Abos“** genau wie in der Play Console: `monatlich`, `halbjaehrlich`,
+     `jaehrlich` (höchstens 6; „Laufzeit hinzufügen“, „Entfernen“).
+   - Mit **↑/↓** legst du die Reihenfolge in der App fest.
+   - **„Empfohlen“** markiert eine Laufzeit (z. B. jährlich): Die App zeigt dort den Hinweis „Empfohlen“ und wählt
+     sie vor. „Keine Empfehlung“ = vorgewählt ist die erste.
+   - **Leer lassen** = die App zeigt alle Laufzeiten, die Google liefert, die kürzeste zuerst. Trägst du eine Kennung
+     ein, die es im Store nicht gibt, fehlt sie in der App; passt keine, steht dort „Die eingestellten Laufzeiten
+     wurden im Play Store nicht gefunden (…).“
+   - Preise stehen hier nicht – die kommen aus dem Store.
 3. **„Premium in der Play-Version zum Kauf anbieten“** einschalten, speichern. Die Kaufkarte erscheint in der
    Play-Version unter *Einstellungen › Premium* – nur, wenn Schalter, Produkt-ID **und** Kaufprüfung vorhanden sind.
-4. Karte **„Premium und Offline-Hören“**:
-   - **Texte** für die Premium-Seite der App: Überschrift, Beschreibung, Vorteile (ein Vorteil je Zeile). Nenne
-     hier auch den Zeitraum („1 € im Monat“) – der Knopf in der App zeigt nur den Preis.
+4. Karte **„Premium-Leistungen“** (direkt über „Premium und Offline-Hören“): Hier legst du fest, was nur mit
+   Premium geht – Offline-Hören und die anderen Leistungen. Was jede Zeile bewirkt: Schritt 10.13. Standard ist
+   alles „Für alle“, also wie bisher.
+5. Karte **„Premium und Offline-Hören“**:
+   - **Texte** für die Premium-Seite der App: Überschrift, Beschreibung, Vorteile (ein Vorteil je Zeile). Preise
+     und Laufzeiten musst du hier nicht nennen – die zeigt die App je Laufzeit aus dem Store. Lässt du die Vorteile
+     leer, listet die App die Leistungen auf, die auf „Nur Premium“ stehen (Schritt 10.13).
    - **„Gnadenfrist ohne Verbindung (Tage)“** (Standard 7, 1–30): so lange bleibt Offline-Musik spielbar, wenn die
      App deinen Server nicht erreicht.
    - **Zuerst** allen, die weiter offline hören sollen, Premium geben (*Benutzer › Premium* oder ein Code).
      Admins brauchen kein Premium.
-   - **Dann** **„Offline-Hören nur mit Premium“** einschalten. Das Dashboard fragt nach, weil ab jetzt alle ohne
-     Premium ihre Offline-Musik auf dem Gerät verlieren, sobald ihre App den Stand geprüft hat. Der Schalter gilt
+   - **Dann** in der Karte „Premium-Leistungen“ die Zeile **„Offline-Hören“** auf **„Nur Premium“** stellen (das ist
+     der frühere Schalter „Offline-Hören nur mit Premium“ – gleiche Wirkung, neuer Platz). Das Dashboard fragt
+     nach, weil ab jetzt alle ohne Premium ihre Offline-Musik auf dem Gerät verlieren, sobald ihre App den Stand
+     geprüft hat. Der Schalter gilt
      für alle App-Ausgaben (Play, GitHub, Windows, iPhone) – **aber erst ab der App-Version, die die Sperre kennt.**
      Ältere Apps wissen nichts davon: Sie laden weiter aufs Gerät und löschen nie.
    - Deshalb gibt es darunter **„Sperre durchsetzen ab App-Build“** (`offline_min_client_build`, Standard 0 = aus).
@@ -369,8 +456,11 @@ gibt es Premium nur per Code oder von dir) – und umgekehrt.
 
 Mit einem Lizenztester-Konto (Schritt 10.3) und der Play-Version aus dem Test-Track:
 
-1. In der App *Einstellungen › Premium*: Der Knopf zeigt den Preis aus dem Store („Für 0,99 € abonnieren“). Steht
-   dort „Das Abo wurde im Play Store nicht gefunden“, stimmt die Produkt-ID nicht oder das Basis-Abo ist nicht aktiv.
+1. In der App *Einstellungen › Premium*: Je Laufzeit eine Karte mit dem Preis aus dem Store (z. B. „Jährlich“,
+   „8,99 € pro Jahr“, „entspricht 0,75 € pro Monat“, „spare 24 %“), darunter ein Knopf („Jährlich abonnieren“ bzw.
+   „Gratis testen“ bei einem Gratis-Angebot). Steht dort „Das Abo wurde im Play Store nicht gefunden“, stimmt die
+   Produkt-ID nicht oder kein Basis-Abo ist aktiv; „Die eingestellten Laufzeiten wurden im Play Store nicht
+   gefunden“ heißt: die Kennungen im Dashboard passen nicht zur Play Console.
 2. Kaufen mit „Testkarte, immer genehmigt“ → „Premium ist freigeschaltet. Danke!“. Im Dashboard unter
    **Premium-Codes › Käufe über Google Play** steht der Kauf mit dem Zusatz „Test“.
 3. Musik aufs Gerät laden – das geht jetzt.
@@ -405,6 +495,21 @@ Mit einem Lizenztester-Konto (Schritt 10.3) und der Play-Version aus dem Test-Tr
 10. **Mindest-Build** (falls du „Sperre durchsetzen ab App-Build“ nutzt): eine höhere Zahl als die Build-Nummer
     deiner App eintragen und mit einem Konto **ohne** Premium einen Titel starten → „Bitte aktualisiere die App.“
     Mit Premium oder als Admin spielt derselbe Titel. Danach die Zahl wieder richtig stellen.
+11. **Laufzeit wechseln:** Mit dem Lizenztester „Jährlich“ kaufen, dann in der App „Monatlich“ antippen und „Zu
+    Monatlich wechseln“. Erwartet: Kaufdialog von Google, danach „Laufzeit gewechselt. Google rechnet die restliche
+    Zeit deines bisherigen Abos an.“; Premium bleibt ohne Unterbrechung. Im Dashboard unter *Käufe über Google Play*
+    steht der alte Kauf als **„ersetzt“** und der neue mit Laufzeit **`monatlich`**; der Benutzer hat nur **eine**
+    Lizenz (kein doppeltes Premium). Im Test verlängert sich ein Jahres-Abo etwa alle 30 Minuten, ein Halbjahres-Abo
+    alle 15, ein Monats-Abo alle 5 Minuten. **Scheitert der Wechsel mit einer Fehlermeldung von Google**, siehe
+    Schritt 10.14 („Ersatzmodus“).
+12. **Angebot:** Mit einem **zweiten** Lizenztester, der das Abo noch nie hatte, muss das Angebot erscheinen (z. B.
+    „1 Monat gratis, danach 0,99 € pro Monat“, Knopf „Gratis testen“; im Test dauert die Gratis-Zeit etwa 3 Minuten).
+    Beim ersten Tester, der schon gekauft hat, darf es nicht mehr erscheinen. (Mit der App „Play Billing Lab“ von
+    Google lässt sich ein Angebot auch mehrfach mit demselben Tester testen.)
+13. **Leistungen:** Ein Konto ohne Premium, eine Leistung auf „Nur Premium“ (z. B. Songtexte) – die App zeigt
+    „Songtexte gibt es mit Premium.“; mit Premium oder als Admin erscheinen sie. Dann einen Code mit nur dieser
+    Leistung erzeugen, einlösen: genau diese Leistung ist frei, die anderen gesperrten bleiben gesperrt (Schritt
+    10.13, „So prüfst du es“).
 
 ### 10.8 Was passiert bei Kündigung, Erstattung und ohne Internet?
 
@@ -412,6 +517,7 @@ Mit einem Lizenztester-Konto (Schritt 10.3) und der Play-Version aus dem Test-Tr
 |---|---|---|
 | Benutzer **kündigt** das Abo | Premium läuft bis zum bezahlten Enddatum weiter, danach endet es | Nach dem Enddatum, sobald die App den Server fragt: Offline-Musik wird **vom Gerät gelöscht**, Hinweis in der App |
 | Abo **verlängert** sich | Enddatum wird hochgesetzt | nichts |
+| Benutzer **wechselt die Laufzeit** (in der App) | Google erzeugt einen **neuen Kauf**, der auf den alten verweist (`linkedPurchaseToken`). Der Server führt den alten als „ersetzt“, die Lizenz wandert zum neuen Kauf; Enddatum und Laufzeit kommen vom neuen | nichts – Premium und Offline-Musik bleiben. Kurzer Zwischenstand möglich, siehe Schritt 10.14 |
 | **Zahlungsproblem** (Kulanzzeit bei Google) | Premium bleibt, solange Google den Zugang verlängert | Hinweis „Zahlungsproblem – bitte in Google Play prüfen“ |
 | Zahlung **ausgesetzt** / Abo **pausiert** | Premium endet sofort; zahlt der Benutzer nach, gilt es wieder | Offline-Musik wird gelöscht; nach der Zahlung muss neu geladen werden |
 | **Erstattung mit Widerruf des Zugangs** (durch Google oder dich in der Play Console) | Premium endet, sobald der Server es bei Google sieht | Offline-Musik wird gelöscht |
@@ -449,10 +555,13 @@ Wichtig zu wissen:
 - **Codes und Kauf zusammen:** Ein Code, der während eines laufenden Abos eingelöst wird, hängt sich hinter das
   aktuelle Abo-Ende. Verlängert Google das Abo danach, überlappen sich die Zeiten (die Code-Zeit „verfällt“ dann
   teilweise) – lös Codes also besser erst ein, wenn das Abo gekündigt ist. Endet das Abo vorzeitig (Erstattung mit
-  Widerruf), beginnt die angehängte Code-Zeit sofort. Unbegrenztes Premium (Code oder Vergabe) schlägt alles – so
-  jemand braucht kein Abo.
+  Widerruf), beginnt die angehängte Code-Zeit sofort. Ein Code mit **Teilumfang** hängt sich nicht hinten an,
+  sondern läuft sofort ab dem Einlösen (das Abo enthält seine Leistungen ja schon). Unbegrenztes Premium mit allen
+  Leistungen (Code oder Vergabe) schlägt alles – so jemand braucht kein Abo und sieht keinen Kaufknopf; mit
+  unbegrenztem **Teil**-Premium kann man ein Abo kaufen.
 - **Premium aus Codes und aus dem Dashboard zählt für das Offline-Hören genauso wie ein Kauf** – und endet genauso:
-  Nach Ablauf, Sperren oder Entziehen löscht die App die Offline-Musik.
+  Nach Ablauf, Sperren oder Entziehen löscht die App die Offline-Musik. Ein Code ohne „Offline-Hören“ im Umfang
+  erlaubt kein Offline-Hören.
 - **Ein Kauf gehört zu einem Konto.** Derselbe Google-Kauf lässt sich nicht für ein zweites Selfify-Konto verwenden.
 - **Mehrere Benutzer an einem Gerät:** Solange „Offline-Hören nur mit Premium“ **an** ist, gehört die Offline-Musik
   zu dem Konto, das sie geladen hat. Bei **jedem** Wechsel des Kontos oder des Servers wird sie gelöscht („Die
@@ -485,12 +594,13 @@ Wichtig zu wissen:
 
 - **Datensicherheit:** zusätzlich *Finanzdaten › Kaufverlauf* angeben (erhoben, zur Funktion der App /
   Kontoverwaltung, nicht optional für Käufer). Siehe Liste in Schritt 4.
-- **Store-Eintrag:** Schreib in die Beschreibung, was Premium kostet und bringt. Fragt ein Formular, ob die App
+- **Store-Eintrag:** Schreib in die Beschreibung, was Premium kostet (alle Laufzeiten) und bringt – passend zu dem,
+  was du unter „Premium-Leistungen“ auf „Nur Premium“ gestellt hast. Fragt ein Formular, ob die App
   In-App-Käufe enthält: „Ja“.
 - **Datenschutzerklärung:** Die Vorlage unter `/datenschutz` nennt die Speicherung der Kaufkennung bereits.
 - **Zugang für Prüfer** (Schritt 7): Das Prüfer-Konto `playtest` sollte Premium haben (Dashboard › Benutzer ›
-  Premium), damit der Prüfer auch das Offline-Hören sieht – oder beschreibe unter „Hinweise für Prüfer“, dass
-  Offline-Hören Premium braucht.
+  Premium), damit der Prüfer auch das Offline-Hören und die anderen Premium-Leistungen sieht – oder beschreibe unter
+  „Hinweise für Prüfer“, was Premium braucht.
 - **Codes:** weiterhin nur verschenken (Schritt 6).
 
 ### 10.11 Nicht geprüft – bitte selbst kontrollieren
@@ -527,12 +637,45 @@ ist alles, was sich mit Tests und Attrappen prüfen lässt; **ungeprüft** ist:
   iPhone sichert den Dokumente-Ordner der App samt Offline-Musik in iCloud. Die Sperre und das Löschen bei
   abgelaufenem Premium gelten überall.
 - **„Sperre durchsetzen ab App-Build“** ist mit Tests geprüft, nicht mit echten alten App-Versionen auf Geräten.
-- Der **Abrechnungszeitraum** steht nicht auf dem Kaufknopf der App (nur der Preis); Googles Kaufdialog zeigt ihn.
+- **Premium Teil 2 (Laufzeiten, Angebote, Wechsel, Leistungen)** – zusätzlich ungeprüft:
+  - **Ersatzmodus beim Wechsel der Laufzeit** (Schritt 10.14): Die App verlangt „Sofort abrechnen“
+    (`CHARGE_FULL_PRICE`), einen der beiden Modi, die Googles Entwicklerseite für den Wechsel **zwischen Basis-Abos
+    desselben Abos** nennt. **Ob der Wechsel so klappt, zeigt erst ein Testkauf.**
+  - Die genauen **Menünamen** für Basis-Abos, Angebote, Phasen und die Berechtigung („Neukunden gewinnen“, „Vom
+    Entwickler festgelegt“) in der deutschen Play Console. Belegt aus Googles englischer Hilfe und Entwicklerseiten:
+    Basis-Abos und Angebote, die Berechtigungen *New customer acquisition / Upgrade / Developer determined*, die
+    wählbaren Abrechnungszeiträume und die Regeln für Kennungen.
+  - Ob 0,99 € / 4,99 € / 8,99 € als Preise **auswählbar** sind (Google gibt Preisgrenzen je Land vor).
+  - **Preisänderungen bei Bestandskunden:** aus Googles Entwicklerseite „Abopreise ändern“ zusammengefasst; wie die
+    Play Console das heute anbietet und wie lange die Fristen im Einzelfall sind, ist nicht ausprobiert.
+  - Die Felder `lineItems[].offerDetails.basePlanId` / `offerId` der Abfrage `purchases.subscriptionsv2` (daraus liest
+    der Server die Laufzeit für das Dashboard): laut Googles Schnittstellenbeschreibung und Berichten von Entwicklern
+    vorhanden, aber nie gegen Google gelaufen. Fehlen sie, steht im Dashboard bei „Laufzeit“ nur „–“; Premium
+    funktioniert trotzdem.
+  - Dass Google **ein** Angebot für Neukunden einem Tester, der das Abo schon hatte, nicht mehr anbietet (Entwickler
+    berichten teils Abweichungen beim Testen).
+  - Das Play-Bundle mit dem jetzt direkt eingebundenen `in_app_purchase_android` und die GitHub-APK mit dem dritten
+    Platzhalter auf einem echten Gerät.
 
 ### 10.12 Zurück auf die vorherige Server-Version (Rücksprung)
 
-Falls nach dem Update etwas nicht stimmt und du den Server auf die Version **vor** dem Kauf über Google Play
-zurückstellen willst:
+**Nur Premium Teil 2 zurücknehmen** (Laufzeiten, Leistungen, Codes mit Umfang; der Kauf über Google Play bleibt):
+
+1. In der Karte „Premium-Leistungen“ alles außer Offline-Hören auf „Für alle“ stellen, das Abzeichen aus, speichern.
+2. Sicherung des Datenordners anlegen.
+3. Mit der noch laufenden neuen Version: `docker exec -u 99:100 selfify alembic downgrade 0007`
+   Das entfernt den Umfang von Codes und Lizenzen und die Laufzeit der Käufe. **Lizenzen und Codes mit Teilumfang
+   werden dabei zu vollem Premium** (die alte Version kennt keinen Umfang). Die neuen Einstellungen bleiben in der
+   Datenbank liegen, die alte Version beachtet sie nicht.
+4. Gleich danach auf das alte Image umstellen. Wer bei Google auf eine andere Laufzeit gewechselt hat, behält Premium
+   (der Kauf bleibt verbucht, nur die Anzeige der Laufzeit fehlt). Die neue App zeigt gegen den alten Server alle
+   Laufzeiten, die Google liefert (ohne Reihenfolge und „Empfohlen“ aus dem Dashboard), und keine Sperren der neuen
+   Leistungen.
+
+*Geprüft ist die Rückwärts-Migration mit einem automatischen Test, nicht im laufenden Unraid-Container.*
+
+**Ganz zurück auf die Version vor dem Kauf über Google Play:** Falls nach dem Update etwas nicht stimmt und du den
+Server auf die Version **vor** dem Kauf über Google Play zurückstellen willst:
 
 1. **Zuerst die Schalter aus:** „Premium in der Play-Version zum Kauf anbieten“ und – wenn niemand seine Musik
    verlieren soll – „Offline-Hören nur mit Premium“ ausschalten, speichern. (Die alte Server-Version kennt beide
@@ -544,6 +687,8 @@ zurückstellen willst:
    ```bash
    docker exec -u 99:100 selfify alembic downgrade 0006
    ```
+
+   (Von der Version mit Premium Teil 2 aus nimmt derselbe Befehl Teil 2 gleich mit zurück – siehe oben.)
 
    Das entfernt die Tabelle der Käufe. Lizenzen aus Käufen bleiben als Historie stehen, werden aber **beendet** und
    als Vergabe mit dem Vermerk „Abo über Google Play (beendet beim Rücksprung) …“ geführt: Die alte Version kennt
@@ -562,6 +707,95 @@ wiederherstellen“** in der App das gekaufte Premium wieder her (die Datenbank 
 hochgezogen). Ohne Schritt 3 kennt die alte Version den Stand der Datenbank nicht und startet nicht – dann die
 neue Version noch einmal starten und Schritt 3 nachholen.
 
+### 10.13 Premium-Leistungen festlegen
+
+Dashboard › **App-Einstellungen › Premium-Leistungen**. Je Leistung wählst du **„Für alle“** oder **„Nur
+Premium“**. **Standard ist alles „Für alle“** – solange du nichts umstellst, verhalten sich Server und Apps genau wie
+vor diesem Update. **Admins sind nie eingeschränkt.** Die Schalter gelten für alle App-Ausgaben (Play, GitHub,
+Windows, iPhone); Premium gibt es außerhalb der Play-Version per Code oder von dir.
+
+| Leistung | Ohne Premium, wenn „Nur Premium“ | Einstellung dazu | Wo durchgesetzt |
+|---|---|---|---|
+| **Offline-Hören** | Nichts aufs Gerät laden; vorhandene Offline-Musik wird gelöscht (Schritt 10.6, 10.8) | Gnadenfrist, „Sperre durchsetzen ab App-Build“ (Karte darunter) | **App**; ältere Apps nur über „Sperre durchsetzen ab App-Build“ |
+| **Keine Werbung** | Werbung (Banner), wenn du sie eingeschaltet hast (Schritt 5) | – nicht schaltbar: immer ein Premium-Vorteil | **App** (nur Play-Version) |
+| **Höhere Tonqualität** | Musik kommt höchstens in „Normal“ (160 kbit/s) oder „Datensparend“ (96 kbit/s) – auch beim Offline-Laden. In der App tragen höhere Stufen ein Schloss; die gespeicherte Einstellung bleibt und gilt mit Premium wieder | „Höchstens Normal (160 kbit/s)“ (Standard) oder „Höchstens Datensparend (96 kbit/s)“ | **Server** – er wandelt den Titel mit **ffmpeg** um. Fehlt ffmpeg, steht dort „ffmpeg fehlt auf dem Server – diese Leistung lässt sich nicht einschränken.“ und die Zeile lässt sich nicht auf „Nur Premium“ stellen |
+| **Videos ansehen** | Videos laufen nur als Ton. Die App zeigt „Videos ansehen gibt es mit Premium.“ und die Knöpfe „Als Ton abspielen“ / „Zu Premium“ | – | **Server** (das Video selbst wird ohne Premium nicht ausgeliefert, der Ton schon) |
+| **Songtexte** | Keine Songtexte; die App zeigt „Songtexte gibt es mit Premium.“ | – | **Server** |
+| **Mehr Song-Wünsche** | Höchstens **N Wünsche in 7 Tagen**; die App zeigt „Noch 2 von 3 Wünschen diese Woche“. Mit Premium ohne Wochengrenze | „Wünsche pro Woche“ (Standard 3, 0–100; **0 = ohne Premium gar keine Wünsche**) | **Server** |
+| **Überspringen** | Höchstens **N-mal pro Stunde** „Weiter“; danach „Du hast in dieser Stunde schon N-mal übersprungen. Mit Premium unbegrenzt.“ | „Mal pro Stunde“ (Standard 6, 1–100) | **nur App** (siehe unten) |
+| **Premium-Abzeichen** | – (kein „Für alle“: es ist ein Ein/Aus) | Haken „Premium-Nutzer bekommen ein Abzeichen im Profil“ (Standard aus) | **App**; sieht nur der Benutzer selbst in seinem Profil (Einstellungen) |
+
+Die Zusatzfelder (Qualität, Wünsche, Überspringen) sind ausgegraut, solange die Zeile auf „Für alle“ steht; ihr Wert
+wird trotzdem gespeichert.
+
+**Die Premium-Texte der App passen sich an:** Lässt du unter „Premium und Offline-Hören“ die Vorteile leer, listet
+die Premium-Seite genau die Leistungen auf, die auf „Nur Premium“ stehen (z. B. „Beste Tonqualität – ohne Premium
+höchstens 160 kbit/s“, „Unbegrenzt überspringen – ohne Premium 6-mal pro Stunde“). Steht nur Offline-Hören auf „Nur
+Premium“, bleiben die Texte wörtlich wie bisher. Eigene Vorteile-Zeilen im Dashboard haben immer Vorrang – passe sie
+dann selbst an.
+
+**Ehrliche Grenzen:**
+
+- **Überspringen lässt sich nur in der App begrenzen.** Der Server sieht nicht, wann jemand „Weiter“ drückt. Ältere
+  App-Versionen zählen gar nicht mit; wer die App neu installiert oder ihre Daten löscht, fängt von vorn an. Nicht
+  gezählt werden: Weiterspielen am Titelende, „Zurück“, Spulen und die Wahl eines früheren Titels in der Warteschlange.
+  Ebenfalls nicht gezählt: das **Antippen eines anderen Titels in einer Liste** (Album, Playlist, Suche) – das startet
+  die Liste neu und ist kein „Weiter“. Und **startet die App ohne Verbindung** (Einstellungen unbekannt), gilt bis zur
+  nächsten Verbindung keine Grenze.
+- **Qualität während eines Titels:** Endet Premium oder stellst du „Höhere Tonqualität“ auf „Nur Premium“, während
+  jemand gerade in Originalqualität hört, kann das Spulen in diesem einen Titel abbrechen (der Server liefert unter
+  derselben Adresse jetzt die gedeckelte Fassung). Der nächste Titel läuft normal.
+- **Wünsche** zählen rollierend über die letzten 7 Tage (nicht Montag bis Sonntag). Ein zurückgezogener offener
+  Wunsch gibt seinen Platz wieder frei. Die allgemeinen Grenzen gegen Missbrauch (höchstens 20 offene Wünsche,
+  15 pro Tag) gelten für alle, auch mit Premium. Ohne Grenze („Für alle“) gilt nur diese allgemeine Grenze, wie bisher.
+- **Ältere Apps** kennen die neuen Sperren nicht: Die Tonqualität wird trotzdem vom Server gedeckelt (die Musik
+  läuft, nur leiser in der Qualität), bei gesperrten Videos und Songtexten zeigen sie nur eine allgemeine
+  Fehlermeldung, Überspringen bleibt frei, und **jedes** Premium macht dort werbefrei (auch ein Code ohne „Keine
+  Werbung“).
+- **Kopierschutz ist das nicht.** Wer die App umbaut, umgeht die Sperren, die nur in der App sitzen (Offline,
+  Überspringen, Werbung). Was der Server durchsetzt (Qualität, Videos, Songtexte, Wünsche), gilt auch dann.
+
+**Reihenfolge:** Erst Familie und Freunden Premium geben (*Benutzer › Premium* oder Codes), **dann** Leistungen
+auf „Nur Premium“ stellen – sonst merken sie es zuerst.
+
+**So prüfst du es (Ende-zu-Ende):**
+
+1. Unter Premium-Leistungen z. B. Offline-Hören, Höhere Tonqualität, Videos und Songtexte auf „Nur Premium“ stellen.
+2. *Premium-Codes › Neue Codes erzeugen*: „Alle Leistungen“ abhaken, nur **Videos ansehen** und **Songtexte**
+   anhaken, Code erzeugen. In der Liste steht bei „Umfang“: „Videos ansehen, Songtexte“.
+3. Mit einem Konto ohne Premium einlösen. Erwartet: Videos und Songtexte gehen; Offline-Laden ist gesperrt; die
+   Qualität ist gedeckelt. Im Benutzer-Dialog steht die Lizenz mit demselben Umfang, in der Benutzerliste
+   „Teilumfang“.
+4. Mit einem Admin-Konto: alles geht, auch ohne Premium.
+
+### 10.14 Laufzeit wechseln – was Nutzer erleben
+
+- **In der App:** Wer ein laufendes Abo hat, sieht bei seiner Laufzeit „Dein Abo“ und bei den anderen den Knopf
+  **„Zu … wechseln“** (z. B. „Zu Jährlich wechseln“). Es öffnet sich der Kaufdialog von Google; danach meldet die App
+  „Laufzeit gewechselt. Google rechnet die restliche Zeit deines bisherigen Abos an.“
+- **Abrechnung:** Die App verlangt bei Google den Wechsel **sofort mit voller Zahlung** (`CHARGE_FULL_PRICE`,
+  „Sofort abrechnen“): Die neue Laufzeit wird gleich bezahlt, die schon bezahlte Restzeit des alten Abos hängt Google
+  anteilig hinten an – es geht also nichts verloren. Das ist einer der beiden Modi, die Google für den Wechsel
+  **zwischen Basis-Abos desselben Abos** vorsieht (der andere wäre „Zum nächsten Abrechnungsdatum“). „Erst zum
+  Laufzeitende wechseln“ bietet die App nicht an.
+- **Vorbehalt (ungeprüft):** Ob Google den Wechsel so annimmt, zeigt erst ein Testkauf. Lehnt Google ihn ab
+  (Fehlermeldung „Der Kauf hat nicht geklappt: …“ in der App), melde das – dann muss die App angepasst werden. Bis
+  dahin können Käufer die Laufzeit in Google Play selbst ändern oder kündigen und neu abschließen.
+- **Google Play gestört:** Lässt sich das laufende Abo gerade nicht abfragen, sagt die App „Google Play ist gerade
+  nicht erreichbar. Versuche den Wechsel bitte gleich noch einmal.“
+- **Anderes Google-Konto:** Gehört das Abo zu einem anderen Google-Konto als dem auf dem Handy, sagt die App „Dein
+  Abo gehört zu einem anderen Google-Konto. Wechsle die Laufzeit bitte dort in Google Play.“
+- **Zahlungsproblem, pausiert, ausstehend:** Dann gibt es keine Wechsel-Knöpfe, nur „Abo verwalten“.
+- **Auf dem Server:** Google erzeugt beim Wechsel einen **neuen Kauf**, der auf den alten verweist
+  (`linkedPurchaseToken`); der alte endet bei Google. Der Server führt den alten als „ersetzt“, hängt die Lizenz an
+  den neuen Kauf und zeigt dessen Laufzeit im Dashboard. Es entsteht kein doppeltes Premium.
+- **Kurzer Zwischenstand:** Kommt der neue Kauf nicht gleich beim Server an (Netz weg, App geschlossen), sieht der
+  Server kurz nur den beendeten alten Kauf. Die App löscht in dieser Zeit keine Offline-Musik, solange sie sich den
+  neuen Kauf gemerkt hat; spätestens beim nächsten Start meldet sie ihn nach. Ist die App genau dazwischen
+  abgestürzt, kann Premium bis zum nächsten Start fehlen.
+- **Angebote beim Wechsel:** Ein Gratis- oder Einführungsangebot für Neukunden bekommt beim Wechsel in der Regel
+  niemand, der das Abo schon hat.
+
 ## Checkliste
 
 - [ ] Server aktualisiert, `PUBLIC_URL` und `OPERATOR_*` gesetzt, `/datenschutz` und `/impressum` angesehen
@@ -575,13 +809,18 @@ neue Version noch einmal starten und Schritt 3 nachholen.
 
 **Zusätzlich, wenn du Premium verkaufst (Schritt 10):**
 
-- [ ] Zahlungsprofil fertig; Abo mit **einem** aktiven Basis-Abo (monatlich, 0,99 €) angelegt, Produkt-ID notiert
+- [ ] Zahlungsprofil fertig; Abo mit **drei** aktiven Basis-Abos (`monatlich`, `halbjaehrlich`, `jaehrlich`, Preise
+      festgelegt) angelegt, Produkt-ID und Kennungen notiert
+- [ ] Angebote (falls gewünscht) mit Berechtigung „Neukunden gewinnen“, **nicht** „Vom Entwickler festgelegt“
+- [ ] Dashboard › Laufzeiten: Kennungen eingetragen, Reihenfolge und „Empfohlen“ gesetzt (oder leer = alle)
 - [ ] Lizenztester eingetragen
 - [ ] Dienstkonto angelegt, API aktiviert, in der Play Console für die App berechtigt
 - [ ] `play-service-account.json` liegt in `/mnt/user/appdata/selfify/` (Rechte 600, Besitzer 99:100), nirgends sonst
 - [ ] Dashboard: „Kaufprüfung eingerichtet“, „Verbindung testen“ grün, Produkt-ID eingetragen, Kauf eingeschaltet
-- [ ] Premium-Texte geschrieben (mit „im Monat“), Gnadenfrist gewählt
-- [ ] Familie/Freunde haben Premium, **danach** „Offline-Hören nur mit Premium“ eingeschaltet
+- [ ] Premium-Texte geschrieben (oder leer gelassen – dann passen sich die Texte der App den Leistungen an),
+      Gnadenfrist gewählt
+- [ ] Familie/Freunde haben Premium, **danach** „Offline-Hören“ (und weitere Leistungen) auf „Nur Premium“ gestellt
+- [ ] Für „Höhere Tonqualität“: ffmpeg auf dem Server vorhanden (sonst lässt sich die Zeile nicht umstellen)
 - [ ] Neue App-Version überall verteilt, **danach** „Sperre durchsetzen ab App-Build“ auf ihre Build-Nummer gesetzt
       (vorher laden ältere Apps weiter); mit einem Konto ohne Premium und alter App: „Bitte aktualisiere die App.“
 - [ ] Testkauf mit Lizenztester: Premium aktiv, Kauf im Dashboard, **keine** Erstattungs-Mail nach einigen Minuten
@@ -589,6 +828,10 @@ neue Version noch einmal starten und Schritt 3 nachholen.
       werden“ (die ausbleibende Erstattungs-Mail allein beweist das nicht – auch das Handy bestätigt)
 - [ ] Code getestet: schaltet Offline-Hören frei; nach Entziehen/Sperren wird die Offline-Musik gelöscht
 - [ ] Kündigung getestet: Nach Ablauf wird die Offline-Musik vom Gerät gelöscht
+- [ ] Laufzeitwechsel getestet (jährlich → monatlich): alter Kauf „ersetzt“, neuer mit Laufzeit `monatlich`, Premium
+      ohne Unterbrechung – oder, falls Google den Wechsel ablehnt, gemeldet (Schritt 10.14)
+- [ ] Angebot mit einem neuen Tester gesehen; beim Tester mit früherem Kauf nicht
+- [ ] Code mit Teilumfang getestet: genau diese Leistungen frei, andere gesperrt
 - [ ] „Käufe wiederherstellen“ auf zweitem Gerät; anderes Selfify-Konto wird abgelehnt
 - [ ] Play-Version **und** GitHub-Version starten auf einem echten Handy
 - [ ] Datensicherheit um „Kaufverlauf“ ergänzt; Gebühren auf Googles Seite nachgelesen

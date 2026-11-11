@@ -9,9 +9,11 @@ import '../data/api.dart';
 import '../data/models.dart';
 import '../state/app_config.dart';
 import '../state/auth.dart';
-import '../state/offline_access.dart' show accountKey;
+import '../state/offline_access.dart' show accountKey, unverifiedPurchasesKey;
+import 'plans.dart';
 import 'purchase_gateway.dart';
 
+export 'plans.dart';
 export 'purchase_gateway.dart';
 
 /// Texte des Kaufs (auch in Tests benutzt).
@@ -25,8 +27,12 @@ abstract final class BillingText {
   static const nothingToRestore = 'Für dieses Google-Konto wurde kein Kauf gefunden.';
   static const noRunningSubscription = 'Kein laufendes Abo gefunden.';
 
+  static const changed = 'Laufzeit gewechselt. Google rechnet die restliche Zeit deines bisherigen Abos an.';
+  static const changeNotOnDevice = storeChangeNotOnDevice;
+
   static String failed(String message) => 'Der Kauf hat nicht geklappt: $message';
   static String productMissing(String ids) => 'Das Abo wurde im Play Store nicht gefunden ($ids).';
+  static String plansMissing(String ids) => 'Die eingestellten Laufzeiten wurden im Play Store nicht gefunden ($ids).';
 }
 
 class BillingState {
@@ -36,6 +42,15 @@ class BillingState {
   /// Der Store ist erreichbar.
   final bool available;
   final List<StoreProduct> products;
+
+  /// Die angebotenen Laufzeiten in Anzeigereihenfolge (siehe `shownPlans`).
+  final List<StorePlan> plans;
+
+  /// Ausgewählte Laufzeit (`basePlanId`) – vorausgewählt die empfohlene, sonst die erste.
+  final String? selectedPlan;
+
+  /// Zu welchem Abo-Produkt die ausgewählte Laufzeit gehört (dieselbe Kennung kann es in mehreren Produkten geben).
+  final String? selectedProduct;
 
   /// Ein Kauf oder eine Wiederherstellung läuft.
   final bool busy;
@@ -48,6 +63,9 @@ class BillingState {
     this.loading = false,
     this.available = false,
     this.products = const [],
+    this.plans = const [],
+    this.selectedPlan,
+    this.selectedProduct,
     this.busy = false,
     this.notice,
     this.error,
@@ -57,6 +75,9 @@ class BillingState {
     bool? loading,
     bool? available,
     List<StoreProduct>? products,
+    List<StorePlan>? plans,
+    String? Function()? selectedPlan,
+    String? Function()? selectedProduct,
     bool? busy,
     String? Function()? notice,
     String? Function()? error,
@@ -65,10 +86,25 @@ class BillingState {
         loading: loading ?? this.loading,
         available: available ?? this.available,
         products: products ?? this.products,
+        plans: plans ?? this.plans,
+        selectedPlan: selectedPlan != null ? selectedPlan() : this.selectedPlan,
+        selectedProduct: selectedProduct != null ? selectedProduct() : this.selectedProduct,
         busy: busy ?? this.busy,
         notice: notice != null ? notice() : this.notice,
         error: error != null ? error() : this.error,
       );
+
+  /// Die ausgewählte Laufzeit (oder die erste).
+  StorePlan? get selected {
+    if (plans.isEmpty) return null;
+    for (final plan in plans) {
+      if (plan.basePlanId == selectedPlan && (selectedProduct == null || plan.productId == selectedProduct)) return plan;
+    }
+    for (final plan in plans) {
+      if (plan.basePlanId == selectedPlan) return plan;
+    }
+    return plans.first;
+  }
 }
 
 /// Kauf anbieten? Nur wenn alles stimmt: Play-Version auf Android, vom Betreiber eingeschaltet (der Server meldet
@@ -88,7 +124,7 @@ final billingVisibleProvider = Provider<bool>((ref) {
 class BillingController extends Notifier<BillingState> {
   /// Käufe, die der Server noch nicht bestätigen konnte (kein Netz, Server nicht erreichbar, abgemeldet) – jeder
   /// mit dem Konto (Server und Benutzer), das gekauft hat: Nur dieses Konto reicht ihn später nach.
-  static const unverifiedKey = 'billing.unverified';
+  static const unverifiedKey = unverifiedPurchasesKey;
 
   /// So lange wartet „Käufe wiederherstellen“ auf eine Antwort des Stores (in Tests kürzer).
   static Duration restoreTimeout = const Duration(seconds: 10);
@@ -108,6 +144,9 @@ class BillingController extends Notifier<BillingState> {
   bool _retrying = false;
   bool _askingStore = false;
 
+  /// Ein Wechsel der Laufzeit läuft: Das „aktiv“ des Servers meldet dann [BillingText.changed].
+  bool _changing = false;
+
   /// Konto, das zuletzt angemeldet war, während der Kauf sichtbar war (für Käufe, deren Meldung erst nach dem
   /// Abmelden eintrifft).
   String? _lastAccount;
@@ -123,6 +162,7 @@ class BillingController extends Notifier<BillingState> {
     _restoring = false;
     _restoreAsked = false;
     _restoreActivated = false;
+    _changing = false;
     if (!ref.watch(billingVisibleProvider)) return const BillingState();
     final gateway = ref.watch(purchaseGatewayProvider);
     if (gateway == null) return const BillingState();
@@ -132,6 +172,8 @@ class BillingController extends Notifier<BillingState> {
     _lastAccount = _account ?? _lastAccount;
     // Neu laden, wenn der Betreiber andere Produkte einträgt
     ref.watch(appConfigValueProvider.select((c) => c.billingProductIds.join(',')));
+    // … und andere Laufzeiten, eine andere Reihenfolge oder Empfehlung
+    ref.watch(appConfigValueProvider.select((c) => '${c.billingBasePlans.join(',')}|${c.billingRecommendedPlan}'));
     // Der Strom liefert nur, was während der laufenden App passiert (und was die App selbst abfragt): Käufe, die
     // beim letzten Mal nicht fertig wurden, meldet Google Play nicht von selbst – dafür unten [catchUp].
     final subscription = gateway.purchases.listen(_onPurchase);
@@ -197,40 +239,93 @@ class BillingController extends Notifier<BillingState> {
   Future<void> load() async {
     final gateway = _gateway;
     if (gateway == null) return;
-    final ids = ref.read(appConfigValueProvider).billingProductIds.toSet();
+    final config = ref.read(appConfigValueProvider);
+    final ids = config.billingProductIds.toSet();
     state = state.copyWith(loading: true, error: () => null);
     try {
       if (!await gateway.isAvailable()) {
         if (!ref.mounted) return;
-        state = state.copyWith(loading: false, available: false, products: [], error: () => BillingText.storeUnavailable);
+        state = state.copyWith(
+            loading: false, available: false, products: [], plans: [], error: () => BillingText.storeUnavailable);
         return;
       }
       final products = await gateway.loadProducts(ids);
       if (!ref.mounted) return;
+      final plans = shownPlans(products, config);
+      final previous = state.selectedPlan;
+      final keep = plans.any((p) => p.basePlanId == previous);
+      final selected =
+          keep ? previous : recommendedPlan(plans, config) ?? (plans.isEmpty ? null : plans.first.basePlanId);
+      final previousProduct = state.selectedProduct;
+      final selectedProduct = keep && plans.any((p) => p.basePlanId == previous && p.productId == previousProduct)
+          ? previousProduct
+          : plans.where((p) => p.basePlanId == selected).map((p) => p.productId).firstOrNull;
       state = state.copyWith(
         loading: false,
         available: true,
         products: products,
-        error: () => products.isEmpty ? BillingText.productMissing(ids.join(', ')) : null,
+        plans: plans,
+        selectedPlan: () => selected,
+        selectedProduct: () => selectedProduct,
+        error: () => plans.isNotEmpty
+            ? null
+            : config.billingBasePlans.isNotEmpty && products.isNotEmpty
+                ? BillingText.plansMissing(config.billingBasePlans.join(', '))
+                : BillingText.productMissing(ids.join(', ')),
       );
     } catch (e) {
       if (!ref.mounted) return;
       debugPrint('Abos konnten nicht geladen werden: $e');
-      state = state.copyWith(loading: false, available: false, products: [], error: () => BillingText.storeUnavailable);
+      state = state.copyWith(
+          loading: false, available: false, products: [], plans: [], error: () => BillingText.storeUnavailable);
     }
   }
 
-  /// Öffnet den Kaufdialog von Google Play. Das Ergebnis kommt über den Kauf-Strom.
-  Future<void> buy(StoreProduct product) async {
+  /// Laufzeit auswählen.
+  void select(StorePlan plan) {
+    if (state.selectedPlan != plan.basePlanId || state.selectedProduct != plan.productId) {
+      state = state.copyWith(selectedPlan: () => plan.basePlanId, selectedProduct: () => plan.productId);
+    }
+  }
+
+  /// Öffnet den Kaufdialog von Google Play für eine Laufzeit. Das Ergebnis kommt über den Kauf-Strom.
+  Future<void> buy(StorePlan plan) async {
     final gateway = _gateway;
     final accountId = _accountId;
     if (gateway == null || accountId == null || state.busy) return;
     _restoring = false;
     _restoreAsked = false;
+    _changing = false;
     state = state.copyWith(busy: true, notice: () => null, error: () => null);
     try {
-      await gateway.buy(product, accountId: accountId);
+      await gateway.buy(plan, accountId: accountId);
     } catch (e) {
+      if (!ref.mounted) return;
+      state = state.copyWith(busy: false, error: () => BillingText.failed(_text(e)));
+    }
+  }
+
+  /// Wechselt die Laufzeit des laufenden Abos (nur aktiv oder gekündigt, aber noch laufend). Google ersetzt den
+  /// alten Kauf durch einen neuen und rechnet die Restzeit an; der Server verbucht den Wechsel über
+  /// `linkedPurchaseToken`.
+  Future<void> change(StorePlan plan) async {
+    final gateway = _gateway;
+    final accountId = _accountId;
+    if (gateway == null || accountId == null || state.busy) return;
+    final play = ref.read(premiumProvider).value?.play;
+    if (play == null || !(play.state == 'active' || play.state == 'canceled')) return;
+    _restoring = false;
+    _restoreAsked = false;
+    _changing = true;
+    state = state.copyWith(busy: true, notice: () => null, error: () => null);
+    try {
+      await gateway.change(plan, accountId: accountId, oldProductId: play.productId);
+    } on StateError catch (e) {
+      _changing = false;
+      if (!ref.mounted) return;
+      state = state.copyWith(busy: false, error: () => e.message);
+    } catch (e) {
+      _changing = false;
       if (!ref.mounted) return;
       state = state.copyWith(busy: false, error: () => BillingText.failed(_text(e)));
     }
@@ -296,6 +391,7 @@ class BillingController extends Notifier<BillingState> {
         // Google, sobald bezahlt ist – auch wenn die App dann nicht läuft.
         if (purchase.token.isNotEmpty) await _verify(purchase, restoring: false, storePending: true);
       case StorePurchaseStatus.cancelled:
+        _changing = false;
         state = state.copyWith(busy: false);
       case StorePurchaseStatus.failed:
         if (_alreadyOwned(purchase.message)) {
@@ -364,9 +460,11 @@ class BillingController extends Notifier<BillingState> {
           if (explicitRestore) _restoreActivated = true;
           await gateway?.complete(purchase);
           if (!ref.mounted) return;
+          final changed = _changing && !silent;
+          if (changed) _changing = false;
           state = state.copyWith(
             busy: silent ? null : false,
-            notice: () => restoring ? BillingText.restored : BillingText.purchased,
+            notice: () => changed ? BillingText.changed : (restoring ? BillingText.restored : BillingText.purchased),
             error: () => null,
           );
         case 'pending':

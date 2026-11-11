@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
+import '../../data/api.dart';
+import '../../data/models.dart';
 import '../../player/player.dart';
 import '../../state/connectivity.dart';
 import '../../state/library.dart';
+import '../../state/premium_access.dart';
 import '../../state/settings.dart';
 import '../screens/player_lyrics.dart';
 import '../screens/queue_screen.dart';
 import '../widgets/common.dart';
+import '../widgets/premium_gate.dart';
 import 'desktop_layout.dart';
 
 /// Rechte Spalte: Warteschlange oder Songtext.
@@ -83,8 +87,16 @@ class DesktopLyricsPanel extends ConsumerWidget {
         message: 'Songtexte gibt es nur mit Verbindung zum Server.',
       );
     }
+    // „Songtexte nur mit Premium“: gar nicht erst abrufen; sperrt der Server (403), dieselbe Ansicht
+    if (!ref.watch(premiumAccessProvider.select((a) => a.allows(PremiumFeature.lyrics)))) {
+      return const Center(child: PremiumLockedView(text: lyricsLockedMessage));
+    }
     final value = ref.watch(lyricsProvider(track.id));
     final lyrics = value.value;
+    final error = value.error;
+    if (error is ApiException && error.statusCode == 403) {
+      return const Center(child: PremiumLockedView(text: lyricsLockedMessage));
+    }
     if (lyrics == null) {
       if (value.hasError && !value.isLoading) {
         return ErrorView(message: errorText(value.error!), onRetry: () => ref.invalidate(lyricsProvider(track.id)));

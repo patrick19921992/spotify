@@ -99,6 +99,21 @@ class AppConfigOut(BaseModel):
     premium_headline: str
     premium_description: str
     premium_benefits: str
+    # Premium-Leistungen (je Leistung „für alle“ = false oder „nur Premium“ = true) und ihre Grenzen
+    hq_audio_requires_premium: bool
+    free_audio_quality: Literal["normal", "low"]
+    video_requires_premium: bool
+    lyrics_requires_premium: bool
+    requests_requires_premium: bool
+    free_requests_per_week: int
+    skips_requires_premium: bool
+    free_skips_per_hour: int
+    premium_badge_enabled: bool
+    # Laufzeiten des Abos (Kennungen der Basis-Abos, Komma) und die empfohlene
+    billing_base_plans: str
+    billing_recommended_plan: str
+    # Nur lesbar: ffmpeg ist da (sonst lässt sich die Tonqualität nicht einschränken)
+    transcode_available: bool = True
 
 
 class AppConfigIn(BaseModel):
@@ -120,6 +135,17 @@ class AppConfigIn(BaseModel):
     premium_headline: str | None = None
     premium_description: str | None = None
     premium_benefits: str | None = None
+    hq_audio_requires_premium: bool | None = None
+    free_audio_quality: str | None = None
+    video_requires_premium: bool | None = None
+    lyrics_requires_premium: bool | None = None
+    requests_requires_premium: bool | None = None
+    free_requests_per_week: int | None = None
+    skips_requires_premium: bool | None = None
+    free_skips_per_hour: int | None = None
+    premium_badge_enabled: bool | None = None
+    billing_base_plans: str | None = None
+    billing_recommended_plan: str | None = None
 
 
 class UpdateInfoOut(BaseModel):
@@ -154,6 +180,26 @@ class PublicConfigOut(BaseModel):
     premium_headline: str = ""
     premium_description: str = ""
     premium_benefits: list[str] = []
+    # Premium-Leistungen, die der Betreiber nur mit Premium erlaubt (leer = alles für alle, wie bisher)
+    premium_only: list[str] = []
+    # Höchste Tonqualität ohne Premium (nur wirksam, wenn „hq_audio“ in premium_only steht)
+    free_audio_quality: Literal["normal", "low"] = "normal"
+    free_requests_per_week: int = 3
+    free_skips_per_hour: int = 6
+    premium_badge_enabled: bool = False
+    # Laufzeiten des Abos in Anzeigereihenfolge (leer = alle, die der Store liefert) – nur bei wirksamem Kauf
+    billing_base_plans: list[str] = []
+    billing_recommended_plan: str = ""
+
+
+class RequestQuotaOut(BaseModel):
+    """Wie viele Song-Wünsche diese Woche noch gehen (rollierend 7 Tage)."""
+
+    limited: bool
+    limit: int | None
+    used: int
+    left: int | None
+    resets_at: datetime | None
 
 
 class MyStatusOut(BaseModel):

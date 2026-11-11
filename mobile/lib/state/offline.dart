@@ -12,6 +12,7 @@ import '../data/models.dart';
 import 'auth.dart';
 import 'connectivity.dart';
 import 'offline_access.dart';
+import 'premium_access.dart';
 import 'settings.dart';
 
 /// Ein aufs Handy geladener Titel.
@@ -505,7 +506,8 @@ class OfflineController extends Notifier<OfflineState> {
 
   Future<void> _downloadOne(ApiClient api, Track track) async {
     final dir = await _directory();
-    final quality = ref.read(settingsProvider).offlineQuality;
+    // „Höhere Tonqualität nur mit Premium“: höchstens die Stufe ohne Premium (Einstellung bleibt gespeichert)
+    final quality = ref.read(premiumAccessProvider).capQuality(ref.read(settingsProvider).offlineQuality);
     final url = api.streamUrl(track.id, quality: quality, compatible: Platform.isIOS);
     final tmpPath = '${dir.path}/${track.id}.part';
     _activePrefix = '${track.id}.';

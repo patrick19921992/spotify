@@ -17,6 +17,7 @@ import '../../state/auth.dart';
 import '../../state/downloads.dart';
 import '../../state/library.dart';
 import '../../state/offline.dart';
+import '../../state/premium_access.dart';
 import '../../state/settings.dart';
 import '../nav.dart';
 import '../widgets/app_update.dart';
@@ -174,6 +175,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required List<String> keys,
     required String selected,
   }) async {
+    final access = ref.read(premiumAccessProvider);
     final choice = await showAccountChoiceSheet<String>(
       context,
       title: title,
@@ -184,16 +186,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           AccountChoice(
             value: key,
             label: _qualityLabel(key),
-            icon: switch (key) {
-              'original' => Icons.high_quality_rounded,
-              'high' => Icons.graphic_eq_rounded,
-              'normal' => Icons.music_note_rounded,
-              _ => Icons.data_saver_on_rounded,
-            },
+            // „Höhere Tonqualität nur mit Premium“: Stufen über der Grenze mit Schloss
+            subtitle: access.isCapped(key) ? 'Premium' : null,
+            icon: access.isCapped(key)
+                ? Icons.lock_rounded
+                : switch (key) {
+                    'original' => Icons.high_quality_rounded,
+                    'high' => Icons.graphic_eq_rounded,
+                    'normal' => Icons.music_note_rounded,
+                    _ => Icons.data_saver_on_rounded,
+                  },
           ),
       ],
     );
-    return choice?.value;
+    final value = choice?.value;
+    if (value != null && access.isCapped(value)) {
+      // Nicht speichern – zur Premium-Seite (oder nur der Hinweis)
+      if (mounted) openPremiumOrExplain(context, ref, qualityLockedMessage);
+      return null;
+    }
+    return value;
   }
 
   Future<void> _pickWifiQuality(AppSettings settings) async {
@@ -379,10 +391,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.only(bottom: 32 + MediaQuery.paddingOf(context).bottom),
           children: [
-            _ProfileHeader(user: user, onEdit: () => _editName(user)),
+            _ProfileHeader(
+              user: user,
+              badge: ref.watch(premiumProvider.select((p) => p.value?.badge ?? false)),
+              onEdit: () => _editName(user),
+            ),
             ..._accountSection(user),
             ..._playStoreSection(),
-            ..._playbackSection(settings),
+            ..._playbackSection(settings, ref.watch(premiumAccessProvider)),
             ..._offlineSection(settings),
             // YouTube-Downloads gibt es nur in der GitHub-Version
             if (youtubeFeaturesEnabled) ..._downloadSection(user, settings),
@@ -433,6 +449,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final wishlistVisible = ref.watch(wishlistVisibleProvider);
     if (!premiumVisible && !wishlistVisible) return const [];
     final premium = ref.watch(premiumProvider).value;
+    // Mehr als das Offline-Hören geht nur mit Premium (Dashboard › Premium-Leistungen)
+    final morePremium =
+        ref.watch(appConfigValueProvider.select((c) => c.premiumOnly.any((f) => f != PremiumFeature.offline)));
     return [
       AccountSectionTitle(premiumVisible && wishlistVisible ? 'Premium & Wünsche' : (premiumVisible ? 'Premium' : 'Wünsche')),
       if (premiumVisible)
@@ -440,7 +459,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           icon: Icons.workspace_premium_rounded,
           title: 'Premium',
           subtitle: premium == null
-              ? (ref.watch(billingVisibleProvider) ? 'Offline hören, Abo oder Code' : 'Code einlösen, Werbung abschalten')
+              ? (morePremium
+                  ? 'Mehr Funktionen mit Premium'
+                  : (ref.watch(billingVisibleProvider) ? 'Offline hören, Abo oder Code' : 'Code einlösen, Werbung abschalten'))
               : premiumLabel(premium),
           chevron: true,
           onTap: () => Nav.premium(context),
@@ -511,18 +532,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// verweigert der Server das Löschen – die Meldung dazu kommt im Dialog.
   Future<void> _deleteAccount() => showDeleteAccountDialog(context);
 
-  List<Widget> _playbackSection(AppSettings settings) => [
+  List<Widget> _playbackSection(AppSettings settings, PremiumAccess access) => [
         const AccountSectionTitle('Wiedergabe'),
         AccountTile(
           icon: Icons.wifi_rounded,
           title: 'Streaming-Qualität im WLAN',
-          subtitle: _qualityLabel(settings.wifiQuality),
+          subtitle: effectiveQualityLabel(settings.wifiQuality, access),
           onTap: () => _pickWifiQuality(settings),
         ),
         AccountTile(
           icon: Icons.signal_cellular_alt_rounded,
           title: 'Streaming-Qualität über mobile Daten',
-          subtitle: _qualityLabel(settings.mobileQuality),
+          subtitle: effectiveQualityLabel(settings.mobileQuality, access),
           onTap: () => _pickMobileQuality(settings),
         ),
         AccountSwitchTile(
@@ -562,7 +583,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       AccountTile(
         icon: Icons.high_quality_rounded,
         title: 'Qualität auf diesem Gerät',
-        subtitle: _qualityLabel(settings.offlineQuality),
+        subtitle: effectiveQualityLabel(settings.offlineQuality, ref.watch(premiumAccessProvider)),
         onTap: () => _pickOfflineQuality(settings),
       ),
       AccountSwitchTile(
@@ -750,7 +771,10 @@ class _ProfileHeader extends StatelessWidget {
   final User user;
   final VoidCallback onEdit;
 
-  const _ProfileHeader({required this.user, required this.onEdit});
+  /// Premium-Abzeichen zeigen (Dashboard: „Premium-Abzeichen im Profil“, nur mit Premium).
+  final bool badge;
+
+  const _ProfileHeader({required this.user, required this.onEdit, this.badge = false});
 
   @override
   Widget build(BuildContext context) {
@@ -788,6 +812,10 @@ class _ProfileHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
                     ),
+                    if (badge) ...[
+                      const SizedBox(height: 8),
+                      const _PremiumBadge(),
+                    ],
                     if (user.isAdmin || !user.canDownload) ...[
                       const SizedBox(height: 8),
                       Wrap(
@@ -810,6 +838,32 @@ class _ProfileHeader extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Premium-Abzeichen unter dem Namen.
+class _PremiumBadge extends StatelessWidget {
+  const _PremiumBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('premium-badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.accent),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.workspace_premium_rounded, size: 14, color: AppColors.accent),
+          SizedBox(width: 4),
+          Text('Premium', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accent)),
+        ],
       ),
     );
   }

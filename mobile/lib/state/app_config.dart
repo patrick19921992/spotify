@@ -89,15 +89,23 @@ final wishlistVisibleProvider = Provider<bool>(
 /// Meine Song-Wünsche mit Stand (offen, in Arbeit, erledigt, abgelehnt).
 final wishesProvider = FutureProvider.autoDispose<List<SongWish>>((ref) => requireApi(ref).wishes());
 
+/// Song-Wünsche dieser Woche – nur abgefragt, wenn „Mehr Song-Wünsche“ nur mit Premium geht (sonst wie bisher:
+/// keine Abfrage, null). null auch bei einem älteren Server ohne Wochengrenze.
+final wishQuotaProvider = FutureProvider.autoDispose<WishQuota?>((ref) async {
+  if (!ref.watch(appConfigValueProvider.select((c) => c.premiumOnly.contains(PremiumFeature.requests)))) return null;
+  return requireApi(ref).wishQuota();
+});
+
 /// Werbung zeigen? Nur wenn alles stimmt: Android-Play-Version, vom Admin eingeschaltet, Premium **geladen** und
 /// nicht aktiv (solange unklar ist, ob jemand Premium hat, gibt es keine Werbung) und eine Verbindung besteht.
+/// Werbefrei macht ein Premium, das „Keine Werbung“ freischaltet (alter Server: jedes aktive Premium).
 final adsVisibleProvider = Provider<bool>((ref) {
   if (!isPlayChannel || defaultTargetPlatform != TargetPlatform.android) return false;
   if (!ref.watch(appConfigValueProvider.select((c) => c.adsEnabled))) return false;
   if (!(ref.watch(authProvider).value?.isLoggedIn ?? false)) return false;
   if (ref.watch(isOfflineProvider) || ref.watch(settingsProvider.select((s) => s.offlineMode))) return false;
   final premium = ref.watch(premiumProvider);
-  return premium.hasValue && !premium.requireValue.active;
+  return premium.hasValue && !premium.requireValue.has(PremiumFeature.noAds);
 });
 
 /// Hinweis „Neue Version im Play Store“ (Stufe „available“) – nach „Später“ erst bei einer noch neueren Version wieder.

@@ -77,6 +77,9 @@ dependencies:
   google_mobile_ads: ^9.2.0
   # Kauf in der App (Google Play Billing) – nur in der Play-Version aktiv
   in_app_purchase: ^3.3.1
+  # Laufzeiten und Wechsel (Basis-Pläne) – nur in der Play-Version aktiv; sonst Platzhalter
+  # (packages/in_app_purchase_android_stub)
+  in_app_purchase_android: ^0.5.5
 
 dev_dependencies:
   flutter_test:

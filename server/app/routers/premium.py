@@ -27,6 +27,7 @@ from app.schemas.premium import (
     UserPremiumOut,
 )
 from app.services import app_config, play_billing
+from app.services import features as feature_set
 from app.services import premium as service
 
 router = APIRouter(tags=["Premium"])
@@ -34,16 +35,20 @@ admin_router = APIRouter(prefix="/admin", tags=["Dashboard – Premium"])
 
 
 def _my_premium_out(db: DbSession, user: User, config: dict[str, Any], now: datetime) -> MyPremiumOut:
-    """Premium-Stand für die App. Admins dürfen immer offline hören – sie brauchen dafür kein Premium."""
+    """Premium-Stand für die App. Admins dürfen immer offline hören – sie brauchen dafür kein Premium.
+    Dazu, was der Betreiber nur mit Premium erlaubt und was davon diesem Benutzer gerade fehlt."""
     state = service.premium_status(db, user, now)
     required = bool(config["offline_requires_premium"])
     subscription = play_billing.current_subscription(db, user.id)
+    only = feature_set.premium_only(config)
+    access = feature_set.Access(is_admin=user.is_admin, features=state.features, premium_only=tuple(only))
     return MyPremiumOut(
         active=state.active,
         unlimited=state.unlimited,
         until=state.until,
+        features=feature_set.ordered(state.features),
         offline_requires_premium=required,
-        offline_allowed=not required or user.is_admin or state.active,
+        offline_allowed=not required or user.is_admin or "offline" in state.features,
         offline_grace_days=config["offline_grace_days"],
         checked_at=now,
         play=PlaySubscriptionOut(
@@ -51,9 +56,14 @@ def _my_premium_out(db: DbSession, user: User, config: dict[str, Any], now: date
             state=subscription.state,  # type: ignore[arg-type]
             expires_at=subscription.expires_at,
             auto_renewing=subscription.auto_renewing,
+            base_plan_id=subscription.base_plan_id,
+            offer_id=subscription.offer_id,
         )
         if subscription
         else None,
+        premium_only=only,
+        locked=access.locked,
+        badge=bool(config["premium_badge_enabled"]) and "badge" in state.features,
     )
 
 
@@ -75,6 +85,8 @@ def _purchase_out(purchase: PlayPurchase) -> PurchaseOut:
         last_checked_at=purchase.last_checked_at,
         last_error=purchase.last_error,
         created_at=purchase.created_at,
+        base_plan_id=purchase.base_plan_id,
+        offer_id=purchase.offer_id,
     )
 
 
@@ -100,6 +112,7 @@ def _license_out(lic: PremiumLicense, now) -> LicenseOut:  # type: ignore[no-unt
         revoked_at=lic.revoked_at,
         note=lic.note,
         running=running,
+        features=feature_set.as_list(lic.features),
     )
 
 
@@ -129,6 +142,7 @@ def _code_out(code: PremiumCode, now) -> CodeOut:  # type: ignore[no-untyped-def
             )
             for lic in redemptions
         ],
+        features=feature_set.as_list(code.features),
     )
 
 
@@ -156,6 +170,7 @@ def _user_premium_out(db: DbSession, user: User) -> UserPremiumOut:
         active=state.active,
         unlimited=state.unlimited,
         until=state.until,
+        features=feature_set.ordered(state.features),
         user_id=user.id,
         licenses=[_license_out(lic, now) for lic in licenses],
     )
@@ -251,7 +266,10 @@ def verify_play_purchase(
             raise HTTPException(status.HTTP_409_CONFLICT, play_billing.MSG_OTHER_ACCOUNT) from None
     # Erst nach dem Zuordnen bei Google bestätigen: Einen abgelehnten Kauf erstattet Google dann von selbst
     play_billing.acknowledge(db, purchase, verifier, now)
-    if play_billing.awaiting_renewal(purchase, now) and not service.premium_status(db, user, now).active:
+    if (
+        play_billing.awaiting_renewal(purchase, now)
+        and service.premium_status(db, user, now).features != feature_set.ALL
+    ):
         # Zeitraum gerade um, Verlängerung bei Google noch nicht verbucht: „unbekannt“ – die App löscht nichts
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, play_billing.MSG_STATUS_UNKNOWN)
     if play_billing.has_access(purchase.state, purchase.expires_at, now):
@@ -286,6 +304,7 @@ def create_codes(body: CodeCreateIn, admin: AdminUser, db: DbSession) -> list[Co
         valid_until=body.valid_until,
         label=body.label,
         created_by=admin,
+        features=body.features,
     )
     db.commit()
     return [_code_out(code, now) for code in codes]

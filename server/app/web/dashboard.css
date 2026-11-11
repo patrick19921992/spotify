@@ -152,6 +152,8 @@ td .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .toast { background: var(--surface-3); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 14px; }
 .toast.error { border-left-color: var(--danger); }
 .notice { background: rgba(229, 168, 0, 0.1); border-left: 4px solid var(--warn); padding: 10px 14px; border-radius: 6px; color: #f1d9a0; }
+.error-text { color: var(--danger); }
+input.num-small { width: 90px; }
 .codes-out { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; line-height: 1.8; background: var(--surface-2);
   border-radius: 8px; padding: 10px 14px; max-height: 220px; overflow: auto; white-space: pre; }
 

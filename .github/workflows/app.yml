@@ -45,7 +45,7 @@ jobs:
       # Die Platzhalter für Werbe- und Kauf-Paket (GitHub-APK, Windows, iPhone) müssen zu dem passen, was die App davon nutzt
       - name: Analyse mit den Platzhaltern für Werbe- und Kauf-Paket
         run: |
-          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n' > pubspec_overrides.yaml
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n  in_app_purchase_android:\n    path: packages/in_app_purchase_android_stub\n' > pubspec_overrides.yaml
           flutter pub get
           flutter analyze
 
@@ -88,11 +88,12 @@ jobs:
           PROPS
           echo "signed=true" >> "$GITHUB_OUTPUT"
       # Die GitHub-Version hat keine Werbung und keinen Kauf in der App. Das Werbe-SDK (google_mobile_ads) und die
-      # Billing-Bibliothek (in_app_purchase) gehören nur in die Play-Version: Mit dem Werbe-SDK startete die GitHub-App
-      # am Handy nicht mehr. Hier werden beide durch Platzhalter ersetzt.
+      # Billing-Bibliothek (in_app_purchase samt in_app_purchase_android für Laufzeiten und Wechsel) gehören nur in die
+      # Play-Version: Mit dem Werbe-SDK startete die GitHub-App am Handy nicht mehr. Hier werden alle drei durch
+      # Platzhalter ersetzt.
       - name: Werbe- und Kauf-SDK weglassen (nur in der Play-Version)
         run: |
-          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n' > pubspec_overrides.yaml
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n  in_app_purchase_android:\n    path: packages/in_app_purchase_android_stub\n' > pubspec_overrides.yaml
       - run: flutter pub get
       # Flutter braucht ein NDK, das auf den GitHub-Rechnern fehlt. Gradle würde es beim Bauen ohne
       # Wiederholung laden – ein abgebrochener Download ließ dann den ganzen Build scheitern.
@@ -432,6 +433,8 @@ jobs:
               path: packages/google_mobile_ads_stub
             in_app_purchase:
               path: packages/in_app_purchase_stub
+            in_app_purchase_android:
+              path: packages/in_app_purchase_android_stub
           "@ | Set-Content pubspec_overrides.yaml -Encoding utf8
       - run: flutter pub get
       - name: Windows-App bauen
@@ -557,7 +560,7 @@ jobs:
           cache: true
       - name: Werbe- und Kauf-SDK weglassen (nur in der Play-Version)
         run: |
-          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n' > pubspec_overrides.yaml
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n  in_app_purchase_android:\n    path: packages/in_app_purchase_android_stub\n' > pubspec_overrides.yaml
       - run: flutter pub get
       - name: iOS bauen (ohne Signatur)
         run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}

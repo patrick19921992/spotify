@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../state/app_config.dart';
 import '../../state/auth.dart';
 import '../../state/library.dart';
+import '../nav.dart';
 import '../widgets/common.dart';
 import 'account_widgets.dart';
 
@@ -22,6 +23,23 @@ import 'account_widgets.dart';
   }
   return (label: 'Offen – wartet auf den Betreiber', color: AppColors.textSecondary, icon: Icons.hourglass_top_rounded);
 }
+
+/// Kopfzeile zur Wochengrenze (nur wenn für diesen Benutzer eine gilt) – null ohne Grenze oder bei altem Server.
+String? wishQuotaText(WishQuota? quota) {
+  if (quota == null || !quota.limited) return null;
+  final limit = quota.limit ?? 0;
+  if (limit == 0) return 'Song-Wünsche gibt es mit Premium.';
+  final left = quota.left ?? 0;
+  if (left <= 0) {
+    final resetsAt = quota.resetsAt;
+    final when = resetsAt == null ? 'nächste Woche' : 'ab ${formatDate(resetsAt.toLocal())}';
+    return 'Diese Woche sind keine Wünsche mehr frei – $when wieder. Mit Premium unbegrenzt.';
+  }
+  return 'Noch $left von $limit Wünschen diese Woche';
+}
+
+/// Ist gerade kein Wunsch frei (Wochengrenze erreicht oder ohne Premium gar keine)?
+bool wishQuotaBlocked(WishQuota? quota) => quota != null && quota.limited && (quota.left ?? 0) <= 0;
 
 /// „Meine Wünsche“: alle Songs, die du dir gewünscht hast, mit Stand.
 class WishesScreen extends ConsumerWidget {
@@ -41,6 +59,7 @@ class WishesScreen extends ConsumerWidget {
     try {
       await api.deleteWish(wish.id);
       ref.invalidate(wishesProvider);
+      ref.invalidate(wishQuotaProvider);
     } catch (e) {
       if (context.mounted) showError(context, e);
     }
@@ -49,16 +68,29 @@ class WishesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final wishes = ref.watch(wishesProvider);
+    final quota = ref.watch(wishQuotaProvider).value;
+    final quotaText = wishQuotaText(quota);
+    final blocked = wishQuotaBlocked(quota);
     return Scaffold(
       appBar: AppBar(title: const Text('Meine Wünsche')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showWishSheet(context),
-        backgroundColor: AppColors.accent,
-        foregroundColor: Colors.black,
+        // Wochengrenze erreicht: gesperrt (der Server würde ablehnen)
+        onPressed: blocked ? null : () => showWishSheet(context),
+        backgroundColor: blocked ? AppColors.surfaceHighest : AppColors.accent,
+        foregroundColor: blocked ? AppColors.textSecondary : Colors.black,
         icon: const Icon(Icons.add_rounded),
         label: const Text('Song wünschen', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
-      body: AsyncBody<List<SongWish>>(
+      body: Column(
+        children: [
+          if (quotaText != null) _QuotaHeader(text: quotaText, blocked: blocked),
+          Expanded(child: _list(context, ref, wishes)),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(BuildContext context, WidgetRef ref, AsyncValue<List<SongWish>> wishes) => AsyncBody<List<SongWish>>(
         value: wishes,
         onRetry: () => ref.invalidate(wishesProvider),
         builder: (items) => RefreshableList(
@@ -89,6 +121,35 @@ class WishesScreen extends ConsumerWidget {
                   itemBuilder: (context, index) => _WishTile(wish: items[index], onRemove: () => _remove(context, ref, items[index])),
                 ),
         ),
+      );
+}
+
+/// Kopfzeile „Noch 2 von 3 Wünschen diese Woche“ – gesperrt mit Weg zu Premium.
+class _QuotaHeader extends ConsumerWidget {
+  final String text;
+  final bool blocked;
+
+  const _QuotaHeader({required this.text, required this.blocked});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final premiumVisible = ref.watch(premiumVisibleProvider);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+      decoration: BoxDecoration(color: AppColors.surfaceHigh, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          Icon(blocked ? Icons.lock_rounded : Icons.info_outline_rounded, size: 20, color: AppColors.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.3))),
+          if (blocked && premiumVisible)
+            TextButton(
+              onPressed: () => Nav.premium(context),
+              child: const Text('Premium', style: TextStyle(color: AppColors.accent)),
+            ),
+        ],
       ),
     );
   }
@@ -183,11 +244,14 @@ class _WishSheetState extends ConsumerState<_WishSheet> {
     try {
       await api.createWish(title: title, artist: _artist.text.trim(), note: _note.text.trim());
       ref.invalidate(wishesProvider);
+      ref.invalidate(wishQuotaProvider);
       if (!mounted) return;
       Navigator.pop(context, true);
       showMessage(context, 'Wunsch gesendet – du siehst den Stand unter „Meine Wünsche“.');
     } catch (e) {
       if (!mounted) return;
+      // Wochengrenze (429) oder ohne Premium gesperrt (403): die Meldung des Servers zeigen, Stand neu holen
+      ref.invalidate(wishQuotaProvider);
       setState(() {
         _sending = false;
         _error = errorText(e);

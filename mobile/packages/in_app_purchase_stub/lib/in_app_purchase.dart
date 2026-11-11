@@ -97,4 +97,7 @@ class InAppPurchase {
   Future<void> completePurchase(PurchaseDetails purchase) async {}
 
   Future<void> restorePurchases({String? applicationUserName}) async {}
+
+  /// Plattform-Zusatz (Android: vergangene Käufe für den Wechsel der Laufzeit) – gibt es im Platzhalter nicht.
+  T getPlatformAddition<T>() => throw UnsupportedError('Kein Kauf in dieser Version');
 }

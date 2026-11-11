@@ -621,6 +621,135 @@ GitHub noch nie gelaufen (siehe „Offen“).
       ausprobieren; Pfad des Offline-Ordners unter Windows an einem Rechner bestätigen
 - [ ] Erstattung mit/ohne Widerruf in der Play Console am Testkonto nachstellen (Benennung dort ungeprüft)
 
+### Premium Teil 2: Laufzeiten, Leistungen, Codes mit Umfang
+
+Auftrag: ein Abo mit drei Laufzeiten (monatlich, halbjährlich, jährlich) mit echtem Store-Preis, Ersparnis und
+Angeboten von Google, Wechsel der Laufzeit; Premium-Leistungen im Dashboard einzeln schaltbar; Codes mit wählbarem
+Leistungsumfang. Vertrag der drei Bereiche (S = Server/Dashboard, A = App, B = CI/Doku) mit allen Feldnamen, Regeln
+und Texten: Arbeitsordner der Sitzung, `entwurf-premium-teil2.md`. Alle neuen Einstellungen stehen standardmäßig so,
+dass sich nichts ändert (alles „Für alle“, kein Abzeichen, Laufzeiten leer = alle aus dem Store). Migration **0008**
+(0007 unverändert).
+
+**CI und Doku (Bereich B – geprüft wie angegeben)**
+
+- [x] CI (`.github/workflows/app.yml`): alle vier Stellen, die `pubspec_overrides.yaml` schreiben (Analyse-Schritt,
+      GitHub-APK, Windows als PowerShell-Here-String, iPhone), haben den dritten Platzhalter
+      `in_app_purchase_android: path: packages/in_app_purchase_android_stub`. YAML mit `yaml.safe_load` gelesen, alle
+      29 Shell-Schritte mit `bash -n` ohne Befund, die erzeugte Override-Datei (printf und PowerShell-Block) als YAML
+      gelesen: drei Einträge
+- [x] Bestehende Prüfungen unverändert: GitHub-APK ohne `in_app_purchase_android` in `.flutter-plugins-dependencies`
+      und ohne Billing; Play-Job bricht ab, wenn `pubspec_overrides.yaml` existiert, und prüft positiv auf das Plugin
+- [x] In einer Kopie der App (Stand Bereich A von heute) mit allen drei Platzhaltern: `flutter pub get` und
+      `flutter analyze` ohne Befund; `.flutter-plugins-dependencies` enthält weder `in_app_purchase_android` noch
+      `google_mobile_ads`
+- [x] `docs/PLAYSTORE.md`: Vergleichstabelle; Abschnitt 6 (Codes mit „Schaltet frei“, Spalte „Umfang“, Stapelregel,
+      alte Codes = alle); 10.2 neu („Abo mit drei Laufzeiten anlegen“: Basis-Abos `monatlich`/`halbjaehrlich`/
+      `jaehrlich`, Kennungsregeln, Ersparnis, Preise festlegen und **später ändern** inkl. Bestandskunden, Angebote
+      mit „Neukunden gewinnen“); 10.6 (Laufzeiten-Editor, Karte „Premium-Leistungen“, Offline-Schalter am neuen Platz);
+      10.7 Testschritte 11–13 (Wechsel, Angebot, Leistungen); 10.8 Zeile „Laufzeit gewechselt“; 10.11 „Nicht geprüft“
+      für Teil 2; 10.12 Rücksprung auf 0007; **neu 10.13** „Premium-Leistungen festlegen“ (alle 8 Leistungen, wo
+      durchgesetzt, ffmpeg, ehrliche Grenzen, Ende-zu-Ende-Prüfung); **neu 10.14** „Laufzeit wechseln – was Nutzer
+      erleben“; Checkliste ergänzt
+- [x] README: Ansichten-Tabelle, Code-Umfang in den Premium-Regeln, Tabelle der Premium-Leistungen mit Schlüsseln,
+      Standardwerten und Ort der Durchsetzung, „Laufzeiten“, API (`features`, `locked`, `premium_only`, `badge`,
+      `play.base_plan_id/offer_id`, `/requests/quota`, 403/429-Meldungen, stille Qualitätsdeckelung), Rücksprung
+      0007, dritter Platzhalter im Abschnitt Entwicklung
+- [x] Fakten zu Google per Websuche/Abruf geprüft (Quellen in 10.11 genannt bzw. verlinkt): Basis-Abos und Angebote,
+      Abrechnungszeiträume, Regeln für Kennungen von Basis-Abos (Kleinbuchstaben/Ziffern/Bindestrich, ≤ 63 Zeichen,
+      nach Aktivierung unveränderlich), Berechtigungen für Angebote, Preisänderungen (Legacy-Preiskohorte, Zustimmung
+      bei Erhöhung, Angebotspreise nur für Neue), Testzeiten für Lizenztester (6 Monate ≈ 15 min, 1 Jahr ≈ 30 min,
+      Gratis-Zeit ≈ 3 min), `linkedPurchaseToken` beim Ersetzen, `offerDetails.basePlanId/offerId` in `lineItems`.
+      `support.google.com` war nicht abrufbar; die deutschen Menünamen der Play Console sind als ungeprüft markiert
+- [ ] Doku gegen den fertigen Code gegenlesen (Abschlusslauf): jede Zahl und jeder Text aus Vertrag 1.2/1.7/2.5 –
+      bei diesem Lauf mit dem Zwischenstand von S und A abgeglichen (Meldungen, Dashboard-Beschriftungen, App-Texte)
+
+**Server und Dashboard (Bereich S – Abschlusslauf hakt ab und trägt die Testzahlen ein)**
+
+- [ ] `app/services/features.py` (8 Leistungen, feste Reihenfolge, `encode`/`decode`, `Access`, `clamp_quality`);
+      neue Einstellungen in `app_config.py` mit Grenzen und Fehltexten; `billing_recommended_plan` muss in
+      `billing_base_plans` stehen
+- [ ] Migration 0008: `features` an Codes und Lizenzen (NULL = alle), `base_plan_id`/`offer_id` an Käufen;
+      Upgrade auf 0007-Datenbank mit Bestandsdaten, Downgrade 0007 und wieder hoch
+- [ ] Unverändert-Garantie: alle Schalter aus → `/app/config` alte Felder identisch, Stream `original` liefert
+      Original, Video liefert Video, Songtext 200, alte Wunschgrenzen; alter Code → `features` = alle 8, `locked` = []
+- [ ] Je Leistung (ohne Premium / mit Premium / Admin): Qualitätsdeckel (160 bzw. 96 kbit/s), 400 ohne ffmpeg,
+      Video 403 / `audio_only` 200, Songtexte 403, Wünsche 429/403 inkl. Rückzug und 7-Tage-Fenster,
+      `/requests/quota`, `offline_allowed` nach Umfang, `badge`
+- [ ] **Ende-zu-Ende Codes mit Umfang:** Code `["video","lyrics"]` erzeugen → einlösen → `features` genau diese,
+      `locked` = `["offline","hq_audio"]`, Video und Songtext 200, Qualität gedeckelt; `[]` → 422; alle 8 → `null`
+- [ ] Stapelregeln (Teil-Code beginnt sofort, voll hinter voll angehängt, `close_gaps` mit gemischten Umfängen);
+      `refresh_user` mit Teil-Code + gestörter Prüfung bleibt 503
+- [ ] Laufzeiten: `parse_subscription` liest `offerDetails` (spätester Posten), Wechsel A→B mit `linkedPurchaseToken`
+      (A „ersetzt“, eine Lizenz, `base_plan_id` von B), umgekehrte Reihenfolge; `PurchaseOut.base_plan_id/offer_id`
+- [ ] Dashboard im Browser: Karte „Premium-Leistungen“, Laufzeiten-Editor (↑/↓, Empfohlen, höchstens 6), „Schaltet
+      frei“ beim Erzeugen, Spalten „Umfang“ und „Laufzeit“, Pille „Teilumfang“; Sonderzeichen als Text, keine
+      CSP-Meldung
+- [ ] Alle Server-Tests und `ruff` grün
+
+**App (Bereich A – Abschlusslauf hakt ab)**
+
+- [ ] `lib/billing/plans.dart`: Perioden, Beschriftungen, Monatspreis und „spare … %“ (Prüfwerte 15 % / 24 % /
+      kein Chip bei 0 oder teurer / keine Ersparnis ohne Monatsplan oder bei anderer Währung), Angebotswahl und
+      -text, Reihenfolge/Filter/Empfehlung
+- [ ] Premium-Seite: Karten je Laufzeit, „Empfohlen“, „Dein Abo“, „Gratis testen“, „Zu … wechseln“ →
+      `change:<plan>:<produkt>:<konto>`, `BillingText.changed`, `changeNotOnDevice`, keine Wechsel-Knöpfe bei
+      `on_hold`
+- [ ] `premiumAccessProvider` (Admin, alter Server, Stand unbekannt → erlaubt); Qualitätsdeckel in Player und
+      Offline-Laden (Einstellung bleibt gespeichert); Video-Sperransicht + „Als Ton abspielen“, Video-403; Songtexte
+      gesperrt ohne Abruf und bei 403; Wünsche-Kopfzeile; Überspring-Grenze (Ablauf nach 1 h, Titelende zählt
+      nicht, Schalter aus → `allowSkip == null`); Abzeichen; Werbung nach `no_ads`
+- [ ] Premium-Texte passen sich an; mit nur Offline auf „Nur Premium“ wörtlich wie bisher
+- [ ] Offline: gemerkter unbestätigter Kauf + Server „nicht erlaubt“ → kein Löschen
+- [ ] Neues Platzhalter-Paket `packages/in_app_purchase_android_stub` ohne nativen Teil; direkte Abhängigkeit
+      `in_app_purchase_android: ^0.5.5` (war schon transitiv da – kein neues SDK)
+- [ ] `flutter analyze` und alle Tests grün; bestehende Tests nur auf `buy(StorePlan)` umgestellt, nicht abgeschwächt
+- [ ] Schalter aus: GitHub-Version, Windows, iPhone und Play-Version exakt wie bisher (alte App ↔ neuer Server,
+      neue App ↔ alter Server)
+
+**Offen / hier nicht prüfbar (kein Android-SDK, kein Gerät, kein Google-Zugang)**
+
+- [ ] **Ersatzmodus beim Wechsel der Laufzeit:** Nach der Gegenprüfung auf `ReplacementMode.chargeFullPrice`
+      umgestellt (vorher `withTimeProration`). Hintergrund: Googles
+      Entwicklerseite (Subscriptions, „Resubscribe or switch plans within the same subscription“) nennt für den
+      Wechsel zwischen Basis-Abos **desselben** Abos nur `CHARGE_FULL_PRICE` und `WITHOUT_PRORATION` (Standard-
+      Ersatzmodus in der Play Console) als maßgeblich; eine Drittquelle (RevenueCat) berichtet, dass Zeit-Anrechnung
+      dabei scheitert. **Am ersten Testkauf klären**; scheitert er, muss Bereich A den Modus ändern (z. B. ohne
+      `replacementMode` den Standard der Play Console nutzen) und Doku 10.14 angepasst werden
+- [ ] Echter Kauf mit drei Basis-Abos und Angebot (Lizenztester), Anzeige der echten Preise und Angebote, „spare … %“
+      mit echten Store-Preisen
+- [ ] Wechsel jährlich ↔ monatlich am Gerät inkl. Zeit-Anrechnung; Dashboard zeigt alten Kauf „ersetzt“
+- [ ] Feldnamen `lineItems[].offerDetails.basePlanId/offerId` gegen die echte Schnittstelle
+- [ ] Angebot „Neukunden gewinnen“ erscheint für neuen Tester, nicht für Tester mit früherem Kauf
+- [ ] Deutsche Menünamen der Play Console (Basis-Abo, Angebot, Phasen, Berechtigung, Standard-Ersatzmodus), Preise
+      0,99 € / 4,99 € / 8,99 € wählbar
+- [ ] Play-Bundle mit direkt eingebundenem `in_app_purchase_android` und GitHub-APK mit drittem Platzhalter starten
+      auf einem echten Gerät; erster CI-Lauf mit den geänderten Override-Schritten
+- [ ] Rücksprung `alembic downgrade 0007` im echten Unraid-Container
+
+**Bewusst offen / bekannte Grenzen**
+
+- Überspring-Grenze nur in der App: ältere oder umgebaute Apps zählen nicht, Neuinstallation/App-Daten löschen setzt
+  zurück, Sprünge zurück und zu früheren Titeln zählen nicht.
+- Wünsche: rollierende 7 Tage; ein zurückgezogener offener Wunsch gibt den Platz frei; Premium heißt „ohne
+  Wochengrenze“ – die Grenzen gegen Missbrauch (20 offen, 15 pro Tag) gelten weiter für alle.
+- Ältere Apps kennen die neuen Sperren nicht: Qualität wird still gedeckelt, gesperrte Videos/Songtexte zeigen nur
+  einen allgemeinen Fehler, Überspringen bleibt frei, Werbefreiheit dort weiter nach „Premium aktiv“ (ein Teil-Code
+  ohne `no_ads` macht in alten Apps werbefrei).
+- Abzeichen sieht nur der Benutzer selbst (kein öffentliches Profil).
+- Admin-Vergabe schaltet immer alle Leistungen frei; nur Codes haben einen Umfang. Ein Abo schaltet immer alle frei.
+- Wechsel immer sofort mit voller Zahlung (Restzeit hängt Google an); „erst zum Laufzeitende wechseln“ wird nicht
+  angeboten (siehe Offen).
+- Überspring-Grenze: Antippen eines Titels in einer Liste zählt nicht; App-Start ohne Verbindung → keine Grenze.
+- Qualitätsdeckel ändert sich mitten im Titel (Premium endet, Schalter umgelegt): Spulen in diesem Titel kann
+  abbrechen, der nächste läuft normal.
+- Angebote „vom Entwickler festgelegt“ werden nicht unterschieden (Doku rät ab); ein Angebot je Laufzeit.
+- Der Server kennt keine Preise; das Dashboard liest die Basis-Abos nicht bei Google aus (Kennungen trägt der
+  Betreiber ein).
+- Rücksprung auf 0007 macht Teil-Lizenzen zu vollem Premium.
+- Laufzeitwechsel bei gestörter Verbindung: bis der neue Kauf beim Server ist, sieht er nur den beendeten alten;
+  abgefedert durch den gemerkten Kauf in der App, sonst bis zum nächsten Start.
+- iPhone/Windows: weiter kein Kauf; die Leistungsschalter gelten dort trotzdem (Server entscheidet), Premium per Code.
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

@@ -457,6 +457,16 @@ class ApiClient {
           body: {'title': title, 'artist': artist, 'note': note});
   Future<void> deleteWish(int id) => _noContent('DELETE', '/requests/$id');
 
+  /// Song-Wünsche dieser Woche – null bei einem älteren Server ohne Wochengrenze.
+  Future<WishQuota?> wishQuota() async {
+    try {
+      return await _get('/requests/quota', (d) => WishQuota.fromJson(d as Json));
+    } on ApiException catch (e) {
+      if (e.isNotFound) return null;
+      rethrow;
+    }
+  }
+
   /// Schickt eine Fehlermeldung an den Betreiber. [log] nur, wenn der Benutzer es erlaubt hat.
   Future<void> sendBugReport({
     required String message,
@@ -559,7 +569,7 @@ class ApiClient {
   Future<void> deleteTrack(int id, {bool deleteFile = false}) =>
       _noContent('DELETE', '/tracks/$id', query: {'delete_file': deleteFile});
 
-  /// Songtext – null, wenn es keinen gibt.
+  /// Songtext – null, wenn es keinen gibt. Gesperrt (nur mit Premium): ApiException mit Status 403.
   Future<Lyrics?> lyrics(int trackId) async {
     try {
       return await _get('/tracks/$trackId/lyrics', (d) => Lyrics.fromJson(d as Json));

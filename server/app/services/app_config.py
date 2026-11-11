@@ -54,11 +54,34 @@ SPECS: dict[str, Spec] = {
     "premium_headline": Spec("", 80),
     "premium_description": Spec("", 500),
     "premium_benefits": Spec("", 600),
+    # Premium-Leistungen (Teil 2): je Leistung „für alle“ (False, Standard = wie bisher) oder „nur mit Premium“.
+    # Höhere Tonqualität nur mit Premium – ohne Premium höchstens free_audio_quality (normal oder low)
+    "hq_audio_requires_premium": Spec(False),
+    "free_audio_quality": Spec("normal", 10),
+    # Videos ansehen nur mit Premium (ohne Premium nur der Ton)
+    "video_requires_premium": Spec(False),
+    # Songtexte nur mit Premium
+    "lyrics_requires_premium": Spec(False),
+    # Mehr Song-Wünsche nur mit Premium: ohne Premium höchstens so viele je 7 Tage (0 = keine)
+    "requests_requires_premium": Spec(False),
+    "free_requests_per_week": Spec(3, 100, 0),
+    # Überspringen begrenzen (nur in der App durchsetzbar): ohne Premium höchstens so oft je Stunde
+    "skips_requires_premium": Spec(False),
+    "free_skips_per_hour": Spec(6, 100, 1),
+    # Premium-Abzeichen im Profil zeigen
+    "premium_badge_enabled": Spec(False),
+    # Laufzeiten des Abos: Kennungen der Basis-Abos aus der Play Console in Anzeigereihenfolge (leer = alle, die
+    # der Store liefert) und die empfohlene Laufzeit (leer = keine)
+    "billing_base_plans": Spec("", 400),
+    "billing_recommended_plan": Spec("", 63),
 }
 
 STORE_URL_PREFIXES = ("https://play.google.com/", "market://")
 PRODUCT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.]{0,39}$")
 MAX_PRODUCT_IDS = 5
+BASE_PLAN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+MAX_BASE_PLANS = 6
+FREE_AUDIO_QUALITIES = ("normal", "low")
 MAX_BENEFITS = 8
 MAX_BENEFIT_LENGTH = 100
 
@@ -107,6 +130,10 @@ def validate(key: str, value: Any) -> Any:
         return _normalize_product_ids(value)
     if key == "premium_benefits":
         return _normalize_benefits(value)
+    if key == "free_audio_quality" and value not in FREE_AUDIO_QUALITIES:
+        raise ConfigError("free_audio_quality: „normal“ oder „low“ erwartet.")
+    if key == "billing_base_plans":
+        return _normalize_base_plans(value)
     return value
 
 
@@ -117,6 +144,17 @@ def _normalize_product_ids(value: str) -> str:
         raise ConfigError(
             "billing_product_ids: Produkt-IDs bestehen aus Kleinbuchstaben, Ziffern, Punkt und Unterstrich "
             "(höchstens 5, durch Komma getrennt)."
+        )
+    return ",".join(ids)
+
+
+def _normalize_base_plans(value: str) -> str:
+    """„ monatlich , jaehrlich “ -> „monatlich,jaehrlich“. Schreibweise wie die Kennungen der Basis-Abos."""
+    ids = [part.strip() for part in value.split(",") if part.strip()]
+    if len(ids) > MAX_BASE_PLANS or len(set(ids)) != len(ids) or not all(BASE_PLAN_PATTERN.match(i) for i in ids):
+        raise ConfigError(
+            "billing_base_plans: Kennungen der Basis-Abos bestehen aus Kleinbuchstaben, Ziffern und Bindestrich "
+            "(höchstens 6, durch Komma getrennt)."
         )
     return ",".join(ids)
 
@@ -132,6 +170,11 @@ def _normalize_benefits(value: str) -> str:
 def product_ids(config: dict[str, Any]) -> list[str]:
     """Die eingestellten Abo-Produkt-IDs als Liste."""
     return [part for part in str(config["billing_product_ids"]).split(",") if part]
+
+
+def base_plans(config: dict[str, Any]) -> list[str]:
+    """Die eingestellten Laufzeiten (Kennungen der Basis-Abos) als Liste."""
+    return [part for part in str(config["billing_base_plans"]).split(",") if part]
 
 
 def benefits(config: dict[str, Any]) -> list[str]:
@@ -161,6 +204,8 @@ def update(db: Session, changes: dict[str, Any]) -> dict[str, Any]:
     # Ein Kauf-Knopf ohne Produkt wäre in der App eine Sackgasse
     if merged["billing_enabled"] and not merged["billing_product_ids"]:
         raise ConfigError("billing_product_ids: Für den Kauf in der App fehlt die Produkt-ID des Abos.")
+    if merged["billing_recommended_plan"] and merged["billing_recommended_plan"] not in base_plans(merged):
+        raise ConfigError("billing_recommended_plan: Die empfohlene Laufzeit muss in der Liste der Laufzeiten stehen.")
     for key, value in checked.items():
         row = db.get(AppSetting, key)
         if row is None:

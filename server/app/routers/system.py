@@ -9,6 +9,7 @@ from app.deps import AppSettings, DbSession
 from app.schemas.support import PublicConfigOut, UpdateInfoOut
 from app.schemas.system import HealthOut, ServerInfoOut
 from app.services import app_config, play_billing
+from app.services import features as feature_set
 
 router = APIRouter(tags=["System"])
 
@@ -70,4 +71,11 @@ def public_config(
         premium_headline=values["premium_headline"],
         premium_description=values["premium_description"],
         premium_benefits=app_config.benefits(values),
+        premium_only=feature_set.premium_only(values),
+        free_audio_quality=values["free_audio_quality"],
+        free_requests_per_week=values["free_requests_per_week"],
+        free_skips_per_hour=values["free_skips_per_hour"],
+        premium_badge_enabled=values["premium_badge_enabled"],
+        billing_base_plans=app_config.base_plans(values) if billing else [],
+        billing_recommended_plan=values["billing_recommended_plan"] if billing else "",
     )

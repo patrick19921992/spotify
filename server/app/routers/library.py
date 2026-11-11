@@ -25,6 +25,8 @@ from app.schemas.library import (
     SearchOut,
     TrackOut,
 )
+from app.services import app_config
+from app.services import features as feature_set
 from app.services import library as service
 
 router = APIRouter(tags=["Bibliothek"])
@@ -118,11 +120,14 @@ def get_track(track_id: int, _: CurrentUser, db: DbSession) -> TrackOut:
 
 
 @router.get("/tracks/{track_id}/lyrics", response_model=LyricsOut)
-def get_lyrics(track_id: int, _: CurrentUser, db: DbSession, settings: AppSettings) -> LyricsOut:
-    """Songtext – zeitsynchron (Karaoke-Ansicht), wenn eine .lrc-Datei vorhanden ist."""
+def get_lyrics(track_id: int, user: CurrentUser, db: DbSession, settings: AppSettings) -> LyricsOut:
+    """Songtext – zeitsynchron (Karaoke-Ansicht), wenn eine .lrc-Datei vorhanden ist.
+    Stellt der Betreiber Songtexte auf „nur Premium“, gibt es ohne passendes Premium 403."""
     track = db.get(Track, track_id)
     if track is None:
         raise _not_found("Titel")
+    if not feature_set.access_for(db, user, app_config.get_all(db)).allows("lyrics"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, feature_set.MSG_LYRICS)
     found = read_lyrics(settings.media_dir / track.path)
     if found is None:
         raise _not_found("Songtext")

@@ -15,6 +15,8 @@ def sub(
     linked: str = "",
     acknowledged: bool = False,
     test: bool = False,
+    base_plan: str = "",
+    offer: str = "",
 ) -> SubscriptionInfo:
     """Ein Abo, wie Google es melden würde. `days` = Ablauf ab jetzt (negativ = schon vorbei)."""
     return SubscriptionInfo(
@@ -27,6 +29,8 @@ def sub(
         obfuscated_account_id=account,
         linked_purchase_token=linked,
         is_test=test,
+        base_plan_id=base_plan,
+        offer_id=offer,
     )
 
 

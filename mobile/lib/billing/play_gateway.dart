@@ -5,7 +5,11 @@ import 'package:flutter/foundation.dart';
 // dahinter ein Platzhalter ohne nativen Code (mobile/packages/in_app_purchase_stub) – deshalb hier nur die Namen
 // verwenden, die es auch dort gibt.
 import 'package:in_app_purchase/in_app_purchase.dart';
+// Laufzeiten (Basis-Pläne, Angebote) und Wechsel – ebenfalls mit Platzhalter (mobile/packages/in_app_purchase_android_stub)
+import 'package:in_app_purchase_android/billing_client_wrappers.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
+import 'plans.dart';
 import 'purchase_gateway.dart';
 
 /// Kauf über Google Play Billing (nur Play-Version auf Android). Abos werden wie ein dauerhafter Kauf gestartet;
@@ -16,9 +20,6 @@ class PlayPurchaseGateway implements PurchaseGateway {
 
   final _controller = StreamController<StorePurchase>.broadcast();
   StreamSubscription<List<PurchaseDetails>>? _subscription;
-
-  /// Vom Store geladene Produkte (für den Kaufdialog).
-  final _details = <String, ProductDetails>{};
 
   void _listen() {
     _subscription ??= _iap.purchaseStream.listen(
@@ -69,22 +70,126 @@ class PlayPurchaseGateway implements PurchaseGateway {
     }
     final products = <StoreProduct>[];
     for (final id in ids) {
-      // Zu einer ID kann der Store mehrere Einträge liefern (Angebote): es gilt der erste mit einem echten Preis
+      // Zu einem Abo liefert der Store je Basis-Plan und je Angebot einen eigenen Eintrag
       final matching = response.productDetails.where((d) => d.id == id).toList();
       if (matching.isEmpty) continue;
-      final chosen = matching.firstWhere((d) => d.rawPrice > 0, orElse: () => matching.first);
-      _details[id] = chosen;
-      products.add(StoreProduct(id: id, title: chosen.title, description: chosen.description, price: chosen.price));
+      final plans = _plans(id, matching);
+      if (plans.isEmpty) continue;
+      final first = matching.first;
+      products.add(StoreProduct(
+        id: id,
+        title: first.title,
+        description: first.description,
+        price: plans.first.regular.formattedPrice,
+        plans: plans,
+      ));
     }
     return products;
   }
 
+  /// Laufzeiten eines Abos: je Basis-Plan der Eintrag ohne Angebot, dazu das beste Angebot.
+  static List<StorePlan> _plans(String productId, List<ProductDetails> entries) {
+    final byPlan = <String, List<StoreOffer>>{};
+    String title = '';
+    for (final entry in entries) {
+      if (entry is! GooglePlayProductDetails) continue;
+      final index = entry.subscriptionIndex;
+      final details = entry.productDetails.subscriptionOfferDetails;
+      if (index == null || details == null || index >= details.length) continue;
+      final offer = details[index];
+      // Ratenpläne und Prepaid-Pläne (ohne automatische Verlängerung) bietet die App nicht an
+      if (offer.installmentPlanDetails != null) continue;
+      if (offer.pricingPhases.isEmpty ||
+          offer.pricingPhases.last.recurrenceMode != RecurrenceMode.infiniteRecurring) {
+        continue;
+      }
+      title = title.isEmpty ? entry.title : title;
+      byPlan.putIfAbsent(offer.basePlanId, () => []).add(StoreOffer(
+            productId: productId,
+            basePlanId: offer.basePlanId,
+            offerId: offer.offerId,
+            tags: offer.offerTags,
+            phases: [
+              for (final phase in offer.pricingPhases)
+                StorePhase(
+                  formattedPrice: phase.formattedPrice,
+                  priceMicros: phase.priceAmountMicros,
+                  currencyCode: phase.priceCurrencyCode,
+                  billingPeriod: phase.billingPeriod,
+                  cycles: phase.recurrenceMode == RecurrenceMode.infiniteRecurring ? 0 : phase.billingCycleCount,
+                  infinite: phase.recurrenceMode == RecurrenceMode.infiniteRecurring,
+                  once: phase.recurrenceMode == RecurrenceMode.nonRecurring,
+                ),
+            ],
+            raw: entry,
+          ));
+    }
+    final plans = <StorePlan>[];
+    byPlan.forEach((basePlanId, offers) {
+      final base = offers.where((o) => o.offerId == null).firstOrNull;
+      if (base == null) return; // ohne Basis-Eintrag lässt sich der Plan nicht sauber kaufen
+      plans.add(StorePlan(
+        productId: productId,
+        basePlanId: basePlanId,
+        title: title,
+        base: base,
+        offer: chooseOffer(offers),
+      ));
+    });
+    return plans;
+  }
+
+  static GooglePlayProductDetails _details(StoreOffer offer) {
+    final raw = offer.raw;
+    if (raw is! GooglePlayProductDetails) {
+      throw StateError('Das Abo wurde im Play Store nicht gefunden (${offer.productId}).');
+    }
+    return raw;
+  }
+
   @override
-  Future<void> buy(StoreProduct product, {required String accountId}) async {
-    final details = _details[product.id];
-    if (details == null) throw StateError('Das Abo wurde im Play Store nicht gefunden (${product.id}).');
+  Future<void> buy(StorePlan plan, {required String accountId}) async {
+    final details = _details(plan.offer ?? plan.base);
     _listen();
-    await _iap.buyNonConsumable(purchaseParam: PurchaseParam(productDetails: details, applicationUserName: accountId));
+    await _iap.buyNonConsumable(
+      purchaseParam: GooglePlayPurchaseParam(
+        productDetails: details,
+        applicationUserName: accountId,
+        offerToken: details.offerToken,
+      ),
+    );
+  }
+
+  @override
+  Future<void> change(StorePlan plan, {required String accountId, required String oldProductId}) async {
+    final details = _details(plan.offer ?? plan.base);
+    _listen();
+    final past = await _iap
+        .getPlatformAddition<InAppPurchaseAndroidPlatformAddition>()
+        .queryPastPurchases(applicationUserName: accountId);
+    final old = past.pastPurchases
+        .where((p) => p.productID == oldProductId && p.status == PurchaseStatus.purchased)
+        .firstOrNull;
+    if (old == null) {
+      // Abfrage gestört (Dienst nicht erreichbar, Netzfehler): erneut versuchen, nicht aufs Konto schieben
+      if (past.error != null) throw StateError(storeChangeUnavailable);
+      // Das Abo läuft über ein anderes Google-Konto (oder ein anderes Gerät ohne dieses Konto)
+      throw StateError(storeChangeNotOnDevice);
+    }
+    await _iap.buyNonConsumable(
+      purchaseParam: GooglePlayPurchaseParam(
+        productDetails: details,
+        applicationUserName: accountId,
+        offerToken: details.offerToken,
+        changeSubscriptionParam: ChangeSubscriptionParam(
+          oldPurchaseDetails: old,
+          // Sofort wechseln: Die neue Laufzeit wird gleich bezahlt, die bezahlte Restzeit der alten hängt Google
+          // anteilig hinten an. Für einen Wechsel zwischen Basis-Abos desselben Abos nennt Google nur diesen Modus
+          // und „ohne Anrechnung“ – Zeit-Anrechnung (withTimeProration) gilt dort nicht.
+          replacementMode: ReplacementMode.chargeFullPrice,
+        ),
+      ),
+    );
   }
 
   @override

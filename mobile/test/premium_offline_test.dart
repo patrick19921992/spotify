@@ -1554,7 +1554,7 @@ void main() {
       ]);
       expect(find.text('Abo über Google Play – verlängert sich am 11. Dez. 2026'), findsOneWidget);
       expect(find.textContaining('abonnieren'), findsOneWidget, reason: 'nur die Überschrift der Kaufkarte');
-      expect(find.text('Für 0,99 € abonnieren'), findsNothing);
+      expect(find.text('Monatlich abonnieren'), findsNothing);
       expect(find.text('Käufe wiederherstellen'), findsOneWidget);
       await tester.tap(find.text('Abo verwalten'));
       await tester.pump();
@@ -1571,20 +1571,21 @@ void main() {
           channel: AppChannel.play,
           config: billingConfig,
           overrides: [purchaseGatewayProvider.overrideWithValue(gateway)]);
-      expect(find.text('Für 0,99 € abonnieren'), findsOneWidget);
+      expect(find.text('Monatlich abonnieren'), findsOneWidget);
       expect(
-        find.text('Abo über Google Play. Verlängert sich automatisch, bis du kündigst. Kündigen kannst du jederzeit in Google Play.'),
+        find.text('Abo über Google Play. Verlängert sich automatisch, bis du kündigst. Kündigen und Zahlungsart ändern kannst '
+            'du jederzeit in Google Play. Beim Wechsel der Laufzeit rechnet Google die restliche Zeit an.'),
         findsOneWidget,
       );
       expect(find.text('Code einlösen'), findsOneWidget, reason: 'Codes gehen weiterhin');
       gateway.onBuy = (product) => bought('token-kauf-0001');
-      await tester.tap(find.text('Für 0,99 € abonnieren'));
+      await tester.tap(find.text('Monatlich abonnieren'));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(gateway.log, contains('buy:premium_monat:1'));
+      expect(gateway.log, contains('buy:monatlich:1'));
       expect(api.calls, contains('verify:premium_monat:token-kauf-0001'));
       expect(find.text('Premium ist freigeschaltet. Danke!'), findsOneWidget);
       expect(find.text('Premium bis 10. Dez. 2026'), findsOneWidget);
-      expect(find.text('Für 0,99 € abonnieren'), findsNothing, reason: 'mit laufendem Abo gibt es nichts zu kaufen');
+      expect(find.text('Monatlich abonnieren'), findsNothing, reason: 'mit laufendem Abo gibt es nichts zu kaufen');
       expectNoErrors(tester);
     });
 
@@ -1716,10 +1717,10 @@ void main() {
       api.verifyResult = PlayVerifyResult(result: 'active', premium: premium());
       gateway.onBuy = (product) => bought('token-kauf-0001');
 
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       await waitFor(() => c.read(billingProvider).notice != null, 'Rückmeldung');
 
-      expect(gateway.log, contains('buy:premium_monat:1'), reason: 'accountId = Benutzer-ID');
+      expect(gateway.log, contains('buy:monatlich:1'), reason: 'accountId = Benutzer-ID');
       expect(api.calls, contains('verify:premium_monat:token-kauf-0001'));
       expect(c.read(billingProvider).notice, 'Premium ist freigeschaltet. Danke!');
       expect(c.read(billingProvider).busy, isFalse);
@@ -1733,7 +1734,7 @@ void main() {
     test('Kauf abgebrochen: nichts passiert, kein Aufruf beim Server', () async {
       final c = await start();
       gateway.onBuy = (product) => bought('', status: StorePurchaseStatus.cancelled);
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       await settle(60);
       final state = c.read(billingProvider);
       expect(state.busy, isFalse);
@@ -1747,7 +1748,7 @@ void main() {
     test('Fehler im Store: Meldung, kein Premium', () async {
       final c = await start();
       gateway.onBuy = (product) => bought('', status: StorePurchaseStatus.failed, message: 'BillingResponse.billingUnavailable');
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       await settle(60);
       expect(c.read(billingProvider).error, 'Der Kauf hat nicht geklappt: BillingResponse.billingUnavailable');
       expect(c.read(billingProvider).busy, isFalse);
@@ -1758,7 +1759,7 @@ void main() {
     test('Kaufdialog lässt sich nicht öffnen: Meldung', () async {
       final c = await start();
       gateway.buyError = StateError('Kein Google-Konto');
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       expect(c.read(billingProvider).error, 'Der Kauf hat nicht geklappt: Kein Google-Konto');
       expect(c.read(billingProvider).busy, isFalse);
     });
@@ -1768,7 +1769,7 @@ void main() {
       gateway
         ..onBuy = ((product) => bought('', status: StorePurchaseStatus.failed, message: 'BillingResponse.itemAlreadyOwned'))
         ..restorable = [bought('token-alt-00001', status: StorePurchaseStatus.restored)];
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       await waitFor(() => c.read(billingProvider).notice != null, 'Rückmeldung');
       expect(gateway.log, contains('restore:1'));
       expect(api.calls, contains('verify:premium_monat:token-alt-00001'));
@@ -1781,7 +1782,7 @@ void main() {
       final c = await start();
       api.verifyResult = PlayVerifyResult(result: 'pending', premium: premium(allowed: false));
       gateway.onBuy = (product) => bought('token-offen-001', status: StorePurchaseStatus.pending);
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       await waitFor(() => api.calls.contains('verify:premium_monat:token-offen-001'), 'dem Server gemeldet');
       await settle(60);
       expect(c.read(billingProvider).notice,
@@ -1796,7 +1797,7 @@ void main() {
       final c = await start();
       api.verifyError = const ApiException('Keine Verbindung zum Server.');
       gateway.onBuy = (product) => bought('token-offen-003', status: StorePurchaseStatus.pending);
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       await waitFor(() => remembered(c).isNotEmpty, 'gemerkt');
       expect(c.read(billingProvider).notice, startsWith('Die Zahlung ist noch offen.'));
       expect(c.read(billingProvider).error, isNull);
@@ -2029,7 +2030,7 @@ void main() {
       final c = await start();
       api.verifyResult = PlayVerifyResult(result: 'pending', premium: premium(allowed: false));
       gateway.onBuy = (product) => bought('token-offen-002');
-      await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+      await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
       await waitFor(() => c.read(billingProvider).notice != null, 'Rückmeldung');
       expect(c.read(billingProvider).notice, startsWith('Die Zahlung ist noch offen.'));
       expect(gateway.completed, isEmpty);
@@ -2047,7 +2048,7 @@ void main() {
         final c = await start();
         api.verifyError = ApiException(message, statusCode: status);
         gateway.onBuy = (product) => bought('token-fremd-001');
-        await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+        await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
         await waitFor(() => c.read(billingProvider).error != null, 'Fehlermeldung');
         expect(c.read(billingProvider).error, message);
         expect(c.read(billingProvider).busy, isFalse);
@@ -2067,7 +2068,7 @@ void main() {
         var c = await start();
         api.verifyError = error;
         gateway.onBuy = (product) => bought('token-spaeter-01');
-        await c.read(billingProvider.notifier).buy(c.read(billingProvider).products.single);
+        await c.read(billingProvider.notifier).buy(c.read(billingProvider).plans.single);
         await waitFor(() => c.read(billingProvider).notice != null, 'Rückmeldung');
         expect(c.read(billingProvider).notice, BillingText.unverified);
         expect(c.read(billingProvider).error, isNull);

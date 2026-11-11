@@ -1,0 +1,19 @@
+# Platzhalter für das Android-Kauf-Paket „in_app_purchase_android“ in allen Versionen OHNE Kauf in der App (GitHub-APK,
+# Windows, iPhone). Selfify nutzt daraus die Laufzeiten (Basis-Pläne, Angebote) und den Wechsel der Laufzeit
+# (lib/billing/play_gateway.dart). Ohne diesen Platzhalter steckte die native Billing-Bibliothek in jeder App. Die CI
+# schaltet ihn zusammen mit packages/in_app_purchase_stub per pubspec_overrides.yaml ein (siehe
+# .github/workflows/app.yml); lokal und in den Tests gilt das echte Paket.
+name: in_app_purchase_android
+description: Platzhalter ohne native Teile – hat nur die Schnittstelle, die Selfify nutzt.
+version: 0.5.5
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Im Bau mit Platzhaltern ist das ebenfalls der Platzhalter (packages/in_app_purchase_stub)
+  in_app_purchase: ^3.3.1
