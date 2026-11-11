@@ -42,10 +42,10 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
-      # Der Platzhalter fürs Werbe-Paket (nur in Versionen ohne Werbung) muss zu dem passen, was die App davon nutzt
-      - name: Analyse mit dem Platzhalter für das Werbe-Paket
+      # Die Platzhalter für Werbe- und Kauf-Paket (GitHub-APK, Windows, iPhone) müssen zu dem passen, was die App davon nutzt
+      - name: Analyse mit den Platzhaltern für Werbe- und Kauf-Paket
         run: |
-          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n' > pubspec_overrides.yaml
           flutter pub get
           flutter analyze
 
@@ -87,11 +87,12 @@ jobs:
           keyPassword=$KEY_PASSWORD
           PROPS
           echo "signed=true" >> "$GITHUB_OUTPUT"
-      # Die GitHub-Version hat keine Werbung. Das Werbe-SDK (google_mobile_ads) gehört nur in die Play-Version: Mit ihm
-      # startete die GitHub-App am Handy nicht mehr. Hier wird es durch einen Platzhalter ersetzt.
-      - name: Werbe-SDK weglassen (Werbung gibt es nur in der Play-Version)
+      # Die GitHub-Version hat keine Werbung und keinen Kauf in der App. Das Werbe-SDK (google_mobile_ads) und die
+      # Billing-Bibliothek (in_app_purchase) gehören nur in die Play-Version: Mit dem Werbe-SDK startete die GitHub-App
+      # am Handy nicht mehr. Hier werden beide durch Platzhalter ersetzt.
+      - name: Werbe- und Kauf-SDK weglassen (nur in der Play-Version)
         run: |
-          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n' > pubspec_overrides.yaml
       - run: flutter pub get
       # Flutter braucht ein NDK, das auf den GitHub-Rechnern fehlt. Gradle würde es beim Bauen ohne
       # Wiederholung laden – ein abgebrochener Download ließ dann den ganzen Build scheitern.
@@ -105,7 +106,9 @@ jobs:
           fi
           echo "NDK $NDK_VERSION"
           for attempt in 1 2 3; do
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null; then
+            # "yes" nicht per Pipe davorhängen: Es endet mit SIGPIPE, sobald der sdkmanager fertig ist – mit
+            # "pipefail" gälte der gelungene Download dann als fehlgeschlagen
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" < <(yes) > /dev/null; then
               exit 0
             fi
             echo "::warning::NDK-Download fehlgeschlagen (Versuch $attempt), neuer Versuch …"
@@ -136,6 +139,41 @@ jobs:
           # shellcheck disable=SC2086
           if grep -q 'com.google.android.gms.ads' $FILES; then
             echo "::error::Die GitHub-Version enthält das Werbe-SDK - sie startete damit am Handy nicht mehr."
+            exit 1
+          fi
+      - name: Prüfen, dass kein Google Play Billing in der GitHub-Version steckt
+        run: |
+          # Der Platzhalter muss gegriffen haben: kein natives Billing-Plugin in der Plugin-Liste der App
+          if grep -q 'in_app_purchase_android' .flutter-plugins-dependencies; then
+            echo "::error::Die GitHub-Version enthält das Plugin in_app_purchase_android - der Platzhalter (pubspec_overrides.yaml) hat nicht gegriffen."
+            exit 1
+          fi
+          # ... und keine Billing-Bibliothek in der fertigen APK
+          if unzip -l build/selfify.apk | grep -i 'billingclient'; then
+            echo "::error::Die GitHub-Version enthält Google Play Billing - das Bauteil gehört nur in die Play-Version."
+            exit 1
+          fi
+          FILES=$(find build/app/intermediates -path '*merged_manifest*fullRelease*' -name AndroidManifest.xml)
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
+          # shellcheck disable=SC2086
+          if grep -E 'com\.android\.vending\.BILLING|com\.android\.billingclient' $FILES; then
+            echo "::error::Die GitHub-Version enthält Google Play Billing - das Bauteil gehört nur in die Play-Version."
+            exit 1
+          fi
+      - name: Prüfen, dass Offline-Musik nicht per Sicherung zurückkommt
+        run: |
+          # Offline-Dateien liegen im privaten App-Speicher und verschwinden beim Deinstallieren. Damit sie nicht über die
+          # Google-Sicherung oder einen Geräteumzug zurückkommen, sichern die Backup-Regeln nur die Einstellungen.
+          FILES=$(find build/app/intermediates -path '*merged_manifest*fullRelease*' -name AndroidManifest.xml)
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
+          # shellcheck disable=SC2086
+          # Attribut samt Wert - der bloße Name steht auch in einem Kommentar des Manifests und bewiese nichts
+          grep -q 'android:dataExtractionRules="@xml/data_extraction_rules"' $FILES || { echo "::error::Backup-Regeln (android:dataExtractionRules, Android 12+) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung oder Geräteumzug zurückkommen."; exit 1; }
+          # shellcheck disable=SC2086
+          grep -q 'android:fullBackupContent="@xml/backup_rules"' $FILES || { echo "::error::Backup-Regeln (android:fullBackupContent, bis Android 11) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung zurückkommen."; exit 1; }
+          # shellcheck disable=SC2086
+          if grep -q 'hasFragileUserData="true"' $FILES; then
+            echo "::error::hasFragileUserData ist gesetzt - Android böte beim Deinstallieren an, die Daten (Offline-Musik) zu behalten."
             exit 1
           fi
       - name: APK als Artefakt (nur zum Testen, falls Speicher frei)
@@ -225,6 +263,15 @@ jobs:
           keyPassword=$KEY_PASSWORD
           PROPS
           echo "signed=true" >> "$GITHUB_OUTPUT"
+      # Ohne pubspec_overrides.yaml: Die Play-Version bekommt die echten Pakete (Werbe-SDK und Google Play Billing).
+      # Liegt die Datei doch im Repository (versehentlich mit eingecheckt - die README leitet für den lokalen Bau der
+      # GitHub-Version dazu an), bekäme das Bundle die Platzhalter: keine Werbung, und niemand könnte kaufen.
+      - name: Abbrechen, wenn die Platzhalter-Pakete eingestellt sind (pubspec_overrides.yaml)
+        run: |
+          if [ -e pubspec_overrides.yaml ] || [ -L pubspec_overrides.yaml ]; then
+            echo "::error::mobile/pubspec_overrides.yaml liegt im Repository - die Play-Version würde mit den Platzhaltern statt mit Werbe-SDK und Google Play Billing gebaut. Datei aus dem Repository entfernen (git rm mobile/pubspec_overrides.yaml)."
+            exit 1
+          fi
       - run: flutter pub get
       - name: Android-NDK laden (mit Wiederholung)
         run: |
@@ -236,7 +283,9 @@ jobs:
           fi
           echo "NDK $NDK_VERSION"
           for attempt in 1 2 3; do
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null; then
+            # "yes" nicht per Pipe davorhängen: Es endet mit SIGPIPE, sobald der sdkmanager fertig ist – mit
+            # "pipefail" gälte der gelungene Download dann als fehlgeschlagen
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" < <(yes) > /dev/null; then
               exit 0
             fi
             echo "::warning::NDK-Download fehlgeschlagen (Versuch $attempt), neuer Versuch ..."
@@ -284,6 +333,56 @@ jobs:
           fi
           # shellcheck disable=SC2086
           grep -q 'com.google.android.gms.ads.APPLICATION_ID' $FILES || { echo "::error::AdMob-App-ID fehlt im Manifest - das Werbe-SDK würde beim Start abstürzen."; exit 1; }
+      - name: Prüfen, dass die Play-Version kaufen kann (Google Play Billing)
+        run: |
+          # Die Berechtigung allein beweist nichts: Sie steht fest im Play-Manifest der App. Geprüft wird deshalb, dass
+          # das echte Kauf-Bauteil eingebaut ist und nicht der Platzhalter (in_app_purchase_stub).
+          # 1. Plugin-Liste der App: Das native Billing-Plugin gibt es nur mit dem echten Paket
+          if ! grep -q 'in_app_purchase_android' .flutter-plugins-dependencies; then
+            echo "::error::Die Play-Version enthält das Plugin in_app_purchase_android nicht - statt Google Play Billing steckt der Platzhalter im Bundle, niemand könnte kaufen."
+            exit 1
+          fi
+          # 2. Bauteil der Billing-Bibliothek (com.android.billingclient.api.ProxyBillingActivity): Es kommt nur aus der
+          #    echten Bibliothek ins Manifest. Gesucht wird in der zusammengeführten Manifest-Datei und im Manifest des
+          #    fertigen Bundles (dort binär gespeichert, die Namen stehen aber lesbar darin)
+          FILES=$(find build/app/intermediates -path '*merged_manifest*playRelease*' -name AndroidManifest.xml)
+          FOUND=""
+          # shellcheck disable=SC2086
+          if [ -n "$FILES" ] && grep -q 'com\.android\.billingclient' $FILES; then FOUND="zusammengeführtes Manifest"; fi
+          if [ -z "$FOUND" ]; then
+            # Erst in eine Datei auspacken, dann suchen – nicht "unzip -p … | grep -q": grep beendet sich beim ersten
+            # Treffer, unzip bekäme SIGPIPE, und mit "pipefail" gälte der Treffer als Fehlschlag
+            BUNDLE_MANIFEST="$RUNNER_TEMP/play-bundle-manifest.bin"
+            if unzip -p build/selfify-play.aab base/manifest/AndroidManifest.xml > "$BUNDLE_MANIFEST" 2>/dev/null \
+              && grep -a -q 'com\.android\.billingclient' "$BUNDLE_MANIFEST"; then
+              FOUND="Manifest im Bundle"
+            fi
+          fi
+          if [ -z "$FOUND" ]; then
+            echo "::error::Die Billing-Bibliothek (com.android.billingclient) fehlt im Play-Bundle - der Kauf in der App würde nicht funktionieren."
+            exit 1
+          fi
+          echo "Billing-Bibliothek gefunden: $FOUND"
+          # 3. Berechtigung zum Kaufen
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Billing-Berechtigung nicht geprüft."; exit 0; fi
+          # shellcheck disable=SC2086
+          grep -q 'com\.android\.vending\.BILLING' $FILES || { echo "::error::Billing-Berechtigung fehlt - der Kauf in der App würde nicht funktionieren."; exit 1; }
+      - name: Prüfen, dass Offline-Musik nicht per Sicherung zurückkommt
+        run: |
+          # Offline-Dateien liegen im privaten App-Speicher und verschwinden beim Deinstallieren. Damit sie nicht über die
+          # Google-Sicherung oder einen Geräteumzug zurückkommen, sichern die Backup-Regeln nur die Einstellungen.
+          FILES=$(find build/app/intermediates -path '*merged_manifest*playRelease*' -name AndroidManifest.xml)
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
+          # shellcheck disable=SC2086
+          # Attribut samt Wert - der bloße Name steht auch in einem Kommentar des Manifests und bewiese nichts
+          grep -q 'android:dataExtractionRules="@xml/data_extraction_rules"' $FILES || { echo "::error::Backup-Regeln (android:dataExtractionRules, Android 12+) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung oder Geräteumzug zurückkommen."; exit 1; }
+          # shellcheck disable=SC2086
+          grep -q 'android:fullBackupContent="@xml/backup_rules"' $FILES || { echo "::error::Backup-Regeln (android:fullBackupContent, bis Android 11) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung zurückkommen."; exit 1; }
+          # shellcheck disable=SC2086
+          if grep -q 'hasFragileUserData="true"' $FILES; then
+            echo "::error::hasFragileUserData ist gesetzt - Android böte beim Deinstallieren an, die Daten (Offline-Musik) zu behalten."
+            exit 1
+          fi
       - name: Bundle als Artefakt (nur zum Testen, falls Speicher frei)
         uses: actions/upload-artifact@v7
         continue-on-error: true
@@ -325,12 +424,14 @@ jobs:
           cache: true
       # smtc_windows (Medientasten, Windows-Medienübersicht) wird beim Bauen aus Rust-Quellcode übersetzt
       - uses: dtolnay/rust-toolchain@stable
-      - name: Werbe-SDK weglassen (Werbung gibt es nur in der Play-Version)
+      - name: Werbe- und Kauf-SDK weglassen (nur in der Play-Version)
         run: |
           @"
           dependency_overrides:
             google_mobile_ads:
               path: packages/google_mobile_ads_stub
+            in_app_purchase:
+              path: packages/in_app_purchase_stub
           "@ | Set-Content pubspec_overrides.yaml -Encoding utf8
       - run: flutter pub get
       - name: Windows-App bauen
@@ -454,9 +555,9 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - name: Werbe-SDK weglassen (Werbung gibt es nur in der Play-Version)
+      - name: Werbe- und Kauf-SDK weglassen (nur in der Play-Version)
         run: |
-          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
+          printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n' > pubspec_overrides.yaml
       - run: flutter pub get
       - name: iOS bauen (ohne Signatur)
         run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}

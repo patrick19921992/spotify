@@ -73,6 +73,8 @@ ApiException toApiException(Object error) {
       403 => 'Dafür fehlen dir die Rechte.',
       404 => 'Nicht gefunden.',
       413 => 'Die Datei ist zu groß.',
+      // „Offline-Hören nur mit Premium“ mit Mindest-Version: Diese App ist dem Server zu alt
+      426 => 'Bitte aktualisiere die App.',
       429 => 'Zu viele Versuche – bitte kurz warten.',
       502 || 503 || 504 => 'Der Server ist gerade nicht erreichbar.',
       _ => 'Fehler $status',
@@ -120,6 +122,12 @@ String defaultDeviceName() {
     host = Platform.localHostname;
   } catch (_) {}
   return host.isEmpty || host == 'localhost' ? '$system-App' : '$system · $host';
+}
+
+/// Kopfzeile, mit der sich die App beim Server zu erkennen gibt – null, solange die Version unbekannt ist (Tests).
+Map<String, String>? get clientHeaders {
+  final client = currentClient;
+  return client == null ? null : {'X-Selfify-Client': client.header};
 }
 
 Dio _plainDio(String baseUrl) => Dio(BaseOptions(
@@ -380,6 +388,30 @@ class ApiClient {
     }
   }
 
+  /// HTTP-Status, mit dem der Server einen Stream-Link beantwortet (ohne die Datei zu laden) – null ohne Antwort.
+  /// Damit lässt sich klären, warum der Player einen Titel nicht abspielt (z. B. 426: App zu alt).
+  Future<int?> streamStatus(String url) async {
+    final cancel = CancelToken();
+    try {
+      final response = await _dio.get<ResponseBody>(
+        url,
+        cancelToken: cancel,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: {'Range': 'bytes=0-0'},
+          validateStatus: (_) => true,
+          receiveTimeout: const Duration(seconds: 15),
+        ),
+      );
+      return response.statusCode;
+    } catch (_) {
+      return null;
+    } finally {
+      // Der Inhalt interessiert nicht
+      cancel.cancel();
+    }
+  }
+
   // ------------------------------------------------------------ Konto
 
   Future<ServerInfo> serverInfo() => _get('/server', (d) => ServerInfo.fromJson(d as Json));
@@ -409,6 +441,15 @@ class ApiClient {
   /// Löst einen Premium-Code ein (Groß-/Kleinschreibung und Bindestriche sind egal).
   Future<PremiumStatus> redeemPremium(String code) =>
       _send('POST', '/premium/redeem', (d) => PremiumStatus.fromJson(d as Json), body: {'code': code});
+
+  /// Meldet dem Server einen Kauf oder eine Wiederherstellung aus Google Play. Der Server prüft bei Google und
+  /// schaltet Premium frei. Fehler kommen als [ApiException] mit der Meldung des Servers.
+  Future<PlayVerifyResult> verifyPlayPurchase({required String productId, required String token}) => _send(
+        'POST',
+        '/premium/play/verify',
+        (d) => PlayVerifyResult.fromJson(d as Json),
+        body: {'product_id': productId, 'purchase_token': token},
+      );
 
   Future<List<SongWish>> wishes() => _get('/requests', (d) => _listOf(d, SongWish.fromJson));
   Future<SongWish> createWish({required String title, String artist = '', String note = ''}) =>

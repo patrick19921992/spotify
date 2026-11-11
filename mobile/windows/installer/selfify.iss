@@ -53,8 +53,16 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#AppSourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
-; Alte App-Dateien vor einem Update entfernen (Einstellungen und Offline-Musik liegen woanders und bleiben).
+; Alte App-Dateien vor einem Update entfernen (Einstellungen und Offline-Musik liegen woanders und bleiben
+; bei einem Update erhalten – siehe [UninstallDelete]).
 Type: filesandordirs; Name: "{app}\data"
+
+[UninstallDelete]
+; Bei der Deinstallation muss die Offline-Musik vom Rechner: Sie liegt nicht im Programmordner, sondern unter
+; %LOCALAPPDATA%\Selfify\Selfify\offline (lib/state/offline.dart: getApplicationCacheDirectory, Firmen- und
+; Produktname aus windows/runner/Runner.rc). Läuft nur bei einer echten Deinstallation – ein Update (auch das
+; stille aus der App) führt diesen Abschnitt nicht aus. Einstellungen und Anmeldung bleiben wie bisher liegen.
+Type: filesandordirs; Name: "{localappdata}\Selfify\Selfify\offline"
 
 [Icons]
 Name: "{autoprograms}\Selfify"; Filename: "{app}\selfify.exe"

@@ -4,7 +4,9 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../data/api.dart';
 import '../data/models.dart';
+import '../state/app_config.dart';
 import '../state/auth.dart';
 import '../state/connectivity.dart';
 import '../state/offline.dart';
@@ -39,6 +41,9 @@ final playbackBridgeProvider = Provider<void>((ref) {
   };
   handler.resolveArt = (track) =>
       api == null || track.coverId == null ? null : Uri.parse(api.coverUrl(track.coverId!, size: 600));
+  // Verlangt der Server eine Mindest-Version fürs Hören ohne Premium, muss er auch beim Abspielen erfahren, welche
+  // App fragt – nur dann bekommen die Stream-Links den Header mit (sonst bleibt alles wie bisher).
+  final streamHeaders = ref.watch(streamHeadersProvider);
   handler.resolveSource = (track, item) {
     final local = offline.localPath(track.id);
     if (local != null) return AudioSource.file(local, tag: item);
@@ -47,8 +52,40 @@ final playbackBridgeProvider = Provider<void>((ref) {
     // hier als Ton mit – der Server schickt dafür nur die Tonspur statt des ganzen Videos.
     return AudioSource.uri(
       Uri.parse(api.streamUrl(track.id, quality: quality, compatible: Platform.isIOS, audioOnly: track.isVideo)),
+      headers: streamHeaders,
       tag: item,
     );
+  };
+  // Der Server weist das Abspielen ab: Liegt es an einer zu alten App (HTTP 426), sagt die App das – auch wenn sie
+  // die Mindest-Version noch gar nicht kennt (Einstellungen nicht geladen oder vom Betreiber gerade erst gesetzt;
+  // eine zu alte App erfährt davon sonst nur, dass nichts mehr spielt).
+  handler.onPlaybackError = () {
+    final track = handler.currentTrack;
+    if (api == null || track == null || offline.localPath(track.id) != null) return;
+    if (!ref.mounted) return;
+    final notice = ref.read(updateRequiredNoticeProvider.notifier);
+    final config = ref.read(appConfigProvider.notifier);
+    final url = api.streamUrl(track.id, quality: quality, compatible: Platform.isIOS, audioOnly: track.isVideo);
+    api.streamStatus(url).then((status) {
+      if (status == 426) notice.show();
+      // Die Einstellung war hier noch unbekannt, der Server antwortet aber: neu holen – verlangt er inzwischen
+      // eine Mindest-Version, geben sich die Stream-Links ab dann zu erkennen (siehe [streamHeadersProvider]).
+      if (status != null && streamHeaders == null && ref.mounted) config.refresh().ignore();
+    }).ignore();
+  };
+  // Offline-Musik wird gelöscht (Premium abgelaufen): Die Warteschlange zeigt noch auf die Dateien. Mit Netz geht
+  // die Wiedergabe an derselben Stelle als Stream weiter, sonst endet sie.
+  offline.releasePlayback = (trackIds) async {
+    if (!handler.tracks.any((t) => trackIds.contains(t.id))) return;
+    if (api == null || noNetwork || settings.offlineMode) {
+      await handler.reset();
+      return;
+    }
+    try {
+      await handler.refreshSources();
+    } catch (_) {
+      await handler.reset();
+    }
   };
   handler.reportHistory = (track, seconds, context) {
     api?.addHistory(track.id, seconds, contextType: context?.type, contextId: context?.id).ignore();
@@ -62,7 +99,33 @@ final playbackBridgeProvider = Provider<void>((ref) {
   };
   // Zuletzt: neue Qualität (WLAN ↔ mobil) gilt sofort für die kommenden Titel
   handler.streamQuality = quality;
+  handler.streamHeaders = streamHeaders;
 });
+
+/// Kopfzeilen für Stream-Links (Abspielen, Videos) – null, solange der Server keine Mindest-Version verlangt.
+///
+/// „Offline-Hören nur mit Premium“ mit Mindest-Version (`offline_min_client_build`): Der Server weist beim Stream
+/// alle ohne Premium ab, deren App zu alt ist **oder sich nicht zu erkennen gibt** (HTTP 426). Ohne diese Kopfzeile
+/// träfe das auch die aktuelle App.
+final streamHeadersProvider = Provider<Map<String, String>?>((ref) {
+  final active =
+      ref.watch(appConfigValueProvider.select((c) => c.offlineRequiresPremium && c.offlineMinClientBuild > 0));
+  return active ? clientHeaders : null;
+});
+
+/// Meldung des Servers bei HTTP 426 (App zu alt für „Offline-Hören nur mit Premium“).
+const updateRequiredMessage = 'Bitte aktualisiere die App.';
+
+/// Hinweis „Bitte aktualisiere die App.“ – die Oberfläche zeigt ihn einmal und räumt ihn weg.
+class UpdateRequiredNotice extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void show() => state = true;
+  void clear() => state = false;
+}
+
+final updateRequiredNoticeProvider = NotifierProvider<UpdateRequiredNotice, bool>(UpdateRequiredNotice.new);
 
 final mediaItemProvider = StreamProvider<MediaItem?>((ref) => ref.watch(audioHandlerProvider).mediaItem);
 

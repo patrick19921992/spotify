@@ -73,7 +73,9 @@ und letzten Nutzung sowie die App-Version (Plattform, Kanal, Version).</li>
 <li><strong>Wünsche und Fehlermeldungen:</strong> Was du schickst („Song wünschen“, „Fehler melden“). Bei
 Fehlermeldungen nur, wenn du sie absendest – auf Wunsch mit Geräteinformationen und den letzten Fehlermeldungen
 der App.</li>
-<li><strong>Premium:</strong> Welche Codes du eingelöst hast und wie lange dein Premium gilt.</li>
+<li><strong>Premium:</strong> Welche Codes du eingelöst hast und wie lange dein Premium gilt. Kaufst du Premium über
+Google Play, speichert der Server die Kaufkennung von Google, das Produkt und die Laufzeit, um den Kauf deinem Konto
+zuzuordnen.</li>
 <li><strong>Technische Protokolle:</strong> Der Server kann Anfragen kurzzeitig protokollieren (z. B. zur Fehlersuche
 und zum Schutz vor Missbrauch).</li>
 </ul>
@@ -126,6 +128,11 @@ def deletion_page(settings: Settings) -> str:
 <p>Hier kannst du dein Konto und alle dazugehörigen Daten (Playlists, Lieblingssongs, Hörverlauf, Wünsche,
 Fehlermeldungen, Premium-Zuordnung) <strong>endgültig löschen</strong>. Das lässt sich nicht rückgängig machen.</p>
 <p>In der App geht es auch unter „Einstellungen“ → „Konto löschen“.</p>
+<p class="notice"><strong>Abo über Google Play?</strong> Das Löschen des Kontos kündigt ein laufendes Abo nicht –
+Google bucht sonst weiter ab. Kündige es vorher in Google Play: Play Store → Profilbild → „Zahlungen und Abos“ →
+„Abos“, oder unter
+<a href="https://play.google.com/store/account/subscriptions"
+rel="noopener noreferrer">play.google.com/store/account/subscriptions</a>.</p>
 <form id="delete-form" autocomplete="off">
 <label for="username">Benutzername</label>
 <input id="username" name="username" type="text" autocapitalize="none" required>

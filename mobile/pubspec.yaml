@@ -75,6 +75,8 @@ dependencies:
   url_launcher: ^6.3.3
   # Werbung (Google AdMob) – nur in der Play-Version aktiv
   google_mobile_ads: ^9.2.0
+  # Kauf in der App (Google Play Billing) – nur in der Play-Version aktiv
+  in_app_purchase: ^3.3.1
 
 dev_dependencies:
   flutter_test:

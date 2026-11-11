@@ -73,6 +73,10 @@
   }
 
   // Schutz vor Doppelklick/Doppel-Enter: Solange die Aktion läuft, ist der Knopf aus und weitere Auslöser zählen nicht
+  // Woher eine Lizenz stammt: eingelöster Code, vom Admin vergeben oder Abo über Google Play
+  function sourceText(source) { return source === "code" ? "Code" : source === "play" ? "Google Play" : "Admin"; }
+  var PLAY_REVOKE_HINT = " Das Abo läuft bei Google weiter – bitte in der Play Console erstatten oder kündigen.";
+
   function guarded(button, work) {
     var busy = false;
     return function (event) {
@@ -716,14 +720,19 @@
         var rows = data.licenses.map(function (lic) {
           var state = lic.revoked_at ? pill("entzogen", "red") : (lic.running ? pill("läuft", "green") : pill("abgelaufen / wartet", ""));
           return h("tr", null,
-            h("td", { text: lic.source === "code" ? "Code" : "Admin" }),
+            h("td", { text: sourceText(lic.source) }),
             h("td", { class: "mono small nowrap", text: lic.code || "–" }),
             h("td", { class: "small", text: fmtDate(lic.starts_at) + " – " + (lic.expires_at ? fmtDate(lic.expires_at) : "unbegrenzt") }),
             h("td", null, state),
             h("td", { class: "small", text: lic.note }),
             h("td", null, lic.running || (!lic.revoked_at && (!lic.expires_at || new Date(lic.expires_at) > new Date()))
               ? h("button", { class: "danger small", text: "Entziehen", onclick: function () {
-                api("POST", "/admin/premium/licenses/" + lic.id + "/revoke").then(function () { toast("Lizenz entzogen."); return reload(); }).catch(showError);
+                var ask = lic.source === "play"
+                  ? confirmDialog("Lizenz entziehen?", user.display_name + " verliert dieses Premium." + PLAY_REVOKE_HINT, "Entziehen", true)
+                  : Promise.resolve(true);
+                ask.then(function (ok) {
+                  if (ok) api("POST", "/admin/premium/licenses/" + lic.id + "/revoke").then(function () { toast("Lizenz entzogen."); return reload(); }).catch(showError);
+                });
               } }) : null));
         });
         grantButton = h("button", { text: "Premium vergeben" });
@@ -742,7 +751,8 @@
         content.appendChild(h("div", { class: "row" },
           grantButton,
           h("button", { class: "danger", text: "Alles entziehen", onclick: function () {
-            confirmDialog("Premium entziehen?", user.display_name + " verliert sofort jedes Premium (alle Lizenzen).", "Entziehen", true).then(function (ok) {
+            var hasPlay = data.licenses.some(function (lic) { return lic.source === "play" && !lic.revoked_at && lic.expires_at && new Date(lic.expires_at) > new Date(); });
+            confirmDialog("Premium entziehen?", user.display_name + " verliert sofort jedes Premium (alle Lizenzen)." + (hasPlay ? PLAY_REVOKE_HINT : ""), "Entziehen", true).then(function (ok) {
               if (ok) api("DELETE", "/admin/users/" + user.id + "/premium").then(function (r) { toast(r.revoked + " Lizenz(en) entzogen."); return reload(); }).catch(showError);
             });
           } })));
@@ -831,12 +841,18 @@
 
   var CODE_STATE = { available: ["verfügbar", "green"], used_up: ["eingelöst", "blue"], expired: ["abgelaufen", "yellow"], revoked: ["gesperrt", "red"] };
 
+  var PURCHASE_STATE = {
+    active: ["aktiv", "green"], canceled: ["gekündigt", "yellow"], grace: ["Zahlungsproblem", "yellow"], on_hold: ["ausgesetzt", "red"],
+    paused: ["pausiert", ""], pending: ["Zahlung offen", "blue"], expired: ["abgelaufen", ""], replaced: ["ersetzt", ""]
+  };
+
   function durationText(code) { return code.unlimited ? "unbegrenzt" : code.duration_days + (code.duration_days === 1 ? " Tag" : " Tage"); }
 
   function viewPremium(body, ctx) {
     var filter = "available";
     var codesBox = h("div");
     var licensesBox = h("div");
+    var purchasesBox = h("div");
     var filterBox = h("div");
 
     function createCard() {
@@ -937,17 +953,43 @@
       var rows = licenses.map(function (lic) {
         return h("tr", null,
           h("td", null, h("div", { text: lic.display_name }), h("div", { class: "small muted", text: "@" + lic.username })),
-          h("td", { text: lic.source === "code" ? "Code" : "Admin" }),
+          h("td", { text: sourceText(lic.source) }),
           h("td", { class: "mono small nowrap", text: lic.code || "–" }),
           h("td", { class: "small nowrap", text: lic.expires_at ? "bis " + fmtDate(lic.expires_at) : "unbegrenzt" }),
           h("td", { class: "small", text: lic.note || "" }),
           h("td", null, h("button", { class: "danger small", text: "Entziehen", onclick: function () {
-            confirmDialog("Lizenz entziehen?", lic.display_name + " verliert dieses Premium.", "Entziehen", true).then(function (ok) {
+            confirmDialog("Lizenz entziehen?", lic.display_name + " verliert dieses Premium." + (lic.source === "play" ? PLAY_REVOKE_HINT : ""), "Entziehen", true).then(function (ok) {
               if (ok) api("POST", "/admin/premium/licenses/" + lic.id + "/revoke").then(function () { toast("Entzogen."); return load(); }).catch(showError);
             });
           } })));
       });
       licensesBox.appendChild(table(["Benutzer", "Quelle", "Code", "Gilt", "Notiz", ""], rows, "Niemand hat gerade Premium."));
+    }
+
+    function purchaseState(p) {
+      var known = PURCHASE_STATE[p.state] || [p.state, ""];
+      var label = p.state === "canceled" && p.expires_at ? "gekündigt, läuft bis " + fmtDate(p.expires_at) : known[0];
+      return h("span", null, pill(label, known[1]),
+        p.license_revoked ? " " : null, p.license_revoked ? pill("gesperrt", "red") : null,
+        p.is_test ? " " : null, p.is_test ? pill("Test", "blue") : null);
+    }
+
+    function drawPurchases(purchases) {
+      clear(purchasesBox);
+      var rows = purchases.map(function (p) {
+        var button = h("button", { class: "secondary small", text: "Neu prüfen" });
+        button.addEventListener("click", guarded(button, function () {
+          return api("POST", "/admin/premium/purchases/" + p.id + "/recheck").then(function () { toast("Bei Google Play geprüft."); return load(); });
+        }));
+        return h("tr", null,
+          h("td", null, h("div", { text: p.display_name }), h("div", { class: "small muted", text: "@" + p.username })),
+          h("td", null, h("div", { class: "mono small", text: p.product_id }), p.order_id ? h("div", { class: "small dim", text: p.order_id }) : null),
+          h("td", null, purchaseState(p)),
+          h("td", { class: "small nowrap", text: p.expires_at ? fmtDateTime(p.expires_at) : "–" }),
+          h("td", { class: "small" }, h("div", { class: "nowrap", text: ago(p.last_checked_at) }), p.last_error ? h("div", { class: "muted", text: p.last_error }) : null),
+          h("td", null, button));
+      });
+      purchasesBox.appendChild(table(["Benutzer", "Produkt", "Stand", "Gilt bis", "Zuletzt geprüft", ""], rows, "Noch keine Käufe."));
     }
 
     function drawFilters() {
@@ -959,11 +1001,14 @@
 
     var lastCodes = [];
     function load() {
-      return Promise.all([api("GET", "/admin/premium/codes"), api("GET", "/admin/premium/licenses?only_running=true")]).then(function (result) {
+      return Promise.all([
+        api("GET", "/admin/premium/codes"), api("GET", "/admin/premium/licenses?only_running=true"), api("GET", "/admin/premium/purchases")
+      ]).then(function (result) {
         if (!ctx.alive()) return;
         lastCodes = result[0];
         drawCodes(lastCodes);
         drawLicenses(result[1]);
+        drawPurchases(result[2]);
       });
     }
 
@@ -974,6 +1019,9 @@
     body.appendChild(codesBox);
     body.appendChild(h("h2", { class: "section-title", text: "Wer hat gerade Premium?" }));
     body.appendChild(licensesBox);
+    body.appendChild(h("h2", { class: "section-title", text: "Käufe über Google Play" }));
+    body.appendChild(h("p", { class: "muted small", text: "Abos aus der Play-Version. Der Server fragt Google regelmäßig, ob noch bezahlt wird; nach Kündigung, Erstattung oder Ablauf endet das Premium von selbst. Erstatten und kündigen kannst du nur in der Play Console." }));
+    body.appendChild(purchasesBox);
     drawFilters();
     return load();
   }
@@ -1077,8 +1125,9 @@
   // ------------------------------------------------------------------ Ansicht: App-Einstellungen
 
   function viewSettings(body, ctx) {
-    return api("GET", "/admin/config").then(function (config) {
+    return Promise.all([api("GET", "/admin/config"), api("GET", "/admin/billing/status")]).then(function (result) {
       if (!ctx.alive()) return;
+      var config = result[0], billing = result[1];
       var fields = {};
 
       function toggle(key, label, hint) {
@@ -1086,28 +1135,73 @@
         fields[key] = function () { return input.checked; };
         return h("div", null, h("label", { class: "check" }, input, label), h("div", { class: "small dim", text: hint }));
       }
-      function number(key, label, hint) {
-        var input = h("input", { type: "number", min: "0", value: String(config[key]) });
+      function number(key, label, hint, min, max) {
+        var input = h("input", { type: "number", min: String(min || 0), value: String(config[key]) });
+        if (max) input.max = String(max);
         fields[key] = function () { return parseInt(input.value || "0", 10); };
         return h("label", { class: "field" }, label, input, h("span", { class: "dim", text: hint }));
       }
-      function text(key, label, hint) {
-        var input = h("input", { type: "text", value: config[key], maxlength: "300" });
+      function text(key, label, hint, maxlength) {
+        var input = h("input", { type: "text", value: config[key], maxlength: String(maxlength || 300) });
+        fields[key] = function () { return input.value.trim(); };
+        return h("label", { class: "field" }, label, input, h("span", { class: "dim", text: hint }));
+      }
+      function area(key, label, hint, maxlength) {
+        var input = h("textarea", { maxlength: String(maxlength), rows: "4" });
+        input.value = config[key];
         fields[key] = function () { return input.value.trim(); };
         return h("label", { class: "field" }, label, input, h("span", { class: "dim", text: hint }));
       }
 
-      var form = h("form", { class: "col", onsubmit: function (event) {
-        event.preventDefault();
+      // Kaufprüfung: Stand der Schlüsseldatei auf dem Server und ein Knopf zum Ausprobieren
+      var testButton = h("button", { type: "button", class: "secondary small", text: "Verbindung testen" });
+      testButton.addEventListener("click", guarded(testButton, function () {
+        return api("POST", "/admin/billing/test").then(function (r) { toast(r.message, !r.ok); });
+      }));
+      var billingStatus = h("div", { class: "row" },
+        billing.configured
+          ? pill("Kaufprüfung eingerichtet", "green")
+          : h("div", { class: "notice grow", text: "Kaufprüfung nicht eingerichtet – Schlüsseldatei fehlt (siehe docs/PLAYSTORE.md)" }),
+        testButton);
+
+      function save() {
         var payload = {};
         Object.keys(fields).forEach(function (key) { payload[key] = fields[key](); });
-        api("PUT", "/admin/config", payload).then(function () { toast("Gespeichert – die App übernimmt es beim nächsten Start."); ctx.refreshBadges(); }).catch(showError);
+        return api("PUT", "/admin/config", payload).then(function (saved) {
+          config = saved;
+          toast("Gespeichert – die App übernimmt es beim nächsten Start.");
+          ctx.refreshBadges();
+        });
+      }
+
+      var form = h("form", { class: "col", onsubmit: function (event) {
+        event.preventDefault();
+        // Das Einschalten der Offline-Sperre löscht bei allen ohne Premium die Musik vom Gerät – vorher nachfragen
+        var ask = fields.offline_requires_premium() && !config.offline_requires_premium
+          ? confirmDialog("Offline-Hören an Premium binden?", "Alle Benutzer ohne Premium verlieren ihre Offline-Musik auf dem Gerät. Gib Familie und Freunden vorher Premium (Benutzer › Premium).", "Einschalten", true)
+          : Promise.resolve(true);
+        ask.then(function (ok) { if (ok) return save(); }).catch(showError);
       } },
       h("div", { class: "card col" },
         h("h2", { text: "Funktionen in der App" }),
         toggle("ads_enabled", "Werbung in der Play-Version zeigen", "Nur für Benutzer ohne Premium. Erst einschalten, wenn AdMob eingerichtet ist (siehe docs/PLAYSTORE.md)."),
         toggle("premium_enabled", "Premium-Bereich zeigen (Code einlösen)", "Blendet in der App „Premium“ ein oder aus."),
         toggle("wishlist_enabled", "„Song wünschen“ anbieten", "Benutzer können sich Songs wünschen; du siehst sie unter Wünsche.")),
+      h("div", { class: "card col" },
+        h("h2", { text: "Premium und Offline-Hören" }),
+        toggle("offline_requires_premium", "Offline-Hören nur mit Premium", "Ohne Premium lässt sich nichts mehr aufs Gerät laden; vorhandene Offline-Musik wird gelöscht, sobald die App den Stand geprüft hat. Die Sperre sitzt in der App: Ältere App-Versionen kennen sie nicht und laden weiter – dafür gibt es die Mindest-Build-Nummer darunter. Admins sind ausgenommen."),
+        h("div", { class: "form-grid" },
+          number("offline_min_client_build", "Sperre durchsetzen ab App-Build", "Wirkt nur, solange der Schalter an ist. Benutzer ohne Premium, deren App älter ist (oder keine Build-Nummer meldet), bekommen keine Musik mehr und sehen „Bitte aktualisiere die App.“ – in allen App-Ausgaben (Play, GitHub, Windows, iPhone). Trage die Build-Nummer der ersten App-Version mit Offline-Sperre ein, sobald sie verteilt ist („Geräte & Versionen“ zeigt, wer welche hat). Premium-Nutzer und Admins sind nie betroffen. 0 = aus.", 0, 10000000),
+          number("offline_grace_days", "Gnadenfrist ohne Verbindung (Tage)", "So lange bleibt Offline-Musik spielbar, wenn die App den Server nicht erreicht. Danach wird sie gelöscht.", 1, 30)),
+        text("premium_headline", "Überschrift der Premium-Seite", "Leer = Standardtext der App.", 80),
+        area("premium_description", "Beschreibung", "Kurzer Text unter der Überschrift (leer = Standardtext der App).", 500),
+        area("premium_benefits", "Vorteile", "Ein Vorteil je Zeile, höchstens 8 Zeilen mit je 100 Zeichen.", 600)),
+      h("div", { class: "card col" },
+        h("h2", { text: "Kauf in der App (Google Play)" }),
+        billingStatus,
+        toggle("billing_enabled", "Premium in der Play-Version zum Kauf anbieten", "Der Preis wird in der Play Console festgelegt und von der App aus dem Store angezeigt."),
+        text("billing_product_ids", "Produkt-ID des Abos", "Genau wie in der Play Console, z. B. premium_monat. Mehrere mit Komma.", 200),
+        h("div", { class: "small dim", text: "Paket: " + billing.package_name + " · Schlüsseldatei auf dem Server: " + billing.key_file })),
       h("div", { class: "card col" },
         h("h2", { text: "Updates der Play-Version" }),
         h("div", { class: "form-grid" },

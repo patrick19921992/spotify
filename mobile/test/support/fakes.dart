@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:selfify/billing/billing.dart';
 import 'package:selfify/core/flavor.dart';
 import 'package:selfify/core/theme.dart';
 import 'package:selfify/data/api.dart';
@@ -21,6 +22,7 @@ import 'package:selfify/state/auth.dart';
 import 'package:selfify/state/connectivity.dart';
 import 'package:selfify/state/downloads.dart';
 import 'package:selfify/state/offline.dart';
+import 'package:selfify/state/offline_access.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const coverA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -375,8 +377,45 @@ class FakeApi extends ApiClient {
   ApiException? deleteAccountError;
   Map<String, Object?>? lastBugReport;
 
+  /// Fehler der Premium-Abfrage (z. B. 503 „kann gerade nicht geprüft werden“ oder kein Netz).
+  ApiException? premiumError;
+  /// Antwort auf „Kauf melden“ (Google Play); null = aktiv mit 30 Tagen.
+  PlayVerifyResult? verifyResult;
+  ApiException? verifyError;
+
+  /// Status, mit dem der Server Stream-Links beantwortet (426 = App zu alt).
+  int? streamStatusCode = 200;
+
   @override
-  Future<PremiumStatus> premium() async => _log('premium', premiumStatus);
+  Future<int?> streamStatus(String url) async => _log('streamStatus', streamStatusCode);
+
+  @override
+  Future<PremiumStatus> premium() async {
+    _log('premium', null);
+    final error = premiumError;
+    if (error != null) throw error;
+    return premiumStatus;
+  }
+
+  @override
+  Future<PlayVerifyResult> verifyPlayPurchase({required String productId, required String token}) async {
+    _log('verify:$productId:$token', null);
+    final error = verifyError;
+    if (error != null) throw error;
+    final result = verifyResult ??
+        PlayVerifyResult(
+          result: 'active',
+          premium: PremiumStatus(
+            active: true,
+            until: DateTime.utc(2026, 12, 10),
+            checkedAt: DateTime.utc(2026, 11, 10),
+            play: PlaySubscription(
+                productId: productId, state: 'active', expiresAt: DateTime.utc(2026, 12, 10), autoRenewing: true),
+          ),
+        );
+    premiumStatus = result.premium;
+    return result;
+  }
   @override
   Future<PremiumStatus> redeemPremium(String code) async {
     _log('redeem:$code', null);
@@ -494,6 +533,91 @@ class FakeOffline extends OfflineController {
 
   @override
   Future<void> removeAll() async {}
+
+  @override
+  Future<bool> wipe() async {
+    final had = state.tracks.isNotEmpty || state.collections.isNotEmpty || state.pending.isNotEmpty;
+    state = const OfflineState(loaded: true);
+    return had;
+  }
+}
+
+/// Offline-Berechtigung mit festem Stand („Offline-Hören nur mit Premium“), ohne Server und Uhr.
+class FakeOfflineAccess extends OfflineAccessController {
+  final OfflineAccessState initial;
+  FakeOfflineAccess([this.initial = const OfflineAccessState(OfflineAccess.free)]);
+
+  @override
+  OfflineAccessState build() => initial;
+
+  void set(OfflineAccessState next) => state = next;
+
+  @override
+  void recheck() {}
+}
+
+/// Nachgebauter Store (Google Play): liefert Produkte, merkt sich Aufrufe; der Test schickt die Kauf-Meldungen.
+class FakePurchaseGateway implements PurchaseGateway {
+  bool available = true;
+  List<StoreProduct> products = const [
+    StoreProduct(id: 'premium_monat', title: 'Selfify Premium', description: 'Monatsabo', price: '0,99 €'),
+  ];
+  final log = <String>[];
+  final completed = <StorePurchase>[];
+  bool disposed = false;
+
+  /// Was der Store nach „Kaufen“ meldet (null = der Test meldet selbst über [emit]).
+  StorePurchase Function(StoreProduct product)? onBuy;
+
+  /// Was der Store bei „Wiederherstellen“ meldet (leer = nichts, wie bei Google Play ohne Käufe).
+  List<StorePurchase> restorable = [];
+  Object? buyError;
+
+  final _controller = StreamController<StorePurchase>.broadcast();
+
+  void emit(StorePurchase purchase) => _controller.add(purchase);
+
+  @override
+  Future<bool> isAvailable() async {
+    log.add('isAvailable');
+    return available;
+  }
+
+  @override
+  Future<List<StoreProduct>> loadProducts(Set<String> ids) async {
+    log.add('load:${ids.join(',')}');
+    return products.where((p) => ids.contains(p.id)).toList();
+  }
+
+  @override
+  Stream<StorePurchase> get purchases => _controller.stream;
+
+  @override
+  Future<void> buy(StoreProduct product, {required String accountId}) async {
+    log.add('buy:${product.id}:$accountId');
+    final error = buyError;
+    if (error != null) throw error;
+    final answer = onBuy;
+    if (answer != null) emit(answer(product));
+  }
+
+  @override
+  Future<void> restore({required String accountId}) async {
+    log.add('restore:$accountId');
+    restorable.forEach(emit);
+  }
+
+  @override
+  Future<void> complete(StorePurchase purchase) async {
+    log.add('complete:${purchase.token}');
+    completed.add(purchase);
+  }
+
+  @override
+  void dispose() {
+    disposed = true;
+    _controller.close();
+  }
 }
 
 /// YouTube-Downloads ohne WebSocket.

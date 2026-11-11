@@ -15,6 +15,7 @@ import '../nav.dart';
 import '../widgets/common.dart';
 import '../widgets/cover.dart';
 import '../widgets/mini_player.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/track_tile.dart';
 import 'downloads_widgets.dart';
 
@@ -104,6 +105,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
       showMessage(context, 'Keine Internetverbindung');
       return;
     }
+    if (!await requireOfflineAccess(context, ref) || !mounted) return;
     try {
       await _syncCollection(key);
       if (!mounted) return;
@@ -123,6 +125,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
       showMessage(context, 'Keine Internetverbindung – Abgleich nicht möglich');
       return;
     }
+    if (!await requireOfflineAccess(context, ref) || !mounted) return;
     var failed = 0;
     for (final key in keys) {
       try {
@@ -347,6 +350,8 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
+            // „Offline-Hören nur mit Premium“: gesperrt, wird geprüft oder läuft bald ab (sonst nichts zu sehen)
+            const SliverToBoxAdapter(child: OfflineAccessBanner()),
             if (!isEmpty)
               SliverToBoxAdapter(
                 child: _SummaryCard(

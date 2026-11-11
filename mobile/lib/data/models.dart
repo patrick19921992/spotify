@@ -1081,6 +1081,25 @@ class AppConfig {
   final String privacyUrl;
   final String deletionUrl;
 
+  /// „Offline-Hören nur mit Premium“ (Dashboard). Aus oder alter Server: jeder darf aufs Gerät laden.
+  final bool offlineRequiresPremium;
+
+  /// So viele Tage bleibt Offline-Musik ohne erfolgreiche Premium-Prüfung spielbar.
+  final int offlineGraceDays;
+
+  /// Mindest-Build für alle ohne Premium, solange „Offline-Hören nur mit Premium“ an ist (0 = aus): Ältere Apps –
+  /// die die Sperre noch nicht kennen – weist der Server beim Abspielen mit HTTP 426 ab.
+  final int offlineMinClientBuild;
+
+  /// Kauf in der App – der Server meldet den wirksamen Wert (nur Play-Version, Kaufprüfung eingerichtet).
+  final bool billingEnabled;
+  final List<String> billingProductIds;
+
+  /// Texte der Premium-Seite (leer = Standardtexte der App).
+  final String premiumHeadline;
+  final String premiumDescription;
+  final List<String> premiumBenefits;
+
   const AppConfig({
     this.adsEnabled = false,
     this.premiumEnabled = true,
@@ -1089,6 +1108,14 @@ class AppConfig {
     this.update = const UpdateInfo(),
     this.privacyUrl = '',
     this.deletionUrl = '',
+    this.offlineRequiresPremium = false,
+    this.offlineGraceDays = 7,
+    this.offlineMinClientBuild = 0,
+    this.billingEnabled = false,
+    this.billingProductIds = const [],
+    this.premiumHeadline = '',
+    this.premiumDescription = '',
+    this.premiumBenefits = const [],
   });
 
   factory AppConfig.fromJson(Json j) => AppConfig(
@@ -1099,6 +1126,53 @@ class AppConfig {
         update: j['update'] is Map ? UpdateInfo.fromJson(Map<String, dynamic>.from(j['update'] as Map)) : const UpdateInfo(),
         privacyUrl: j['privacy_url'] as String? ?? '',
         deletionUrl: j['deletion_url'] as String? ?? '',
+        offlineRequiresPremium: j['offline_requires_premium'] == true,
+        offlineGraceDays: _graceDays(j['offline_grace_days']),
+        offlineMinClientBuild: _minBuild(j['offline_min_client_build']),
+        billingEnabled: j['billing_enabled'] == true,
+        billingProductIds: _texts(j['billing_product_ids']),
+        premiumHeadline: j['premium_headline'] is String ? j['premium_headline'] as String : '',
+        premiumDescription: j['premium_description'] is String ? j['premium_description'] as String : '',
+        premiumBenefits: _texts(j['premium_benefits']),
+      );
+}
+
+/// Gnadenfrist in Tagen; fehlt sie oder ist sie unsinnig (≤ 0), gelten 7 Tage.
+int _graceDays(dynamic value) {
+  final days = value is num ? value.toInt() : 0;
+  return days <= 0 ? 7 : days;
+}
+
+/// Mindest-Build; fehlt er (alter Server) oder ist er unsinnig, gilt 0 = aus.
+int _minBuild(dynamic value) {
+  final build = value is num ? value.toInt() : 0;
+  return build < 0 ? 0 : build;
+}
+
+/// Liste nicht leerer Texte (alles andere fällt weg).
+List<String> _texts(dynamic value) => value is List
+    ? [
+        for (final item in value)
+          if (item is String && item.trim().isNotEmpty) item.trim(),
+      ]
+    : const [];
+
+/// Abo über Google Play (aus `play` der Premium-Antwort).
+class PlaySubscription {
+  final String productId;
+
+  /// active | canceled | grace | on_hold | paused | pending
+  final String state;
+  final DateTime? expiresAt;
+  final bool autoRenewing;
+
+  const PlaySubscription({required this.productId, required this.state, this.expiresAt, this.autoRenewing = false});
+
+  factory PlaySubscription.fromJson(Json j) => PlaySubscription(
+        productId: j['product_id'] is String ? j['product_id'] as String : '',
+        state: j['state'] is String ? j['state'] as String : '',
+        expiresAt: _dateOrNull(j['expires_at']),
+        autoRenewing: j['auto_renewing'] == true,
       );
 }
 
@@ -1112,12 +1186,55 @@ class PremiumStatus {
   /// Bis wann Premium läuft (nur bei begrenztem Premium).
   final DateTime? until;
 
-  const PremiumStatus({this.active = false, this.unlimited = false, this.until});
+  /// „Offline-Hören nur mit Premium“ ist eingeschaltet (alter Server: aus).
+  final bool offlineRequiresPremium;
+
+  /// Darf dieser Benutzer Musik aufs Gerät laden? (alter Server: ja)
+  final bool offlineAllowed;
+
+  /// Gnadenfrist in Tagen ohne erfolgreiche Prüfung.
+  final int offlineGraceDays;
+
+  /// Zeitpunkt der Antwort des Servers. Nach [PremiumStatus.fromJson] nie null; null heißt „kein Stand vom Server“
+  /// (abgemeldet, Platzhalter) – daraus wird nie eine Offline-Berechtigung abgeleitet.
+  final DateTime? checkedAt;
+
+  /// Laufendes Abo über Google Play, falls es eines gibt.
+  final PlaySubscription? play;
+
+  const PremiumStatus({
+    this.active = false,
+    this.unlimited = false,
+    this.until,
+    this.offlineRequiresPremium = false,
+    this.offlineAllowed = true,
+    this.offlineGraceDays = 7,
+    this.checkedAt,
+    this.play,
+  });
 
   factory PremiumStatus.fromJson(Json j) => PremiumStatus(
         active: j['active'] == true,
         unlimited: j['unlimited'] == true,
         until: _dateOrNull(j['until']),
+        offlineRequiresPremium: j['offline_requires_premium'] == true,
+        offlineAllowed: j['offline_allowed'] != false,
+        offlineGraceDays: _graceDays(j['offline_grace_days']),
+        checkedAt: _dateOrNull(j['checked_at']) ?? DateTime.now(),
+        play: j['play'] is Map ? PlaySubscription.fromJson(Map<String, dynamic>.from(j['play'] as Map)) : null,
+      );
+}
+
+/// Antwort auf „Kauf melden“: active | pending | inactive, dazu der neue Premium-Stand.
+class PlayVerifyResult {
+  final String result;
+  final PremiumStatus premium;
+
+  const PlayVerifyResult({required this.result, required this.premium});
+
+  factory PlayVerifyResult.fromJson(Json j) => PlayVerifyResult(
+        result: j['result'] is String ? j['result'] as String : 'inactive',
+        premium: PremiumStatus.fromJson(j['premium'] is Map ? Map<String, dynamic>.from(j['premium'] as Map) : const {}),
       );
 }
 

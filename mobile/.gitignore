@@ -32,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+# Lokale Überschreibung für die Platzhalter-Pakete (Werbung, Kauf) – nie einchecken
+pubspec_overrides.yaml
 
 # Symbolication related
 app.*.symbols

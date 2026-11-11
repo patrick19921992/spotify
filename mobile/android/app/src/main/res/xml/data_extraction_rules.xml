@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google-Sicherung und Geräteumzug ab Android 12: nur die Einstellungen, nie Dateien. Die Offline-Musik
+     (app_flutter/offline) kommt so nach einer Neuinstallation oder auf einem neuen Gerät nicht zurück. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="."/>
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="."/>
+    </device-transfer>
+</data-extraction-rules>

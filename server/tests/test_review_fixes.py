@@ -414,7 +414,9 @@ def test_migration_0006_cleans_duplicates_and_matches_the_models(tmp_path: Path)
         assert con.execute("SELECT count(*) FROM premium_licenses WHERE code_id IS NULL").fetchone()[0] == 2
         columns = [row[1] for row in con.execute("PRAGMA table_info(download_jobs)")]
         assert "hidden_at" in columns
-    # Modelle und Datenbank stimmen überein (sonst hätte jemand eine Migration vergessen)
+    # Modelle und Datenbank stimmen überein (sonst hätte jemand eine Migration vergessen) – verglichen wird der
+    # neueste Stand, denn die Modelle kennen auch alles, was nach 0006 dazukam
+    command.upgrade(config, "head")
     engine = create_engine(url)
     with engine.connect() as connection:
         context = MigrationContext.configure(connection, opts={"compare_type": True, "render_as_batch": True})

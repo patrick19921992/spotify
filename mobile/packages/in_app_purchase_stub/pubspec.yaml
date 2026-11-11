@@ -1,0 +1,17 @@
+# Platzhalter für das Kauf-Paket „in_app_purchase“ in allen Versionen OHNE Kauf in der App (GitHub-APK, Windows, iPhone).
+# Gekauft wird nur in der Play-Version (Google Play Billing). Ohne dieses Paket steckte die native Billing-Bibliothek
+# in jeder App – ein natives SDK hat die GitHub-App schon einmal beim Start abstürzen lassen. Die CI schaltet den
+# Platzhalter per pubspec_overrides.yaml ein (siehe .github/workflows/app.yml); lokal und in den Tests gilt das echte
+# Paket. Mit dem Platzhalter verschwinden auch in_app_purchase_android und in_app_purchase_storekit aus der App.
+name: in_app_purchase
+description: Platzhalter ohne native Teile – hat nur die Schnittstelle, die Selfify nutzt.
+version: 3.3.1
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
