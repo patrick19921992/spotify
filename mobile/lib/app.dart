@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'billing/billing.dart';
 import 'core/theme.dart';
 import 'player/player.dart';
 import 'state/auth.dart';
@@ -20,6 +21,9 @@ class SelfifyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Player mit Server/Offline/Einstellungen verbinden
     ref.watch(playbackBridgeProvider);
+    // Kauf in der App (nur Play-Version, wenn eingeschaltet): Der Kauf-Strom muss ab dem Start laufen, damit
+    // nachgeholte Käufe ankommen. In allen anderen Fällen wird das Kauf-Paket nie angefasst.
+    if (ref.watch(billingVisibleProvider)) ref.listen(billingProvider, (_, _) {});
     // Beim Abmelden Wiedergabe beenden
     ref.listen(authProvider, (previous, next) {
       final wasLoggedIn = previous?.value?.isLoggedIn ?? false;

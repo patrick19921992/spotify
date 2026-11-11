@@ -15,6 +15,7 @@ import '../../state/settings.dart';
 import '../nav.dart';
 import '../shell.dart';
 import '../widgets/common.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/cover.dart';
 import 'library_entries.dart';
 import 'library_widgets.dart';
@@ -140,6 +141,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   /// Sammlung herunterladen – die Titel werden dafür kurz vom Server geholt.
   Future<void> _keepOffline(String key, String name, Future<List<Track>> Function() load) async {
+    if (!await requireOfflineAccess(context, ref)) return;
     try {
       final tracks = (await load()).where((t) => !t.isVideo).toList();
       if (tracks.isEmpty) {

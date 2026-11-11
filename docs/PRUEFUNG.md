@@ -428,6 +428,81 @@ widerlegt** (u. a. „Cover bleiben nach Konto-Löschen“ – die bestehende Au
         Play-Version gibt es kein Adressfeld dafür. Erneutes Anmelden hilft.
 - Für die Google-Prüfer: Die App zeigt fest auf diesen Server → Demo-Server-Hinweise in `docs/PLAYSTORE.md` (Abschnitt 7).
 
+### Premium: Offline-Hören und Kauf über Google Play
+
+Auftrag: „1 € für Offline-Musikhören; wird Premium nicht mehr bezahlt, muss die Musik vom Gerät; wird die App
+deinstalliert, muss erst die Musik runter.“ Vertrag der drei Bereiche (Server/Dashboard, App, Build/CI/Doku) mit
+allen Feldnamen, Regeln und Texten: Arbeitsordner der Sitzung, `entwurf-premium-offline.md`. Alle neuen Schalter sind
+standardmäßig **aus**; ohne sie verhalten sich Server und alle App-Ausgaben wie bisher.
+
+**Build, CI, Anleitung (dieser Bereich – geprüft wie angegeben)**
+
+- [x] CI (`.github/workflows/app.yml`): GitHub-APK, Windows und iPhone bekommen **eine** `pubspec_overrides.yaml`
+      mit beiden Platzhaltern (`google_mobile_ads_stub`, `in_app_purchase_stub`); der zweite Analyse-Schritt prüft
+      die App gegen beide. YAML geprüft (`yaml.safe_load`), alle Shell-Schritte mit `bash -n`, die erzeugte
+      Override-Datei als YAML gelesen
+- [x] In einer Kopie der App ausprobiert: mit beiden Platzhaltern `flutter pub get` + `flutter analyze` ohne Befund;
+      `.flutter-plugins-dependencies` enthält dann weder `in_app_purchase_android` noch `google_mobile_ads`
+- [x] Neue CI-Prüfungen: GitHub-APK ohne `com.android.vending.BILLING`/`com.android.billingclient` (Manifest,
+      APK-Inhalt, Plugin-Liste); Play-Bundle **mit** `com.android.vending.BILLING`; beide Android-Ausgaben mit
+      `dataExtractionRules` und ohne `hasFragileUserData="true"`
+- [x] Anleitung für den Betreiber: `docs/PLAYSTORE.md` Schritt 10 (Zahlungsprofil, Abo, Lizenztester, Dienstkonto,
+      Schlüsseldatei auf Unraid, Dashboard, Testen, Kündigung/Löschen/Gnadenfrist, Gebühren, Datensicherheit,
+      „Nicht geprüft“); README (Schalter, Regeln, Umgebungsvariablen, API, zweiter Platzhalter)
+- [ ] **Die neuen CI-Prüfungen sind noch nie gelaufen** (kein Android-SDK hier): erster Lauf auf GitHub zeigt, ob die
+      Muster im zusammengeführten Manifest und in der APK greifen (insbesondere `unzip -l … | grep billingclient`
+      und der Pfad `.flutter-plugins-dependencies`)
+
+**Server, Dashboard, App (Bereiche S und A – Abschlusslauf hakt ab und trägt die Testzahlen ein)**
+
+- [ ] Server: neue Einstellungen (`offline_requires_premium`, `offline_grace_days`, `billing_enabled`,
+      `billing_product_ids`, Premium-Texte), Tabelle `play_purchases` (Migration 0007), `POST /premium/play/verify`,
+      erneute Prüfung bei `GET /premium` (gedrosselt), 503 bei unklarem Stand, Admin-Endpunkte; alle Tests und `ruff` grün
+- [ ] Dashboard: Karten „Premium und Offline-Hören“ und „Kauf in der App (Google Play)“, Tabelle „Käufe über Google
+      Play“; im Browser durchgeklickt, Sonderzeichen erscheinen als Text
+- [ ] App: Offline-Sperre an allen Stellen, Löschen bei bestätigtem Ablauf und nach der Gnadenfrist, **kein** Löschen
+      bei unbekanntem Stand; Kauf/Wiederherstellen mit Attrappe; GitHub-Kanal ohne Kaufknopf; `flutter analyze` und
+      alle Tests grün
+- [ ] Android: Backup-Regeln (`backup_rules.xml`, `data_extraction_rules.xml` – nur Einstellungen), Billing-
+      Berechtigung nur im Play-Manifest; Gradle-Bau und Manifest-Zusammenführung laufen erst in der CI
+- [ ] Schalter aus: GitHub-Version, Windows, iPhone und Play-Version verhalten sich exakt wie vorher (alte App gegen
+      neuen Server, neue App gegen alten Server)
+
+**Offen / hier nicht prüfbar (kein Android-SDK, kein Gerät, kein Google-Zugang)**
+
+- [ ] **Start auf echten Geräten:** Play-Version mit der Billing-Bibliothek **und** GitHub-Version ohne sie – vor
+      jeder Verteilung (Lehre aus Build 58)
+- [ ] **Echter Kauf mit Lizenztester:** Kaufdialog, Preis aus dem Store, Freischaltung, Eintrag im Dashboard
+- [ ] **Bestätigung bei Google** (acknowledge): keine automatische Erstattung (Testkauf: nach wenigen Minuten,
+      echter Kauf: nach 3 Tagen); doppeltes Bestätigen durch Server und App ohne Fehler
+- [ ] **Kündigung, Erstattung, Zahlungsproblem, Verlängerung** am Testkonto: Server beendet/verlängert Premium, App
+      löscht die Offline-Musik und zeigt den Hinweis
+- [ ] **Wiederherstellen** auf zweitem Gerät; fremdes Selfify-Konto wird abgelehnt (409)
+- [ ] **Google-Schnittstelle:** Adresse und Feldnamen von `purchases.subscriptionsv2.get` und `…:acknowledge` gegen
+      die Referenz prüfen (`developers.google.com` war nicht erreichbar); Dienstkonto-Anmeldung gegen echtes Google
+- [ ] **Play Console:** Menünamen, nötige Berechtigungen des Dienstkontos, Wartezeit bis sie gelten, ob 0,99 €
+      wählbar ist, ob vor dem Anlegen des Abos ein Bundle mit Billing-Berechtigung hochgeladen sein muss
+- [ ] **Gebühren/Steuer** auf Googles eigener Seite nachlesen (`support.google.com` war nicht erreichbar; in der
+      Anleitung stehen Werte aus Berichten Dritter, als solche gekennzeichnet)
+- [ ] **Deinstallation und Sicherung auf einem Gerät:** Offline-Dateien weg, nach Neuinstallation mit
+      Google-Sicherung nicht zurück (bisher nur an Code und Regeln geprüft)
+- [ ] **Gnadenfrist am Gerät:** 7 Tage Flugmodus (oder Uhr vorstellen) → Sperre und Löschen; Uhr zurückstellen
+      verlängert nicht
+- [ ] Datensicherheit in der Play Console um „Kaufverlauf“ ergänzt
+
+**Bewusst nicht Teil dieses Laufs / bekannte Grenzen**
+
+- Keine Echtzeit-Benachrichtigungen von Google: Kündigung/Erstattung wirkt erst bei der nächsten Premium-Abfrage nach
+  der Drosselzeit (`PLAY_RECHECK_HOURS`); wer die App nie öffnet, steht im Dashboard bis zum Ablauf als „aktiv“.
+- Die Sperre sitzt in der App (der Server kann Offline-Laden nicht vom Streamen unterscheiden).
+- Ein Basis-Abo je Produkt, keine Angebote/Testphasen/Jahres-Abo, kein Kauf auf iPhone/Windows; der
+  Abrechnungszeitraum steht nicht auf dem Kaufknopf.
+- Windows: Offline-Dateien bleiben nach der Deinstallation in `AppData` liegen; iPhone: iCloud sichert den
+  Dokumente-Ordner samt Offline-Musik.
+- Offline-Dateien gehören zum Gerät, nicht zum Konto: Meldet sich jemand ohne Premium an, wird alles gelöscht.
+- Entzieht der Admin gekauftes Premium, läuft das Abo bei Google weiter (Hinweis im Dashboard und in der Anleitung).
+- Selbst-Registrierung und Sichtbarkeit je Rubrik kommen danach.
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

@@ -1,13 +1,13 @@
 """Dashboard-Daten für den Admin: Zahlen, Benutzer mit Premium, App-Versionen und App-Einstellungen."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import func, select
 
-from app.deps import AdminUser, DbSession
+from app.deps import AdminUser, AppSettings, DbSession
 from app.models import DownloadJob, User, UserSession, utcnow
-from app.schemas.premium import PremiumStatusOut
+from app.schemas.premium import BillingStatusOut, BillingTestOut, PremiumStatusOut
 from app.schemas.support import AdminUserOut, AppConfigIn, AppConfigOut, ClientVersionOut, StatsOut
-from app.services import app_config, premium, stats
+from app.services import app_config, play_billing, premium, stats
 
 router = APIRouter(prefix="/admin", tags=["Dashboard"])
 
@@ -117,3 +117,31 @@ def update_config(body: AppConfigIn, _: AdminUser, db: DbSession) -> AppConfigOu
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
     db.commit()
     return AppConfigOut(**values)
+
+
+@router.get("/billing/status", response_model=BillingStatusOut)
+def billing_status(request: Request, _: AdminUser, db: DbSession, settings: AppSettings) -> BillingStatusOut:
+    """Ist die Kaufprüfung für Google Play eingerichtet? Gibt nur den Pfad der Schlüsseldatei aus, nie den Inhalt."""
+    values = app_config.get_all(db)
+    return BillingStatusOut(
+        configured=play_billing.current_verifier(request.app.state, settings) is not None,
+        package_name=settings.play_package_name,
+        key_file=str(settings.play_service_account_file),
+        product_ids=app_config.product_ids(values),
+        enabled=values["billing_enabled"],
+    )
+
+
+@router.post("/billing/test", response_model=BillingTestOut)
+def billing_test(request: Request, _: AdminUser, settings: AppSettings) -> BillingTestOut:
+    """„Verbindung testen“: holt mit dem Dienstkonto ein Zugriffstoken bei Google. Antwortet immer mit 200."""
+    verifier = play_billing.current_verifier(request.app.state, settings)
+    try:
+        if verifier is None:
+            # Sagt genau, woran es liegt: Datei fehlt oder ist ungültig
+            play_billing.load_service_account(settings.play_service_account_file)
+            return BillingTestOut(ok=False, message=play_billing.MSG_KEY_INVALID)
+        verifier.check_access()
+    except play_billing.VerifierUnavailable as exc:
+        return BillingTestOut(ok=False, message=str(exc))
+    return BillingTestOut(ok=True, message="Verbindung zu Google Play steht.")

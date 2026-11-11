@@ -73,7 +73,9 @@ und letzten Nutzung sowie die App-Version (Plattform, Kanal, Version).</li>
 <li><strong>Wünsche und Fehlermeldungen:</strong> Was du schickst („Song wünschen“, „Fehler melden“). Bei
 Fehlermeldungen nur, wenn du sie absendest – auf Wunsch mit Geräteinformationen und den letzten Fehlermeldungen
 der App.</li>
-<li><strong>Premium:</strong> Welche Codes du eingelöst hast und wie lange dein Premium gilt.</li>
+<li><strong>Premium:</strong> Welche Codes du eingelöst hast und wie lange dein Premium gilt. Kaufst du Premium über
+Google Play, speichert der Server die Kaufkennung von Google, das Produkt und die Laufzeit, um den Kauf deinem Konto
+zuzuordnen.</li>
 <li><strong>Technische Protokolle:</strong> Der Server kann Anfragen kurzzeitig protokollieren (z. B. zur Fehlersuche
 und zum Schutz vor Missbrauch).</li>
 </ul>

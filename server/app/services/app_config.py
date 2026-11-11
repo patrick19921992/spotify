@@ -4,6 +4,7 @@ Gespeichert in der Tabelle app_settings (Schlüssel/Wert). Fehlt ein Schlüssel,
 Damit lassen sich z. B. Werbung abschalten oder ein Pflicht-Update auslösen, ohne den Server neu zu starten.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +19,8 @@ class Spec:
     default: Any
     # Obergrenze: Länge bei Text, Wert bei Zahlen
     limit: int = 0
+    # Untergrenze bei Zahlen
+    minimum: int = 0
 
 
 SPECS: dict[str, Spec] = {
@@ -35,9 +38,25 @@ SPECS: dict[str, Spec] = {
     "update_message": Spec("", 300),
     # Hinweis ganz oben in der App (z. B. „Wartung heute Abend“); leer = keiner
     "maintenance_message": Spec("", 300),
+    # Offline-Hören (Laden aufs Gerät) nur mit Premium – aus, bis der Admin es einschaltet. Admins sind ausgenommen
+    "offline_requires_premium": Spec(False),
+    # Gnadenfrist in Tagen: So lange bleibt Offline-Musik spielbar, wenn die App den Server nicht erreicht
+    "offline_grace_days": Spec(7, 30, 1),
+    # Kauf in der App (nur Play-Version, Google Play Billing). Der Preis steht in der Play Console, nicht hier
+    "billing_enabled": Spec(False),
+    # Produkt-IDs der Abos aus der Play Console, durch Komma getrennt
+    "billing_product_ids": Spec("", 200),
+    # Texte der Premium-Seite in der App (leer = Standardtext der App); Vorteile: eine Zeile je Vorteil
+    "premium_headline": Spec("", 80),
+    "premium_description": Spec("", 500),
+    "premium_benefits": Spec("", 600),
 }
 
 STORE_URL_PREFIXES = ("https://play.google.com/", "market://")
+PRODUCT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.]{0,39}$")
+MAX_PRODUCT_IDS = 5
+MAX_BENEFITS = 8
+MAX_BENEFIT_LENGTH = 100
 
 
 class ConfigError(ValueError):
@@ -72,15 +91,47 @@ def validate(key: str, value: Any) -> Any:
             raise ConfigError(f"{key}: Ja/Nein erwartet.")
         return value
     if isinstance(default, int):
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= spec.limit:
-            raise ConfigError(f"{key}: eine Zahl von 0 bis {spec.limit} erwartet.")
+        if isinstance(value, bool) or not isinstance(value, int) or not spec.minimum <= value <= spec.limit:
+            raise ConfigError(f"{key}: eine Zahl von {spec.minimum} bis {spec.limit} erwartet.")
         return value
     if not isinstance(value, str) or len(value.strip()) > spec.limit:
         raise ConfigError(f"{key}: Text mit höchstens {spec.limit} Zeichen erwartet.")
     value = value.strip()
     if key == "play_store_url" and value and not value.startswith(STORE_URL_PREFIXES):
         raise ConfigError("play_store_url: muss mit https://play.google.com/ oder market:// beginnen.")
+    if key == "billing_product_ids":
+        return _normalize_product_ids(value)
+    if key == "premium_benefits":
+        return _normalize_benefits(value)
     return value
+
+
+def _normalize_product_ids(value: str) -> str:
+    """„ a , b “ -> „a,b“. Nur Schreibweisen, die die Play Console für Produkt-IDs zulässt."""
+    ids = [part.strip() for part in value.split(",") if part.strip()]
+    if len(ids) > MAX_PRODUCT_IDS or len(set(ids)) != len(ids) or not all(PRODUCT_ID_PATTERN.match(i) for i in ids):
+        raise ConfigError(
+            "billing_product_ids: Produkt-IDs bestehen aus Kleinbuchstaben, Ziffern, Punkt und Unterstrich "
+            "(höchstens 5, durch Komma getrennt)."
+        )
+    return ",".join(ids)
+
+
+def _normalize_benefits(value: str) -> str:
+    """Eine Zeile je Vorteil; leere Zeilen fallen weg."""
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if len(lines) > MAX_BENEFITS or any(len(line) > MAX_BENEFIT_LENGTH for line in lines):
+        raise ConfigError("premium_benefits: höchstens 8 Zeilen mit je 100 Zeichen.")
+    return "\n".join(lines)
+
+
+def product_ids(config: dict[str, Any]) -> list[str]:
+    """Die eingestellten Abo-Produkt-IDs als Liste."""
+    return [part for part in str(config["billing_product_ids"]).split(",") if part]
+
+
+def benefits(config: dict[str, Any]) -> list[str]:
+    return [line for line in str(config["premium_benefits"]).split("\n") if line]
 
 
 def get_all(db: Session) -> dict[str, Any]:
@@ -103,6 +154,9 @@ def update(db: Session, changes: dict[str, Any]) -> dict[str, Any]:
         )
     if merged["play_latest_build"] > 0 and merged["play_min_build"] > merged["play_latest_build"]:
         raise ConfigError("play_min_build: darf nicht größer sein als die neueste Build-Nummer.")
+    # Ein Kauf-Knopf ohne Produkt wäre in der App eine Sackgasse
+    if merged["billing_enabled"] and not merged["billing_product_ids"]:
+        raise ConfigError("billing_product_ids: Für den Kauf in der App fehlt die Produkt-ID des Abos.")
     for key, value in checked.items():
         row = db.get(AppSetting, key)
         if row is None:

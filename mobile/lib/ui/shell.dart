@@ -20,6 +20,7 @@ import 'widgets/app_update.dart';
 import 'widgets/common.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/play_notices.dart';
+import 'widgets/premium_gate.dart';
 
 /// Grundgerüst mit unterer Leiste (Start, Suche, Bibliothek) und Mini-Player.
 class AppShell extends ConsumerStatefulWidget {
@@ -78,11 +79,24 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     // Computer mit breitem Fenster: Seitenleiste + Player-Leiste statt unterer Leiste
-    if (useDesktopLayout(context)) return DesktopShell(shell: widget.shell);
+    // (Der Hinweis „Offline-Musik entfernt“ erscheint in beiden Fällen.)
+    if (useDesktopLayout(context)) return OfflineWipeNoticeListener(child: DesktopShell(shell: widget.shell));
     final offline = ref.watch(isOfflineProvider);
     final offlineMode = ref.watch(settingsProvider.select((s) => s.offlineMode));
     final maintenance = ref.watch(appConfigValueProvider.select((c) => c.maintenanceMessage.trim().isNotEmpty));
     final topBanner = offline || offlineMode || maintenance;
+    return OfflineWipeNoticeListener(
+      child: _phone(context, offline: offline, offlineMode: offlineMode, maintenance: maintenance, topBanner: topBanner),
+    );
+  }
+
+  Widget _phone(
+    BuildContext context, {
+    required bool offline,
+    required bool offlineMode,
+    required bool maintenance,
+    required bool topBanner,
+  }) {
     return Scaffold(
       body: Column(
         children: [

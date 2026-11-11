@@ -38,6 +38,7 @@ from app.routers import (
 )
 from app.security import load_or_create_secret_key
 from app.services.bootstrap import run_bootstrap
+from app.services.play_billing import PurchaseVerifier, build_verifier
 
 logger = logging.getLogger("app")
 
@@ -51,7 +52,7 @@ def configure_logging(level: str) -> None:
     logging.getLogger("app").setLevel(level.upper())
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVerifier | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -109,6 +110,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_per_ip=settings.login_max_failures_per_ip,
         window_seconds=settings.login_window_minutes * 60,
     )
+    # Kauf über Google Play: Prüfung bei Google (None = Schlüsseldatei fehlt – „nicht eingerichtet“). Die Bremse zählt
+    # erfundene Kauf-Token nur je Benutzer, wie beim Einlösen
+    app.state.purchase_verifier = purchase_verifier or build_verifier(settings)
+    app.state.billing_limiter = LoginRateLimiter(20, 10**9, 15 * 60)
+    # Nach einer Störung bei Google nicht bei jeder Premium-Abfrage erneut anfragen (Kauf-Nummer -> Zeitpunkt)
+    app.state.billing_backoff = {}
 
     if settings.cors_origins:
         app.add_middleware(

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google-Sicherung bis Android 11: nur die Einstellungen, nie Dateien. Die Offline-Musik (app_flutter/offline)
+     soll weder gesichert noch auf einem anderen Gerät zurückgespielt werden. -->
+<full-backup-content>
+    <include domain="sharedpref" path="."/>
+</full-backup-content>

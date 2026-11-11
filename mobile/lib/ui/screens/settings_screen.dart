@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../ads/ads.dart';
+import '../../billing/billing.dart';
 import '../../core/flavor.dart';
 import '../../core/format.dart';
 import '../../core/links.dart';
@@ -20,6 +21,7 @@ import '../../state/settings.dart';
 import '../nav.dart';
 import '../widgets/app_update.dart';
 import '../widgets/common.dart';
+import '../widgets/premium_gate.dart';
 import 'account_widgets.dart';
 import 'devices_screen.dart';
 import 'premium_screen.dart';
@@ -437,7 +439,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         AccountTile(
           icon: Icons.workspace_premium_rounded,
           title: 'Premium',
-          subtitle: premium == null ? 'Code einlösen, Werbung abschalten' : premiumLabel(premium),
+          subtitle: premium == null
+              ? (ref.watch(billingVisibleProvider) ? 'Offline hören, Abo oder Code' : 'Code einlösen, Werbung abschalten')
+              : premiumLabel(premium),
           chevron: true,
           onTap: () => Nav.premium(context),
         ),
@@ -546,6 +550,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return [
       const AccountSectionTitle('Offline'),
+      // „Offline-Hören nur mit Premium“: Hinweis, wenn gesperrt, noch ungeprüft oder bald abgelaufen
+      const OfflineAccessBanner(padding: EdgeInsets.fromLTRB(16, 0, 16, 8)),
       AccountSwitchTile(
         icon: Icons.cloud_off_rounded,
         title: 'Offline-Modus',

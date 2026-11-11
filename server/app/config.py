@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     operator_address: str = ""
     operator_email: str = ""
 
+    # Kauf in der Play-Version (Google Play Billing): Paketname der Play-App und der JSON-Schlüssel des Dienstkontos,
+    # mit dem der Server Käufe bei Google prüft. Der Schlüssel liegt nur als Datei auf dem Server – nie im Code,
+    # nie in Protokollen oder Antworten. Fehlt die Datei, ist die Kaufprüfung „nicht eingerichtet“.
+    play_package_name: str = "de.selfify.selfify.play"
+    play_service_account_file: Path = Path("/data/play-service-account.json")
+    # So oft wird ein laufender Kauf höchstens neu bei Google geprüft (Stunden)
+    play_recheck_hours: int = Field(default=12, ge=1, le=168)
+
     # Swagger-Oberfläche unter /api/docs (praktisch zum Testen, ohne Login nutzlos)
     enable_api_docs: bool = True
     # Nur nötig, falls später ein Web-Client aus einer anderen Domain zugreift

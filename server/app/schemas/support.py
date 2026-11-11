@@ -91,6 +91,13 @@ class AppConfigOut(BaseModel):
     play_store_url: str
     update_message: str
     maintenance_message: str
+    offline_requires_premium: bool
+    offline_grace_days: int
+    billing_enabled: bool
+    billing_product_ids: str
+    premium_headline: str
+    premium_description: str
+    premium_benefits: str
 
 
 class AppConfigIn(BaseModel):
@@ -104,6 +111,13 @@ class AppConfigIn(BaseModel):
     play_store_url: str | None = None
     update_message: str | None = None
     maintenance_message: str | None = None
+    offline_requires_premium: bool | None = None
+    offline_grace_days: int | None = None
+    billing_enabled: bool | None = None
+    billing_product_ids: str | None = None
+    premium_headline: str | None = None
+    premium_description: str | None = None
+    premium_benefits: str | None = None
 
 
 class UpdateInfoOut(BaseModel):
@@ -126,6 +140,15 @@ class PublicConfigOut(BaseModel):
     update: UpdateInfoOut
     privacy_url: str
     deletion_url: str
+    # Offline-Hören nur mit Premium (gilt für alle App-Ausgaben; Admins sind ausgenommen)
+    offline_requires_premium: bool = False
+    offline_grace_days: int = 7
+    # Wirksamer Wert: Schalter an, Play-Version, Kaufprüfung eingerichtet und mindestens eine Produkt-ID
+    billing_enabled: bool = False
+    billing_product_ids: list[str] = []
+    premium_headline: str = ""
+    premium_description: str = ""
+    premium_benefits: list[str] = []
 
 
 class MyStatusOut(BaseModel):

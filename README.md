@@ -387,10 +387,10 @@ Zusatzsoftware im Browser (Handy und PC).
 | Downloads | Alle Downloads aller Benutzer live, abbrechen / nochmal / entfernen, yt-dlp aktualisieren |
 | Wünsche | Songs, die sich Benutzer wünschen: „Suchen & holen“ startet den Download auf deinem Server, „Ablehnen“ (mit Nachricht), „Erledigt“ |
 | Benutzer | Anlegen, sperren, Passwort setzen, Downloads erlauben, löschen – und **Premium vergeben oder entziehen** |
-| Premium-Codes | Codes erzeugen (beliebig viele, **Laufzeit frei in Tagen oder unbegrenzt**, mehrfach einlösbar, optional „einlösbar bis“), kopieren, sperren (auf Wunsch samt schon vergebenem Premium), Liste aller aktuellen Premium-Nutzer |
+| Premium-Codes | Codes erzeugen (beliebig viele, **Laufzeit frei in Tagen oder unbegrenzt**, mehrfach einlösbar, optional „einlösbar bis“), kopieren, sperren (auf Wunsch samt schon vergebenem Premium), Liste aller aktuellen Premium-Nutzer, **Käufe über Google Play** (Stand, gilt bis, „Neu prüfen“) |
 | Fehlermeldungen | „Fehler melden“ aus der App, mit Geräteinfo und Fehlerprotokoll; als gesehen/erledigt markieren |
 | Geräte & Versionen | Welche App-Version (Play oder GitHub) auf wie vielen Geräten läuft, wer ein Update braucht |
-| App-Einstellungen | Werbung an/aus, Premium-Bereich an/aus, „Song wünschen“ an/aus, Update-Hinweis und Pflicht-Update der Play-Version, Wartungshinweis |
+| App-Einstellungen | Werbung an/aus, Premium-Bereich an/aus, „Song wünschen“ an/aus, **was Premium beinhaltet** (Offline-Hören nur mit Premium, Gnadenfrist, Texte der Premium-Seite), **Kauf in der App** (Play-Version), Update-Hinweis und Pflicht-Update der Play-Version, Wartungshinweis |
 
 **Premium-Regeln**
 
@@ -405,7 +405,40 @@ Zusatzsoftware im Browser (Handy und PC).
 - Premium direkt an einen Benutzer vergeben (ohne Code): Benutzer → **Premium**.
 - Falsche Codes werden wie falsche Passwörter gebremst (nach zu vielen Fehlversuchen kurze Sperre).
 - **Wichtig für den Play Store:** Verschenke Codes. Wer Codes gegen Geld außerhalb von Google Play verkauft und
-  in der App einlösen lässt, verstößt gegen die Zahlungsregeln von Google.
+  in der App einlösen lässt, verstößt gegen die Zahlungsregeln von Google. Verkaufen geht in der Play-Version nur
+  über Google Play (siehe unten).
+
+**Was Premium beinhaltet – und der Kauf in der App** (*App-Einstellungen*; alles standardmäßig **aus**, ohne diese
+Schalter verhalten sich Server und Apps wie bisher):
+
+| Einstellung | Wirkung |
+|-------------|---------|
+| **Offline-Hören nur mit Premium** | Ohne Premium lässt sich nichts mehr aufs Gerät laden; vorhandene Offline-Musik wird vom Gerät gelöscht, sobald die App den Stand beim Server geprüft hat. Gilt für alle App-Versionen (Play, GitHub, Windows, iPhone). **Admins sind ausgenommen.** Gib Familie und Freunden Premium, *bevor* du einschaltest |
+| **Gnadenfrist ohne Verbindung (Tage)** | Standard 7 (1–30). So lange bleibt Offline-Musik spielbar, wenn die App den Server nicht erreicht – gerechnet ab der letzten erfolgreichen Prüfung. Danach wird gesperrt und gelöscht |
+| **Überschrift, Beschreibung, Vorteile** | Texte der Premium-Seite in der App (Vorteile: eine Zeile je Vorteil, höchstens 8). Leer = Standardtexte |
+| **Premium in der Play-Version zum Kauf anbieten** | Abo über Google Play Billing, nur in der Play-Version. Braucht die **Produkt-ID des Abos** (wie in der Play Console, mehrere mit Komma) und die eingerichtete Kaufprüfung (Schlüsseldatei, „Verbindung testen“). **Der Preis wird in der Play Console festgelegt** und von der App aus dem Store angezeigt |
+
+- **Löschen vom Gerät:** Läuft Premium ab (Abo gekündigt und abgelaufen, erstattet, von dir entzogen, Code
+  abgelaufen), löscht die App die Offline-Musik, sobald der Server das bestätigt. Ist der Stand nur *unbekannt*
+  (kein Netz, Server oder Google gestört), wird nichts gelöscht, solange die Gnadenfrist läuft. Kommt Premium
+  wieder, lädt der Benutzer seine Musik neu.
+- **Deinstallation (Android):** Die Offline-Musik liegt im privaten Speicher der App und verschwindet mit ihr. Die
+  Google-Sicherung und der Geräteumzug sichern nur die Einstellungen, keine Dateien.
+- **Kauf, Code und Vergabe zählen gleich.** Ein Code während eines laufenden Abos hängt sich hinter das aktuelle
+  Abo-Ende; verlängert Google danach, überlappen sich die Zeiten. Unbegrenztes Premium schlägt alles.
+- **Kaufprüfung:** Der Server prüft jeden Kauf bei Google (ein Kauf = ein Konto) und fragt laufende Abos erneut ab,
+  wenn die App den Premium-Stand holt – höchstens alle `PLAY_RECHECK_HOURS` Stunden, rund um das Enddatum öfter.
+  Kündigung, Erstattung und Ablauf beenden Premium von selbst. Sofort nachsehen: *Premium-Codes › Käufe über Google
+  Play › Neu prüfen*.
+- **Entziehst du** gekauftes Premium im Dashboard, läuft das Abo bei Google weiter – in der Play Console erstatten
+  oder kündigen.
+- **Schlüsseldatei:** Die Kaufprüfung braucht den JSON-Schlüssel eines Google-Dienstkontos als Datei im Datenordner
+  (`/mnt/user/appdata/selfify/play-service-account.json`). Nie weitergeben, nie ins Repository, nie in einen Chat.
+- Die Sperre sitzt in der App; ein Kopierschutz ist sie nicht (der Server kann Offline-Laden nicht vom Abspielen
+  unterscheiden).
+
+Die ganze Einrichtung Schritt für Schritt (Play Console, Dienstkonto, Testkäufe, Gebühren, was ungeprüft ist):
+**[docs/PLAYSTORE.md](docs/PLAYSTORE.md), Schritt 10.**
 
 **Pflichtseiten für den Play Store:** `/datenschutz`, `/impressum` und `/konto-loeschen` (der Benutzer kann
 sein Konto auch ohne App löschen). Trage dafür `OPERATOR_NAME`, `OPERATOR_ADDRESS` und `OPERATOR_EMAIL` ein –
@@ -447,6 +480,9 @@ die Texte sind eine Vorlage und ersetzen keine Rechtsberatung. Alle diese Seiten
 | `ENABLE_API_DOCS` | `true` | Test-Oberfläche unter `/api/docs` (ohne Login nutzlos) |
 | `DASHBOARD_ENABLED` | `true` | Verwaltungsseite unter `/dashboard` (`false` = abgeschaltet; die Daten dahinter sind ohnehin nur für Admins) |
 | `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` | leer | Betreiberangaben für `/datenschutz` und `/impressum` (Pflicht, sobald die App öffentlich angeboten wird) |
+| `PLAY_SERVICE_ACCOUNT_FILE` | `/data/play-service-account.json` | Nur für den Kauf in der Play-Version: JSON-Schlüssel des Google-Dienstkontos (Pfad im Container). Fehlt die Datei, ist der Kauf aus. **Geheim** – nur als Datei auf dem Server |
+| `PLAY_PACKAGE_NAME` | `de.selfify.selfify.play` | Paketname der Play-Version (für die Kaufprüfung bei Google) |
+| `PLAY_RECHECK_HOURS` | `12` | So oft wird ein laufender Kauf höchstens neu bei Google geprüft (1–168) |
 | `FORWARDED_ALLOW_IPS` | private Netze | Von welchen Proxys die echte Client-IP übernommen wird |
 | `SECRET_KEY` | leer | Leer = wird erzeugt und in `/data/secret.key` gespeichert |
 | `DATA_DIR` / `MEDIA_DIR` | `/data` / `/media` | Pfade **im** Container (nicht ändern) |
@@ -492,11 +528,11 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Downloads | `POST /downloads`, `POST /downloads/album`, `POST /downloads/url`, `GET /downloads`, `POST /downloads/{id}/cancel\|retry`, `DELETE /downloads/{id}` |
 | Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse (eigene Downloads; Admins mit `&scope=all` alle) |
 | Admin | `DELETE /tracks/{id}?delete_file=true`, `GET /downloads-system`, `POST /downloads-system/update` |
-| App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links |
-| Premium | `GET /premium`, `POST /premium/redeem` {code} |
+| App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links, Offline-Regel (`offline_requires_premium`, `offline_grace_days`), Kauf (`billing_enabled`, `billing_product_ids`), Premium-Texte |
+| Premium | `GET /premium` (Stand samt `offline_allowed`, `checked_at`, Abo `play`; 503 = gerade nicht prüfbar), `POST /premium/redeem` {code}, `POST /premium/play/verify` {product_id, purchase_token} (Kauf oder Wiederherstellung melden) |
 | Wünsche & Fehler melden | `POST/GET /requests`, `DELETE /requests/{id}`, `POST /bugreports` |
 | Konto löschen | `POST /me/delete` {password} |
-| Dashboard (Admin) | `GET /admin/stats`, `/admin/users`, `/admin/clients`, `GET/PUT /admin/config`, `/admin/premium/codes`, `/admin/premium/licenses`, `/admin/users/{id}/premium`, `/admin/requests`, `/admin/bugreports` |
+| Dashboard (Admin) | `GET /admin/stats`, `/admin/users`, `/admin/clients`, `GET/PUT /admin/config`, `/admin/premium/codes`, `/admin/premium/licenses`, `GET /admin/premium/purchases`, `POST /admin/premium/purchases/{id}/recheck`, `GET /admin/billing/status`, `POST /admin/billing/test`, `/admin/users/{id}/premium`, `/admin/requests`, `/admin/bugreports` |
 
 Listen sind seitenweise (`limit`, `offset`) und sortierbar (`sort=title|recent|…`). Streams und Cover
 akzeptieren statt des `Authorization`-Headers auch den **Medien-Token** aus dem Login als `?t=…`. So
@@ -543,22 +579,29 @@ flutter run -d windows # auf einem Windows-PC (Visual Studio mit „Desktopentwi
 
 Aufbau: `lib/data` (Modelle, Server-Client), `lib/state` (Anmeldung, Einstellungen, Downloads,
 Offline-Speicher, Server-Einstellungen/Premium), `lib/player` (Hintergrund-Wiedergabe), `lib/ui` (Navigation,
-Bildschirme, Bausteine), `lib/ads` (Werbung, nur Play-Version), `lib/core/flavor.dart` (welche Version läuft).
+Bildschirme, Bausteine), `lib/ads` (Werbung, nur Play-Version), `lib/billing` (Kauf über Google Play, nur
+Play-Version), `lib/core/flavor.dart` (welche Version läuft).
 
 Android hat zwei **Flavors**: `full` (GitHub-Version) und `play` (Google Play, Paketname `….play`). Ohne `--flavor`
 bricht ein Android-Bau ab. Windows und iPhone brauchen keinen Flavor und sind immer die GitHub-Version.
 
-**Werbe-SDK nur in der Play-Version:** Das Paket `google_mobile_ads` bringt native Dienste mit, die beim App-Start
-laufen – mit ihm startete die GitHub-App am Handy nicht mehr. Deshalb ersetzt die CI es in allen Versionen ohne
-Werbung (GitHub-APK, Windows, iPhone) durch einen Platzhalter (`mobile/packages/google_mobile_ads_stub`). Für einen
+**Werbe-SDK und Kauf-Bibliothek nur in der Play-Version:** Das Paket `google_mobile_ads` bringt native Dienste mit,
+die beim App-Start laufen – mit ihm startete die GitHub-App am Handy nicht mehr. Deshalb ersetzt die CI es in allen
+Versionen ohne Werbung (GitHub-APK, Windows, iPhone) durch einen Platzhalter
+(`mobile/packages/google_mobile_ads_stub`). Dasselbe gilt für `in_app_purchase` (Google Play Billing): Gekauft wird nur
+in der Play-Version, alle anderen bekommen `mobile/packages/in_app_purchase_stub`. Die CI prüft, dass in der
+GitHub-APK weder Werbe-SDK noch Billing stecken und dass das Play-Bundle die Billing-Berechtigung hat. Für einen
 lokalen Bau der GitHub-Version legst du dieselbe Datei an:
 
 ```bash
 cd mobile
-printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n' > pubspec_overrides.yaml
+printf 'dependency_overrides:\n  google_mobile_ads:\n    path: packages/google_mobile_ads_stub\n  in_app_purchase:\n    path: packages/in_app_purchase_stub\n' > pubspec_overrides.yaml
 flutter pub get && flutter run --flavor full
-rm pubspec_overrides.yaml   # zurück zum echten Paket (Tests und Play-Version)
+rm pubspec_overrides.yaml   # zurück zu den echten Paketen (Tests und Play-Version)
 ```
+
+`lib/billing/play_gateway.dart` ist die einzige Datei, die `in_app_purchase` einbindet. Nutzt sie einen neuen Namen
+aus dem Paket, muss der Platzhalter ihn auch kennen – sonst schlägt der zweite Analyse-Schritt der CI fehl.
 
 ---
 

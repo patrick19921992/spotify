@@ -10,6 +10,7 @@ import '../data/api.dart';
 import '../data/models.dart';
 import 'auth.dart';
 import 'connectivity.dart';
+import 'offline_access.dart';
 import 'settings.dart';
 
 /// Ein aufs Handy geladener Titel.
@@ -109,7 +110,24 @@ class OfflineController extends Notifier<OfflineState> {
     ref.listen(apiProvider, (_, api) {
       if (api != null) _pump();
     });
+    // „Offline-Hören nur mit Premium“: gesperrt -> Offline-Musik löschen; wieder erlaubt -> Warteschlange fortsetzen
+    ref.listen(offlineAccessProvider, (_, _) => _applyAccess());
     return const OfflineState();
+  }
+
+  OfflineAccessState get _access => ref.read(offlineAccessProvider);
+
+  /// Setzt den Stand der Offline-Berechtigung um. Gelöscht wird erst, wenn der Index geladen ist.
+  void _applyAccess() {
+    if (!state.loaded) return;
+    final access = _access;
+    if (access.access == OfflineAccess.locked) {
+      wipe().then((removed) {
+        if (removed && ref.mounted) ref.read(offlineWipeNoticeProvider.notifier).show(offlineWipeMessage(access));
+      }).ignore();
+    } else {
+      _pump();
+    }
   }
 
   Future<Directory> _directory() async {
@@ -130,6 +148,7 @@ class OfflineController extends Notifier<OfflineState> {
     final file = _indexFile(dir);
     if (!await file.exists()) {
       state = state.copyWith(loaded: true);
+      _applyAccess();
       return;
     }
     try {
@@ -161,10 +180,11 @@ class OfflineController extends Notifier<OfflineState> {
         pending: pending,
         loaded: true,
       );
-      if (pending.isNotEmpty) _pump();
     } catch (_) {
       state = state.copyWith(loaded: true);
     }
+    // Gesperrt: löschen; sonst die Warteschlange fortsetzen
+    _applyAccess();
   }
 
   /// Speichert den Index – nacheinander, damit sich zwei Speichervorgänge nicht überholen.
@@ -197,6 +217,8 @@ class OfflineController extends Notifier<OfflineState> {
 
   /// Pfad der Datei auf dem Handy – oder null, wenn nicht heruntergeladen.
   String? localPath(int trackId) {
+    // Gesperrt (kein Premium mehr): nichts vom Gerät abspielen, auch wenn die Dateien noch nicht gelöscht sind
+    if (!_access.canPlayLocal) return null;
     final item = state.tracks[trackId];
     final dir = _dir;
     if (item == null || dir == null) return null;
@@ -205,6 +227,7 @@ class OfflineController extends Notifier<OfflineState> {
 
   /// Einzelne Titel herunterladen.
   void downloadTracks(List<Track> tracks) {
+    if (!_access.canDownload) return;
     final pending = [...state.pending];
     for (final track in tracks) {
       if (track.isVideo || state.tracks.containsKey(track.id) || pending.contains(track.id)) continue;
@@ -218,6 +241,7 @@ class OfflineController extends Notifier<OfflineState> {
 
   /// Album/Playlist/Lieblingssongs offline verfügbar halten.
   Future<void> keepCollection(String key, String name, List<Track> tracks) async {
+    if (!_access.canDownload) return;
     final audio = tracks.where((t) => !t.isVideo).toList();
     state = state.copyWith(
       collections: {...state.collections, key: audio.map((t) => t.id).toList()},
@@ -242,7 +266,7 @@ class OfflineController extends Notifier<OfflineState> {
 
   /// Inhalt einer offline gehaltenen Sammlung aktualisieren (neue Titel nachladen, entfernte löschen).
   Future<void> syncCollection(String key, List<Track> tracks) async {
-    if (!state.collections.containsKey(key)) return;
+    if (!state.collections.containsKey(key) || !_access.canDownload) return;
     final name = state.collectionNames[key] ?? key;
     final oldIds = state.collections[key]!.toSet();
     final newIds = tracks.where((t) => !t.isVideo).map((t) => t.id).toSet();
@@ -285,6 +309,37 @@ class OfflineController extends Notifier<OfflineState> {
     await _save();
   }
 
+  /// Löscht ausnahmslos alles, was offline auf diesem Gerät liegt – wenn Premium abgelaufen ist oder zu lange nicht
+  /// geprüft werden konnte. Anders als [removeAll] auch halb geladene und verwaiste Dateien im Ordner.
+  /// Liefert true, wenn etwas entfernt wurde. Mehrfaches Auslösen ist unschädlich.
+  Future<bool> wipe() async {
+    if (!state.loaded) return false;
+    _cancel?.cancel();
+    _queued.clear();
+    var removed = state.tracks.isNotEmpty || state.collections.isNotEmpty || state.pending.isNotEmpty;
+    state = state.copyWith(
+      tracks: {},
+      collections: {},
+      collectionNames: {},
+      pending: [],
+      progress: {},
+      lastError: () => null,
+    );
+    final dir = await _directory();
+    // Erst den laufenden Speichervorgang abwarten, dann aufräumen und einen leeren Index schreiben
+    await _saveQueue;
+    try {
+      await for (final entry in dir.list(followLinks: false)) {
+        try {
+          await entry.delete(recursive: true);
+          if (!entry.path.endsWith('index.json')) removed = true;
+        } catch (_) {}
+      }
+    } catch (_) {}
+    await _save();
+    return removed;
+  }
+
   bool get _networkAllowed {
     if (ref.read(isOfflineProvider)) return false;
     final settings = ref.read(settingsProvider);
@@ -296,7 +351,8 @@ class OfflineController extends Notifier<OfflineState> {
     if (_working) return;
     _working = true;
     try {
-      while (state.pending.isNotEmpty && _networkAllowed) {
+      // Ohne Berechtigung (kein Premium, Stand unklar) wird nichts geladen – Wartendes bleibt in der Schlange
+      while (state.pending.isNotEmpty && _networkAllowed && _access.canDownload) {
         final api = ref.read(apiProvider);
         if (api == null) break;
         final trackId = state.pending.first;

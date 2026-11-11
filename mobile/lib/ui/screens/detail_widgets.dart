@@ -13,6 +13,7 @@ import '../../state/offline.dart';
 import '../../state/settings.dart';
 import '../nav.dart';
 import '../widgets/common.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/track_menu.dart';
 import '../widgets/track_tile.dart';
 
@@ -323,6 +324,7 @@ class DetailOfflineButton extends ConsumerWidget {
   });
 
   Future<void> _keep(BuildContext context, WidgetRef ref, {bool resume = false}) async {
+    if (!await requireOfflineAccess(context, ref) || !context.mounted) return;
     final audio = tracks.where((t) => !t.isVideo).toList();
     if (audio.isEmpty) {
       showMessage(

@@ -37,6 +37,11 @@ def status_of(client: TestClient, headers: dict[str, str]) -> dict:
     return response.json()
 
 
+def old_fields(status: dict) -> dict:
+    """Die drei Felder, die es schon immer gab (alte Apps lesen nur diese)."""
+    return {key: status[key] for key in ("active", "unlimited", "until")}
+
+
 def test_code_format_and_listing(client: TestClient, admin_headers: dict[str, str]) -> None:
     (code,) = new_codes(client, admin_headers, label="Geburtstag")
     parts = code["code"].split("-")
@@ -82,7 +87,8 @@ def test_redeem_starts_the_timer_at_redemption(
 ) -> None:
     (code,) = new_codes(client, admin_headers, duration_days=30)
     _, headers = user_headers(client, make_user, "lena")
-    assert status_of(client, headers) == {"active": False, "unlimited": False, "until": None}
+    # Die Antwort hat inzwischen weitere Felder (Offline-Hören, Kauf über Google Play) – die alten bleiben gleich
+    assert old_fields(status_of(client, headers)) == {"active": False, "unlimited": False, "until": None}
     response = redeem(client, headers, code["code"])
     assert response.status_code == 200, response.text
     state = response.json()
@@ -242,7 +248,8 @@ def test_admin_can_grant_and_revoke_premium_directly(
 
     revoked = client.delete(f"/api/admin/users/{user['id']}/premium", headers=admin_headers)
     assert revoked.json() == {"revoked": 2}
-    assert status_of(client, headers) == {"active": False, "unlimited": False, "until": None}
+    # Die Antwort hat inzwischen weitere Felder (Offline-Hören, Kauf über Google Play) – die alten bleiben gleich
+    assert old_fields(status_of(client, headers)) == {"active": False, "unlimited": False, "until": None}
     assert client.delete(f"/api/admin/users/{user['id']}/premium", headers=admin_headers).json() == {"revoked": 0}
     missing = client.post("/api/admin/users/9999/premium", headers=admin_headers, json={"unlimited": True})
     assert missing.status_code == 404

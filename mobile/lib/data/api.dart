@@ -410,6 +410,15 @@ class ApiClient {
   Future<PremiumStatus> redeemPremium(String code) =>
       _send('POST', '/premium/redeem', (d) => PremiumStatus.fromJson(d as Json), body: {'code': code});
 
+  /// Meldet dem Server einen Kauf oder eine Wiederherstellung aus Google Play. Der Server prüft bei Google und
+  /// schaltet Premium frei. Fehler kommen als [ApiException] mit der Meldung des Servers.
+  Future<PlayVerifyResult> verifyPlayPurchase({required String productId, required String token}) => _send(
+        'POST',
+        '/premium/play/verify',
+        (d) => PlayVerifyResult.fromJson(d as Json),
+        body: {'product_id': productId, 'purchase_token': token},
+      );
+
   Future<List<SongWish>> wishes() => _get('/requests', (d) => _listOf(d, SongWish.fromJson));
   Future<SongWish> createWish({required String title, String artist = '', String note = ''}) =>
       _send('POST', '/requests', (d) => SongWish.fromJson(d as Json),

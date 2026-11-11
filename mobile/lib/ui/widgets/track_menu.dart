@@ -12,6 +12,7 @@ import '../nav.dart';
 import 'common.dart';
 import 'cover.dart';
 import 'playlist_picker.dart';
+import 'premium_gate.dart';
 
 /// Zusätzlicher Menüeintrag (z. B. "Aus dieser Playlist entfernen").
 class TrackMenuAction {
@@ -106,10 +107,17 @@ class _TrackMenu extends ConsumerWidget {
                 leading: Icon(downloaded ? Icons.download_done_rounded : Icons.download_for_offline_outlined,
                     color: downloaded ? AppColors.accent : null),
                 title: Text(downloaded ? 'Vom Handy entfernen' : 'Aufs Handy laden (offline)'),
-                onTap: () => run(() async {
-                  final offline = ref.read(offlineProvider.notifier);
-                  downloaded ? await offline.removeTrack(track.id) : offline.downloadTracks([track]);
-                }, done: downloaded ? 'Vom Handy entfernt' : 'Wird aufs Handy geladen'),
+                onTap: () async {
+                  // Entfernen geht immer; Laden nur mit Berechtigung („Offline-Hören nur mit Premium“)
+                  if (downloaded) {
+                    await run(() => ref.read(offlineProvider.notifier).removeTrack(track.id), done: 'Vom Handy entfernt');
+                    return;
+                  }
+                  close();
+                  if (!await requireOfflineAccess(parentContext, ref)) return;
+                  container.read(offlineProvider.notifier).downloadTracks([track]);
+                  if (parentContext.mounted) showMessage(parentContext, 'Wird aufs Handy geladen');
+                },
               ),
             ],
             if (track.album != null)

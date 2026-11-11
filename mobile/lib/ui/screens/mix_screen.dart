@@ -10,6 +10,7 @@ import '../../state/connectivity.dart';
 import '../../state/library.dart';
 import '../../state/offline.dart';
 import '../widgets/common.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/cover.dart';
 import '../widgets/playlist_picker.dart';
 import '../widgets/track_tile.dart';
@@ -155,10 +156,12 @@ class _MixHeader extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.download_for_offline_outlined),
                 title: const Text('Alle aufs Handy laden'),
-                onTap: () => run(
-                  () async => ref.read(offlineProvider.notifier).downloadTracks(tracks),
-                  'Wird aufs Handy geladen',
-                ),
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  if (!await requireOfflineAccess(context, ref)) return;
+                  ref.read(offlineProvider.notifier).downloadTracks(tracks);
+                  if (context.mounted) showMessage(context, 'Wird aufs Handy geladen');
+                },
               ),
               const SizedBox(height: 8),
             ],
@@ -253,11 +256,12 @@ class _MixHeader extends ConsumerWidget {
                     ),
                     onPressed: tracks.isEmpty
                         ? null
-                        : () {
+                        : () async {
                             if (allDownloaded) {
                               showMessage(context, 'Alle Songs dieses Mixes sind auf deinem Handy');
                               return;
                             }
+                            if (!await requireOfflineAccess(context, ref) || !context.mounted) return;
                             ref.read(offlineProvider.notifier).downloadTracks(tracks);
                             showMessage(context, 'Wird aufs Handy geladen');
                           },

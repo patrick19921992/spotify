@@ -66,6 +66,9 @@ class PremiumController extends AsyncNotifier<PremiumStatus> {
     state = AsyncData(status);
     return status;
   }
+
+  /// Übernimmt einen Stand, den der Server gerade geliefert hat (nach einem Kauf über Google Play).
+  void set(PremiumStatus status) => state = AsyncData(status);
 }
 
 final premiumProvider = AsyncNotifierProvider<PremiumController, PremiumStatus>(
