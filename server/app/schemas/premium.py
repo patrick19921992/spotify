@@ -108,6 +108,77 @@ class BillingTestOut(BaseModel):
     message: str
 
 
+PurchaseState = Literal["active", "canceled", "grace", "on_hold", "paused", "pending", "expired", "replaced"]
+
+
+class PlaySubscriptionOut(BaseModel):
+    """Das laufende Abo über Google Play (ohne Kauf-Token)."""
+
+    product_id: str
+    state: Literal["active", "canceled", "grace", "on_hold", "paused", "pending"]
+    expires_at: datetime | None
+    auto_renewing: bool
+
+
+class MyPremiumOut(PremiumStatusOut):
+    """Premium-Stand für die App – samt der Frage, ob Offline-Hören erlaubt ist."""
+
+    offline_requires_premium: bool
+    # Schalter aus, Admin oder Premium aktiv
+    offline_allowed: bool
+    offline_grace_days: int
+    # Serverzeit dieser Antwort
+    checked_at: datetime
+    play: PlaySubscriptionOut | None = None
+
+
+class PlayVerifyIn(BaseModel):
+    product_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    purchase_token: Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=4000)]
+
+
+class PlayVerifyOut(BaseModel):
+    # active = Premium läuft, pending = Zahlung bei Google noch offen, inactive = Kauf gültig, aber kein Zugang
+    result: Literal["active", "pending", "inactive"]
+    premium: MyPremiumOut
+
+
+class PurchaseOut(BaseModel):
+    """Ein Kauf für das Dashboard – bewusst ohne Kauf-Token."""
+
+    id: int
+    user_id: int
+    username: str
+    display_name: str
+    product_id: str
+    order_id: str
+    state: PurchaseState
+    expires_at: datetime | None
+    auto_renewing: bool
+    acknowledged: bool
+    is_test: bool
+    license_id: int | None
+    license_revoked: bool
+    last_checked_at: datetime
+    last_error: str
+    created_at: datetime
+
+
+class BillingStatusOut(BaseModel):
+    # Schlüsseldatei vorhanden und lesbar
+    configured: bool
+    package_name: str
+    # Nur der Pfad – der Inhalt verlässt den Server nie
+    key_file: str
+    product_ids: list[str]
+    enabled: bool
+
+
+class BillingTestOut(BaseModel):
+    ok: bool
+    message: str
+
+
 class RedeemIn(BaseModel):
     code: CodeText
 
