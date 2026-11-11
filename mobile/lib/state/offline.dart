@@ -257,6 +257,8 @@ class OfflineController extends Notifier<OfflineState> {
     }
     // Beim letzten Löschen blieb etwas liegen (Datei war noch geöffnet): jetzt nachholen
     if (_cleanupPending) await _cleanup();
+    // Das Aufräumen kann dauern – inzwischen kann der Speicher beendet worden sein (Abmelden, App schließt)
+    if (!ref.mounted) return;
     // Gesperrt: löschen; sonst die Warteschlange fortsetzen
     _applyAccess();
   }

@@ -1206,3 +1206,33 @@ def test_server_with_existing_data_starts_unchanged_after_the_update(settings: S
         status = premium(client, headers)
         assert status["active"] is True and status["offline_allowed"] is True and status["play"] is None
         assert client.get("/api/admin/premium/purchases", headers=admin).json() == []
+
+
+# ------------------------------------------------------------------- Premium-Code aus dem Dashboard
+
+
+@pytest.mark.parametrize("duration_days", [30, None])
+def test_dashboard_code_unlocks_offline_and_locking_it_takes_offline_away(
+    client: TestClient, admin_headers: dict[str, str], make_user: Callable, duration_days: int | None
+) -> None:
+    """Weg des Betreibers: Code im Dashboard erzeugen, weitergeben, einlösen lassen, später sperren."""
+    assert put_config(client, admin_headers, offline_requires_premium=True).status_code == 200
+    _, headers = user_headers(client, make_user, "lena")
+
+    before = client.get("/api/premium", headers=headers).json()
+    assert before["active"] is False and before["offline_allowed"] is False
+
+    options = {"duration_days": duration_days} if duration_days else {"duration_days": None, "unlimited": True}
+    (code,) = new_codes(client, admin_headers, **options)
+    redeemed = redeem(client, headers, code["code"])
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["active"] is True and redeemed.json()["offline_allowed"] is True
+    status = client.get("/api/premium", headers=headers).json()
+    assert status["active"] is True and status["offline_allowed"] is True
+
+    locked = client.post(
+        f"/api/admin/premium/codes/{code['id']}/revoke", headers=admin_headers, json={"revoke_licenses": True}
+    )
+    assert locked.status_code == 200 and locked.json()["revoked"] == 1
+    after = client.get("/api/premium", headers=headers).json()
+    assert after["active"] is False and after["offline_allowed"] is False

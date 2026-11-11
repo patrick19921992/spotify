@@ -92,11 +92,19 @@ MSG_BLOCKED = "Dieser Kauf wurde vom Betreiber gesperrt."
 MSG_NOT_FOUND = "Dieser Kauf wurde bei Google Play nicht gefunden."
 MSG_KEY_INVALID = "Schlüsseldatei ist ungültig."
 MSG_UNREACHABLE = "Google ist nicht erreichbar."
-# Steht bei einem Kauf, den Google bei der erneuten Prüfung nicht (mehr) kannte – er wird weiter nachgeprüft
+# Steht bei einem Kauf, den Google bei der erneuten Prüfung nicht (mehr) kannte – er wird weiter nachgeprüft.
+# Bei einem deswegen beendeten Kauf ist der Text zugleich das Merkmal dafür (siehe _suspect): Er bleibt vorn stehen,
+# auch wenn eine spätere Nachprüfung an einer Störung scheitert – deren Meldung wird nur angehängt
 MSG_NOT_FOUND_ON_RECHECK = (
     "Google kennt diesen Kauf nicht (Antwort 400/404). Stimmt der Paketname (PLAY_PACKAGE_NAME) und gehört das "
     "Dienstkonto zu dieser App?"
 )
+MSG_LAST_RECHECK = " Letzte Nachprüfung: "
+MSG_ACKNOWLEDGE_FAILED = (
+    "Der Kauf konnte bei Google noch nicht bestätigt werden – es wird erneut versucht (unbestätigte Käufe erstattet "
+    "Google nach drei Tagen)."
+)
+MSG_ACKNOWLEDGE_NOT_FOUND = "Google kennt diesen Kauf nicht (400/404/410)."
 
 
 @dataclass(frozen=True)
@@ -130,6 +138,11 @@ class VerifierUnavailable(Exception):
     """Gerade keine Auskunft möglich: Netz, Zeitlimit, Störung bei Google, Schlüssel/Rechte, kaputte Antwort.
 
     Der Text ist für den Admin gedacht (Dashboard) und enthält nie Geheimnisse."""
+
+
+class UnclearNotFound(VerifierUnavailable):
+    """Google kennt einen bereits bekannten Kauf nicht (400/404) – toter Token oder falsche Einstellung
+    (Paketname)? Für den Benutzer wie eine Störung („unbekannt“); der Admin bekommt den Hinweis im Text."""
 
 
 class PurchaseVerifier(Protocol):
@@ -492,6 +505,12 @@ def acknowledge(db: Session, purchase: PlayPurchase, verifier: PurchaseVerifier,
         verifier.acknowledge(purchase.product_id, purchase.purchase_token)
     except (PurchaseNotFound, VerifierUnavailable) as exc:
         logger.warning("Kauf %s konnte bei Google nicht bestätigt werden: %s", purchase.id, type(exc).__name__)
+        # Auch in der Kaufliste zeigen: Bleibt das so, erstattet Google den Kauf. Die nächste gelungene Prüfung
+        # leert die Meldung wieder (siehe _apply)
+        reason = MSG_ACKNOWLEDGE_NOT_FOUND if isinstance(exc, PurchaseNotFound) else str(exc)
+        with write_lock:
+            purchase.last_error = f"{MSG_ACKNOWLEDGE_FAILED} {reason}".strip()[:300]
+            db.commit()
         return False
     with write_lock:
         purchase.acknowledged = True
@@ -510,13 +529,17 @@ def awaiting_renewal(purchase: PlayPurchase, now: datetime) -> bool:
     )
 
 
+def _marked_not_found(purchase: PlayPurchase) -> bool:
+    """Beendet, weil Google den Kauf bei der erneuten Prüfung nicht kannte (400/404) – nicht, weil Google das Ende
+    gemeldet hat. Das Merkmal steht vorn in `last_error` und übersteht gescheiterte Nachprüfungen."""
+    return purchase.state == "expired" and purchase.last_error.startswith(MSG_NOT_FOUND_ON_RECHECK)
+
+
 def _suspect(purchase: PlayPurchase, now: datetime) -> bool:
     """Beendet, weil Google den Kauf bei der erneuten Prüfung nicht kannte – solange der Token noch gelten kann,
     wird weiter nachgesehen (nach einer korrigierten Einstellung lebt der Kauf von selbst wieder auf)."""
-    return (
-        purchase.state == "expired"
-        and purchase.last_error == MSG_NOT_FOUND_ON_RECHECK
-        and (purchase.expires_at is None or purchase.expires_at >= now - TOKEN_LIFETIME_AFTER_EXPIRY)
+    return _marked_not_found(purchase) and (
+        purchase.expires_at is None or purchase.expires_at >= now - TOKEN_LIFETIME_AFTER_EXPIRY
     )
 
 
@@ -554,10 +577,15 @@ def recheck_purchase(db: Session, purchase: PlayPurchase, verifier: PurchaseVeri
             db.commit()
         if purchase.state == "expired":
             return
-        raise VerifierUnavailable(MSG_NOT_FOUND_ON_RECHECK) from None
+        raise UnclearNotFound(MSG_NOT_FOUND_ON_RECHECK) from None
     except VerifierUnavailable as exc:
         with write_lock:
-            purchase.last_error = str(exc)[:300]
+            if _marked_not_found(purchase):
+                # Das Merkmal „wird weiter nachgeprüft“ darf an einer Störung nicht verloren gehen: Der Kauf fiele
+                # sonst für immer aus der Nachprüfung. Die Störung wird nur dahinter vermerkt
+                purchase.last_error = f"{MSG_NOT_FOUND_ON_RECHECK}{MSG_LAST_RECHECK}{exc}"[:300]
+            else:
+                purchase.last_error = str(exc)[:300]
             db.commit()
         raise
     with write_lock:
@@ -582,7 +610,7 @@ def _suspect_purchases(db: Session, user_id: int, now: datetime) -> list[PlayPur
         .where(
             PlayPurchase.user_id == user_id,
             PlayPurchase.state == "expired",
-            PlayPurchase.last_error == MSG_NOT_FOUND_ON_RECHECK,
+            PlayPurchase.last_error.startswith(MSG_NOT_FOUND_ON_RECHECK, autoescape=True),
         )
         .order_by(PlayPurchase.id)
     ).unique()
@@ -653,6 +681,27 @@ def refresh_user(
     skip = {purchase.license_id for purchase in unclear if purchase.license_id is not None}
     others = [lic for lic in live_licenses(db, user.id, now) if lic.id not in skip]
     return status_of(others, now).active
+
+
+def premium_unsettled(db: Session, user_id: int, now: datetime) -> bool:
+    """Nur anhand der gespeicherten Käufe, ohne Google zu fragen: Der bezahlte Zeitraum ist um, „kein Premium“ lässt
+    sich daraus aber (noch) nicht lesen – der Abonnent zahlt vermutlich weiter.
+
+    - Seit dem Ablauf wurde Google noch nicht gefragt (die App war nicht offen) oder nicht erreicht: Bis dahin ist
+      offen, ob verlängert wurde. Das gilt, solange auch `refresh_user` den Kauf noch nachprüfen würde.
+    - Google hat nach dem Ablauf geantwortet und meldet das Abo weiter als laufend: Die Verlängerung ist nur noch
+      nicht verbucht (siehe `awaiting_renewal`).
+
+    Zahlung hängt, pausiert, noch nicht bezahlt (on_hold/paused/pending): Das ist ein klarer Stand ohne Zugang."""
+    for purchase in open_purchases(db, user_id):
+        if purchase.state not in ENTITLED or purchase.expires_at is None or purchase.expires_at > now:
+            continue
+        if purchase.last_checked_at < purchase.expires_at:
+            if now <= purchase.expires_at + TOKEN_LIFETIME_AFTER_EXPIRY:
+                return True
+        elif awaiting_renewal(purchase, now):
+            return True
+    return False
 
 
 def current_subscription(db: Session, user_id: int) -> PlayPurchase | None:

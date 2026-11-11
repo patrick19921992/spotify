@@ -444,7 +444,16 @@ Schalter verhalten sich Server und Apps wie bisher):
   entziehen. Sofort nachsehen: *Premium-Codes › Käufe über Google Play › Neu prüfen*.
 - **Bestätigung des Kaufs:** Google erstattet einen Kauf, den niemand bestätigt (nach 3 Tagen, Testkäufe nach
   Minuten). Bestätigt wird vom Server und zusätzlich von der App auf dem Gerät – dass keine Erstattungs-Mail kommt,
-  beweist also nicht, dass das Dienstkonto des Servers bestätigen darf (Prüfung: `docs/PLAYSTORE.md`, Schritt 10.7).
+  beweist also nicht, dass das Dienstkonto des Servers bestätigen darf. Scheitert der Server, steht im Protokoll
+  „Kauf … konnte bei Google nicht bestätigt werden“ und in der Kaufliste ein Hinweis (Prüfung: `docs/PLAYSTORE.md`,
+  Schritt 10.7).
+- **Unklarer Stand statt „kein Premium“:** Ist der bezahlte Zeitraum gerade um und die Verlängerung bei Google noch
+  nicht verbucht, gilt der Stand bis zu einer Stunde als *unbekannt* (auch kein HTTP 426 für Abonnenten). Kennt
+  Google einen bekannten Kauf plötzlich nicht mehr (Antwort 400/404 – oft ein falscher `PLAY_PACKAGE_NAME`), gilt
+  er bis 3 Tage nach dem bezahlten Ende als *unbekannt* und erst dann als beendet; der Hinweis steht in der Kaufliste.
+- **Mehrere Konten an einem Gerät:** Musik, die bei eingeschalteter Sperre geladen wurde, wird bei **jedem** Wechsel
+  des Kontos oder des Servers vom Gerät gelöscht – auch wenn das neue Konto Premium hat. Ohne die Sperre gehört die
+  Offline-Musik wie bisher zum Gerät und bleibt beim Wechsel liegen.
 - **Entziehst du** gekauftes Premium im Dashboard, läuft das Abo bei Google weiter – in der Play Console erstatten
   oder kündigen.
 - **Schlüsseldatei:** Die Kaufprüfung braucht den JSON-Schlüssel eines Google-Dienstkontos als Datei im Datenordner

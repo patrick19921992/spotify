@@ -19,10 +19,10 @@
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="true">
-        <!-- Sicherung (fullBackupContent/dataExtractionRules): nur die Einstellungen, keine Dateien – Offline-Musik
-             liegt im privaten App-Speicher, verschwindet beim Deinstallieren und kommt nicht per Google-Sicherung
-             oder Geräteumzug zurück. android:hasFragileUserData bleibt bewusst ungesetzt (sonst böte Android beim
-             Deinstallieren „Daten behalten“ an). -->
+        <!-- Sicherung (die beiden Backup-Regeln oben, Dateien unter res/xml): nur die Einstellungen, keine Dateien –
+             Offline-Musik liegt im privaten App-Speicher, verschwindet beim Deinstallieren und kommt nicht per
+             Google-Sicherung oder Geräteumzug zurück. Der Schalter für „Daten beim Deinstallieren behalten“ bleibt
+             bewusst ungesetzt. -->
         <!-- usesCleartextTraffic: erlaubt http:// im Heimnetz (z. B. http://192.168.1.10:8080).
              Über die eigene Domain läuft alles verschlüsselt per https. -->
         <activity

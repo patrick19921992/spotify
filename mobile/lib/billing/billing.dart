@@ -96,6 +96,15 @@ class BillingController extends Notifier<BillingState> {
   PurchaseGateway? _gateway;
   Timer? _restoreTimer;
   bool _restoring = false;
+
+  /// Der Benutzer hat „Käufe wiederherstellen“ angetippt: Alles, was der Store daraufhin meldet, bekommt eine
+  /// Rückmeldung – auch der zweite und dritte Kauf (der Store meldet jeden einzeln). Gilt, bis die App den Store
+  /// wieder von sich aus fragt oder ein Kauf beginnt.
+  bool _restoreAsked = false;
+
+  /// Bei diesem Wiederherstellen wurde Premium schon freigeschaltet: Weitere Käufe (abgelaufen, fremdes Konto)
+  /// überschreiben die Erfolgsmeldung nicht.
+  bool _restoreActivated = false;
   bool _retrying = false;
   bool _askingStore = false;
 
@@ -112,6 +121,8 @@ class BillingController extends Notifier<BillingState> {
     _gateway = null;
     _restoreTimer?.cancel();
     _restoring = false;
+    _restoreAsked = false;
+    _restoreActivated = false;
     if (!ref.watch(billingVisibleProvider)) return const BillingState();
     final gateway = ref.watch(purchaseGatewayProvider);
     if (gateway == null) return const BillingState();
@@ -173,6 +184,7 @@ class BillingController extends Notifier<BillingState> {
       }
       if (!ref.mounted || _gateway != gateway || _restoring || state.busy) return;
       if (premium.checkedAt == null || premium.play != null) return;
+      _restoreAsked = false; // was jetzt kommt, hat niemand angefordert
       await gateway.restore(accountId: accountId);
     } catch (e) {
       debugPrint('Stille Abfrage der Käufe gescheitert: $e');
@@ -214,6 +226,7 @@ class BillingController extends Notifier<BillingState> {
     final accountId = _accountId;
     if (gateway == null || accountId == null || state.busy) return;
     _restoring = false;
+    _restoreAsked = false;
     state = state.copyWith(busy: true, notice: () => null, error: () => null);
     try {
       await gateway.buy(product, accountId: accountId);
@@ -236,6 +249,8 @@ class BillingController extends Notifier<BillingState> {
       return;
     }
     _restoring = true;
+    _restoreAsked = true;
+    _restoreActivated = false;
     _restoreTimer?.cancel();
     // Der Store antwortet nur, wenn es Käufe gibt – kommt nichts, gibt es keinen
     _restoreTimer = Timer(restoreTimeout, () {
@@ -248,6 +263,7 @@ class BillingController extends Notifier<BillingState> {
     } catch (e) {
       _restoreTimer?.cancel();
       _restoring = false;
+      _restoreAsked = false;
       if (!ref.mounted) return;
       state = state.copyWith(busy: false, error: () => BillingText.failed(_text(e)));
     }
@@ -269,8 +285,9 @@ class BillingController extends Notifier<BillingState> {
     if (!ref.mounted) return;
     final restoring = _restoring || purchase.status == StorePurchaseStatus.restored;
     // Antwort auf die stille Abfrage (niemand hat „Käufe wiederherstellen“ angetippt): keine Meldungen, außer
-    // wenn dabei Premium freigeschaltet wird
-    final silent = purchase.status == StorePurchaseStatus.restored && !_restoring;
+    // wenn dabei Premium freigeschaltet wird. Nach ausdrücklichem Wiederherstellen gilt das für keinen der
+    // gemeldeten Käufe – der erste beendet nur das Warten ([_restoring]), nicht die Rückmeldungen.
+    final silent = purchase.status == StorePurchaseStatus.restored && !_restoring && !_restoreAsked;
     switch (purchase.status) {
       case StorePurchaseStatus.pending:
         _endRestore();
@@ -331,7 +348,11 @@ class BillingController extends Notifier<BillingState> {
       return;
     }
     if (silent && _declined.contains('$account|${purchase.token}')) return;
-    if (!quiet) state = state.copyWith(busy: true, error: () => null);
+    // Mehrere Käufe beim ausdrücklichen Wiederherstellen: Hat einer Premium freigeschaltet, bleibt es bei
+    // „wiederhergestellt“ – die übrigen melden nichts mehr.
+    final explicitRestore = restoring && !silent && _restoreAsked;
+    bool overruled() => explicitRestore && _restoreActivated;
+    if (!quiet && !overruled()) state = state.copyWith(busy: true, error: () => null);
     try {
       final result = await api.verifyPlayPurchase(productId: purchase.productId, token: purchase.token);
       if (!ref.mounted) return;
@@ -340,6 +361,7 @@ class BillingController extends Notifier<BillingState> {
       ref.read(premiumProvider.notifier).set(result.premium);
       switch (result.result) {
         case 'active':
+          if (explicitRestore) _restoreActivated = true;
           await gateway?.complete(purchase);
           if (!ref.mounted) return;
           state = state.copyWith(
@@ -350,11 +372,11 @@ class BillingController extends Notifier<BillingState> {
         case 'pending':
           // Nicht abschließen: Google hat die Zahlung noch nicht bestätigt. Der Server kennt den Kauf jetzt und
           // prüft ihn selbst weiter.
-          if (!silent) state = state.copyWith(busy: false, notice: () => BillingText.pending);
+          if (!silent && !overruled()) state = state.copyWith(busy: false, notice: () => BillingText.pending);
         default:
           if (storePending) return; // ein offener Kauf lässt sich nicht abschließen
           await gateway?.complete(purchase);
-          if (!ref.mounted || silent) return;
+          if (!ref.mounted || silent || overruled()) return;
           state = state.copyWith(busy: false, notice: () => BillingText.noRunningSubscription);
       }
     } catch (e) {
@@ -362,14 +384,20 @@ class BillingController extends Notifier<BillingState> {
       final error = toApiException(e);
       if (_isTemporary(error)) {
         _remember(purchase.productId, purchase.token, account);
-        if (!quiet) state = state.copyWith(busy: false, notice: () => BillingText.unverified);
+        if (!quiet && !overruled()) state = state.copyWith(busy: false, notice: () => BillingText.unverified);
       } else {
         // Der Server lehnt ab (anderes Konto, gesperrt, unbekannt): nicht abschließen – einen falsch zugeordneten
         // Neukauf erstattet Google dann von selbst.
-        _forget(purchase.token);
         if (silent) {
+          // Still gefragt hat die App von sich aus, und der Store meldet die Käufe des Google-Kontos – auch den,
+          // den ein anderes Konto (oder dieses an einem anderen Server) gekauft und noch nicht bestätigt bekommen
+          // hat. Dessen gemerkter Eintrag bleibt liegen, bis der Besitzer wieder angemeldet ist; gestrichen wird
+          // nur der eigene.
+          _forget(purchase.token, ownedBy: account);
           _declined.add('$account|${purchase.token}');
         } else {
+          _forget(purchase.token);
+          if (overruled()) return;
           state = state.copyWith(busy: false, notice: storePending ? () => null : null, error: () => error.message);
         }
       }
@@ -427,9 +455,13 @@ class BillingController extends Notifier<BillingState> {
     _store(next.length > 5 ? next.sublist(next.length - 5) : next);
   }
 
-  void _forget(String token) {
+  /// Streicht den gemerkten Kauf. Mit [ownedBy] nur, wenn er diesem Konto gehört (oder noch ohne Konto gemerkt
+  /// wurde) – der Eintrag eines anderen Kontos bleibt dann liegen.
+  void _forget(String token, {String? ownedBy}) {
+    bool matches(_Unverified i) =>
+        i.token == token && (ownedBy == null || i.account == null || i.account == ownedBy);
     final items = _unverified();
-    if (items.any((i) => i.token == token)) _store(items.where((i) => i.token != token).toList());
+    if (items.any(matches)) _store(items.where((i) => !matches(i)).toList());
   }
 
   /// Prüft gemerkte Käufe erneut (beim Start, beim Zurückkehren in die App, bei „Käufe wiederherstellen“) – nur

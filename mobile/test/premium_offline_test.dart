@@ -121,6 +121,29 @@ class _Failing426 extends _Api {
   }
 }
 
+/// Der Server beantwortet „Kauf melden“ je Kauf-Token anders (mehrere Käufe im selben Google-Konto).
+class _PerTokenApi extends FakeApi {
+  /// Token -> Fehler ([ApiException]) oder Ergebnis ('active', 'inactive', 'pending').
+  final Map<String, Object> answers;
+
+  _PerTokenApi(this.answers) : super(admin: false);
+
+  @override
+  Future<PlayVerifyResult> verifyPlayPurchase({required String productId, required String token}) async {
+    calls.add('verify:$productId:$token');
+    // wie beim echten Server vergeht etwas Zeit – die Meldungen des Stores überholen sich dabei
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    final answer = answers[token];
+    if (answer is ApiException) throw answer;
+    final result = PlayVerifyResult(
+      result: answer as String,
+      premium: answer == 'active' ? premium() : (premiumStatus.active ? premiumStatus : premium(allowed: false)),
+    );
+    premiumStatus = result.premium;
+    return result;
+  }
+}
+
 class _LoggedOut extends FakeAuth {
   _LoggedOut(super.api);
 
@@ -131,7 +154,10 @@ class _LoggedOut extends FakeAuth {
 List<Track> tracks(List<int> ids) => [for (final id in ids) Track.fromJson(trackJson(id))];
 
 Future<void> waitFor(bool Function() condition, String what) async {
-  for (var i = 0; i < 400 && !condition(); i++) {
+  for (var i = 0; i < 400; i++) {
+    // Einmal erfüllt genügt: Ein zweiter Blick (z. B. in den Ordner, während gerade gespeichert wird) kann anders
+    // ausfallen
+    if (condition()) return;
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   expect(condition(), isTrue, reason: what);
@@ -223,6 +249,22 @@ void main() {
       expect(AccessRecord.tryParse(null), isNull);
       expect(AccessRecord.tryParse('kaputt'), isNull);
       expect(AccessRecord.tryParse('{"required": true}'), isNull);
+    });
+  });
+
+  group('Android-Manifest', () {
+    test('Backup-Regeln sind gesetzt – und stehen nicht bloß in einem Kommentar', () {
+      final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      final comments = RegExp(r'<!--.*?-->', dotAll: true).allMatches(manifest).map((m) => m.group(0)!).join('\n');
+      final code = manifest.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
+      expect(code, contains('android:dataExtractionRules="@xml/data_extraction_rules"'));
+      expect(code, contains('android:fullBackupContent="@xml/backup_rules"'));
+      // Die Prüfung im Build sucht nach den Attributen: Ein Kommentar, der sie nennt, könnte sie vortäuschen
+      expect(comments, isNot(contains('dataExtractionRules')));
+      expect(comments, isNot(contains('fullBackupContent')));
+      expect(comments, contains('Sicherung'), reason: 'die Erklärung bleibt');
+      expect(File('android/app/src/main/res/xml/data_extraction_rules.xml').existsSync(), isTrue);
+      expect(File('android/app/src/main/res/xml/backup_rules.xml').existsSync(), isTrue);
     });
   });
 
@@ -479,6 +521,12 @@ void main() {
       return c;
     }
 
+    /// Wartet, bis das Löschen ganz fertig ist: Ordner leer **und** Hinweis gesetzt. Der Hinweis kommt erst nach
+    /// dem Speichern des leeren Index – wer nur auf den leeren Ordner wartet, liest den Hinweis zu früh, und beim
+    /// Aufräumen nach dem Test schreibt die App noch in den Ordner („Directory not empty“).
+    Future<void> wiped(ProviderContainer c) =>
+        waitFor(() => files().length == 1 && c.read(offlineWipeNoticeProvider) != null, 'gelöscht');
+
     AccessRecord? saved(ProviderContainer c) =>
         AccessRecord.tryParse(c.read(sharedPreferencesProvider).getString(_accessKey));
 
@@ -731,7 +779,7 @@ void main() {
         online: false,
         prefs: {_accessKey: record(verified: _now, seen: _now.add(const Duration(days: 9)))},
       );
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(c.read(offlineAccessProvider).graceExpired, isTrue);
     });
 
@@ -748,7 +796,7 @@ void main() {
       expect(files(), containsAll(['1.opus', '2.opus']));
       clock = _now.add(const Duration(days: 3));
       c.read(offlineAccessProvider.notifier).recheck(); // stündlich und beim Zurückkehren in die App
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(saved(c)!.lastSeenAt, clock);
     });
 
@@ -860,7 +908,7 @@ void main() {
       api.premiumStatus = premium(allowed: false);
       final c = await container(
           config: requires, prefs: {_accessKey: record(verified: _now.add(const Duration(days: 3650)))});
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(c.read(offlineAccessProvider).access, OfflineAccess.locked);
     });
 
@@ -879,7 +927,7 @@ void main() {
       await seedFiles(extra: {'owner': 'https://premium.example|1', 'protected': true});
       // dieser Server kennt keine Sperre: ohne den Vermerk blieben die Dateien dauerhaft spielbar
       final c = await container();
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(c.read(offlineAccessProvider).access, OfflineAccess.free);
       expect(c.read(offlineWipeNoticeProvider),
           'Die Offline-Musik gehörte zu einem anderen Konto und wurde von diesem Gerät entfernt.');
@@ -896,7 +944,7 @@ void main() {
       api = _Api(admin: true);
       await seedFiles(extra: {'owner': 'https://musik.test|2', 'protected': true});
       final c = await container(config: requires);
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(c.read(offlineAccessProvider).access, OfflineAccess.free);
       expect(c.read(offlineWipeNoticeProvider), offlineOtherAccountMessage);
     });
@@ -936,7 +984,7 @@ void main() {
             'lokal ${offline.localPath(1)}');
       };
       api.premiumGate!.complete();
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(seen, ['Titel [1, 2], Dateien [1.opus, 2.opus], lokal null']);
     });
 
@@ -954,7 +1002,7 @@ void main() {
 
       api.premiumStatus = premium(allowed: false);
       c.invalidate(premiumProvider);
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(platform.last!.children, everyElement(startsWith('https://musik.test/api/tracks/')),
           reason: 'die Warteschlange zeigt nicht mehr auf gelöschte Dateien');
       expect(handler.tracks.map((t) => t.id), [1, 2]);
@@ -978,7 +1026,7 @@ void main() {
       await waitFor(() => platform.last?.children.length == 2, 'Warteschlange steht');
       clock = _now.add(const Duration(days: 3));
       c.read(offlineAccessProvider.notifier).recheck();
-      await waitFor(() => files().length == 1, 'gelöscht');
+      await wiped(c);
       expect(handler.tracks, isEmpty);
       await handler.player.dispose();
     });
@@ -1033,6 +1081,31 @@ void main() {
       expect(c.read(offlineProvider).tracks.keys, [9]);
     });
 
+    test('App wird beendet, während liegen gebliebene Dateien aufgeräumt werden: kein Fehler danach', () async {
+      final gate = Completer<void>();
+      OfflineController.deleteEntry = (entry) async {
+        await gate.future;
+        await entry.delete(recursive: true);
+      };
+      addTearDown(() => OfflineController.deleteEntry = (entry) => entry.delete(recursive: true));
+      final offline = Directory('${dir.path}/offline');
+      await offline.create();
+      await File('${offline.path}/1.opus').writeAsBytes(List.filled(500, 1));
+      await File('${offline.path}/index.json').writeAsString(jsonEncode({
+        'tracks': <String, Object>{},
+        'collections': <String, Object>{},
+        'names': <String, Object>{},
+        'queue': <Object>[],
+        'cleanup': true,
+      }));
+      final c = await container(); // der Index ist geladen, das Aufräumen hängt an der Datei
+      c.dispose();
+      gate.complete();
+      // Ein Zugriff auf den beendeten Speicher schlüge hier als Fehler des Tests auf
+      await waitFor(() => !files().contains('1.opus'), 'Datei entfernt');
+      await settle();
+    });
+
     // ---- Server weist das Abspielen ab, weil die App zu alt ist (HTTP 426)
 
     test('Player-Fehler und der Server antwortet mit 426: Hinweis „Bitte aktualisiere die App.“', () async {
@@ -1067,6 +1140,73 @@ void main() {
       await waitFor(() => platform.last != before && platform.last!.children.length == 2, 'neu geladen');
       platform.last!.fail(2004, 'Source error');
       await waitFor(() => c.read(updateRequiredNoticeProvider), 'Hinweis');
+      await handler.player.dispose();
+    });
+
+    test('426, obwohl die App die Mindest-Version noch nicht kennt (Einstellungen alt oder nicht geladen): Hinweis kommt trotzdem',
+        () async {
+      currentClient = const ClientInfo(platform: 'android', channel: 'full', version: '1.4.0', build: 60);
+      addTearDown(() => currentClient = null);
+      final platform = useFakeAudioPlatform();
+      final handler = SelfifyAudioHandler();
+      api.streamStatusCode = 426;
+      // Stand der App: keine Sperre, keine Mindest-Version – der Betreiber hat sie inzwischen eingeschaltet
+      final c = await container(more: [audioHandlerProvider.overrideWithValue(handler)]);
+      c.listen(playbackBridgeProvider, (_, _) {});
+      c.listen(updateRequiredNoticeProvider, (_, _) {});
+      await settle();
+      expect(c.read(streamHeadersProvider), isNull, reason: 'die App weiß von nichts');
+
+      unawaited(handler.playTracks(tracks([5, 6])));
+      await waitFor(() => platform.last?.children.length == 2, 'Warteschlange steht');
+      platform.last!.fail(2004, 'Source error');
+      await waitFor(() => c.read(updateRequiredNoticeProvider), 'Hinweis „Bitte aktualisiere die App.“');
+      expect(api.calls, contains('streamStatus'));
+      await handler.player.dispose();
+    });
+
+    test('Player-Fehler bei unbekannter Einstellung, der Server antwortet normal: kein Hinweis, die Einstellungen werden neu geholt',
+        () async {
+      currentClient = const ClientInfo(platform: 'android', channel: 'full', version: '1.4.0', build: 61);
+      addTearDown(() => currentClient = null);
+      final platform = useFakeAudioPlatform();
+      final handler = SelfifyAudioHandler();
+      final c = await container(more: [audioHandlerProvider.overrideWithValue(handler)]);
+      c.listen(playbackBridgeProvider, (_, _) {});
+      c.listen(updateRequiredNoticeProvider, (_, _) {});
+      c.listen(streamHeadersProvider, (_, _) {});
+      await settle();
+      // der Betreiber verlangt inzwischen eine Mindest-Version – die App erfährt es beim nächsten Abruf
+      (c.read(appConfigProvider.notifier) as FakeAppConfig).config =
+          const AppConfig(offlineRequiresPremium: true, offlineMinClientBuild: 61);
+
+      unawaited(handler.playTracks(tracks([5, 6])));
+      await waitFor(() => platform.last?.children.length == 2, 'Warteschlange steht');
+      expect(platform.last!.children, everyElement(startsWith('https://')));
+      platform.last!.fail(2004, 'Source error');
+      await waitFor(() => c.read(streamHeadersProvider) != null, 'Einstellungen neu geholt');
+      expect(c.read(streamHeadersProvider), {'X-Selfify-Client': 'platform=android; channel=full; version=1.4.0; build=61'});
+      expect(c.read(updateRequiredNoticeProvider), isFalse, reason: 'die App ist aktuell');
+      await settle(50);
+      await handler.player.dispose();
+    });
+
+    test('Player-Fehler bei einem Titel vom Gerät: der Server wird nicht gefragt', () async {
+      final platform = useFakeAudioPlatform();
+      final handler = SelfifyAudioHandler();
+      await seedFiles();
+      api.streamStatusCode = 426;
+      final c = await container(more: [audioHandlerProvider.overrideWithValue(handler)]);
+      c.listen(playbackBridgeProvider, (_, _) {});
+      c.listen(updateRequiredNoticeProvider, (_, _) {});
+      await settle();
+      unawaited(handler.playTracks(tracks([1, 2])));
+      await waitFor(() => platform.last?.children.length == 2, 'Warteschlange steht');
+      expect(platform.last!.children, everyElement(startsWith('file://')));
+      platform.last!.fail(2004, 'Source error');
+      await settle();
+      expect(api.calls, isNot(contains('streamStatus')));
+      expect(c.read(updateRequiredNoticeProvider), isFalse);
       await handler.player.dispose();
     });
 
@@ -1753,6 +1893,136 @@ void main() {
       await waitFor(() => c.read(premiumProvider).value?.active ?? false, 'Premium nachgeholt');
       expect(api.calls, contains('verify:premium_monat:token-von-eins'));
       expect(remembered(c), [foreign[1]]);
+    });
+
+    test('stille Abfrage meldet den gemerkten Kauf eines anderen Kontos und der Server lehnt ab: der Eintrag bleibt liegen',
+        () async {
+      // Benutzer 2 (und dieser Benutzer an einem anderen Server) haben mit demselben Google-Konto gekauft, der
+      // Server war nicht erreichbar. Jetzt ist Benutzer 1 angemeldet; der Store meldet die Käufe des Google-Kontos.
+      api.verifyError = const ApiException('Dieser Kauf ist schon mit einem anderen Konto verbunden.', statusCode: 409);
+      final foreign = [
+        {'product_id': 'premium_monat', 'token': 'token-von-zwei', 'account': 'https://musik.test|2'},
+        {'product_id': 'premium_monat', 'token': 'token-woanders', 'account': 'https://anderer.test|1'},
+      ];
+      gateway.restorable = [
+        bought('token-von-zwei', status: StorePurchaseStatus.restored),
+        bought('token-woanders', status: StorePurchaseStatus.restored),
+      ];
+      final c = await start(prefs: {BillingController.unverifiedKey: jsonEncode(foreign)});
+      await waitFor(
+          () => api.calls.where((call) => call.startsWith('verify')).length == 2, 'beide vom Store gemeldet und abgelehnt');
+      await settle(60);
+      expect(remembered(c), foreign, reason: 'sonst wäre der Kauf für seinen Besitzer verloren (Erstattung nach 3 Tagen)');
+      expect(c.read(billingProvider).error, isNull);
+      expect(gateway.completed, isEmpty);
+    });
+
+    test('stille Abfrage, der Server lehnt ab: der eigene gemerkte Kauf (auch einer ohne Konto-Angabe) wird gestrichen', () async {
+      // Der Server ist erst beim Nachreichen nicht erreichbar (Einträge bleiben), lehnt bei der stillen Abfrage dann ab
+      api.verifyError = const ApiException('Keine Verbindung zum Server.');
+      gateway.restorable = [
+        bought('token-eigen-01', status: StorePurchaseStatus.restored),
+        bought('token-alt-ohne', status: StorePurchaseStatus.restored),
+        bought('token-von-zwei', status: StorePurchaseStatus.restored),
+      ];
+      final foreign = {'product_id': 'premium_monat', 'token': 'token-von-zwei', 'account': 'https://musik.test|2'};
+      final c = await start(prefs: {
+        BillingController.unverifiedKey: jsonEncode([
+          {'product_id': 'premium_monat', 'token': 'token-eigen-01', 'account': 'https://musik.test|1'},
+          {'product_id': 'premium_monat', 'token': 'token-alt-ohne'},
+          foreign,
+        ]),
+      });
+      await settle(60);
+      expect(remembered(c), hasLength(3), reason: 'Netzfehler: nichts wird gestrichen');
+      api.verifyError = const ApiException('Dieser Kauf wurde bei Google Play nicht gefunden.', statusCode: 404);
+      gateway.restorable = [];
+      // der Store meldet die drei Käufe (Antwort auf eine stille Abfrage)
+      for (final token in ['token-eigen-01', 'token-alt-ohne', 'token-von-zwei']) {
+        gateway.emit(bought(token, status: StorePurchaseStatus.restored));
+      }
+      await waitFor(() => remembered(c).length == 1, 'eigene gestrichen');
+      await settle(60);
+      expect(remembered(c), [foreign]);
+    });
+
+    test('„Käufe wiederherstellen“ mit mehreren Käufen: jeder bekommt eine Rückmeldung, nicht nur der erste', () async {
+      api = _PerTokenApi({
+        'token-abgelaufen': 'inactive',
+        'token-fremd-004': const ApiException('Dieser Kauf ist schon mit einem anderen Konto verbunden.', statusCode: 409),
+      })
+        ..premiumStatus = PremiumStatus(
+          offlineRequiresPremium: true,
+          offlineAllowed: false,
+          checkedAt: _now,
+          // der Server kennt schon einen (abgelaufenen) Kauf: Die App fragt den Store nicht von sich aus
+          play: PlaySubscription(productId: 'premium_monat', state: 'expired', expiresAt: DateTime.utc(2026, 10, 1), autoRenewing: false),
+        );
+      final c = await start();
+      expect(gateway.log.where((entry) => entry.startsWith('restore')), isEmpty);
+      gateway.restorable = [
+        bought('token-abgelaufen', status: StorePurchaseStatus.restored),
+        bought('token-fremd-004', status: StorePurchaseStatus.restored),
+      ];
+      await c.read(billingProvider.notifier).restore();
+      await waitFor(() => c.read(billingProvider).error != null, 'auch der zweite Kauf meldet sich');
+      await settle(60);
+      expect(c.read(billingProvider).error, 'Dieser Kauf ist schon mit einem anderen Konto verbunden.');
+      expect(c.read(billingProvider).notice, 'Kein laufendes Abo gefunden.');
+      expect(c.read(billingProvider).busy, isFalse);
+      expect(gateway.completed.map((p) => p.token), ['token-abgelaufen']);
+    });
+
+    for (final order in [
+      ['token-fremd-005', 'token-laeuft-02'],
+      ['token-laeuft-02', 'token-fremd-005'],
+      ['token-abgelaufen', 'token-laeuft-02', 'token-fremd-005'],
+    ]) {
+      test('„Käufe wiederherstellen“, einer von mehreren läuft (${order.join(', ')}): „wiederhergestellt“, kein Fehler', () async {
+        api = _PerTokenApi({
+          'token-abgelaufen': 'inactive',
+          'token-laeuft-02': 'active',
+          'token-fremd-005': const ApiException('Dieser Kauf ist schon mit einem anderen Konto verbunden.', statusCode: 409),
+        })
+          ..premiumStatus = premium(allowed: false);
+        final c = await start();
+        await settle(60); // die stille Abfrage beim Start ist durch (der Store kannte da noch nichts)
+        gateway.restorable = [for (final token in order) bought(token, status: StorePurchaseStatus.restored)];
+        await c.read(billingProvider.notifier).restore();
+        await waitFor(
+            () => api.calls.where((call) => call.startsWith('verify')).length == order.length &&
+                c.read(billingProvider).notice == 'Premium wiederhergestellt.',
+            'alle geprüft');
+        await settle(200); // auch die Wartezeit von „Käufe wiederherstellen“ ändert nichts mehr
+        final state = c.read(billingProvider);
+        expect(state.notice, 'Premium wiederhergestellt.');
+        expect(state.error, isNull, reason: 'der fremde Kauf überschreibt den Erfolg nicht');
+        expect(state.busy, isFalse);
+        expect(c.read(premiumProvider).value!.active, isTrue);
+        expect(gateway.completed.map((p) => p.token), contains('token-laeuft-02'));
+        expect(gateway.completed.map((p) => p.token), isNot(contains('token-fremd-005')));
+      });
+    }
+
+    test('nach „Käufe wiederherstellen“ fragt die App den Store wieder still: dann gibt es keine Meldungen mehr', () async {
+      api = _PerTokenApi({
+        'token-fremd-006': const ApiException('Dieser Kauf ist schon mit einem anderen Konto verbunden.', statusCode: 409),
+      })
+        ..premiumStatus = premium(allowed: false);
+      final c = await start();
+      await settle(60);
+      gateway.restorable = [bought('token-fremd-006', status: StorePurchaseStatus.restored)];
+      await c.read(billingProvider.notifier).restore();
+      await waitFor(() => c.read(billingProvider).error != null, 'Fehlermeldung');
+      c.read(billingProvider.notifier).clearMessages();
+      gateway.restorable = [bought('token-fremd-007', status: StorePurchaseStatus.restored)];
+      (api as _PerTokenApi).answers['token-fremd-007'] =
+          const ApiException('Dieser Kauf ist schon mit einem anderen Konto verbunden.', statusCode: 409);
+      await c.read(billingProvider.notifier).catchUp(); // Zurückkehren in die App
+      await waitFor(() => api.calls.contains('verify:premium_monat:token-fremd-007'), 'still gemeldet');
+      await settle(60);
+      expect(c.read(billingProvider).error, isNull);
+      expect(c.read(billingProvider).notice, isNull);
     });
 
     test('Server meldet „Zahlung offen“: Hinweis, kein Premium, Kauf wird nicht abgeschlossen', () async {

@@ -56,15 +56,21 @@ final playbackBridgeProvider = Provider<void>((ref) {
       tag: item,
     );
   };
-  // Der Server weist das Abspielen ab: Liegt es an einer zu alten App (HTTP 426), sagt die App das.
+  // Der Server weist das Abspielen ab: Liegt es an einer zu alten App (HTTP 426), sagt die App das – auch wenn sie
+  // die Mindest-Version noch gar nicht kennt (Einstellungen nicht geladen oder vom Betreiber gerade erst gesetzt;
+  // eine zu alte App erfährt davon sonst nur, dass nichts mehr spielt).
   handler.onPlaybackError = () {
     final track = handler.currentTrack;
-    if (api == null || track == null || streamHeaders == null || offline.localPath(track.id) != null) return;
+    if (api == null || track == null || offline.localPath(track.id) != null) return;
     if (!ref.mounted) return;
     final notice = ref.read(updateRequiredNoticeProvider.notifier);
+    final config = ref.read(appConfigProvider.notifier);
     final url = api.streamUrl(track.id, quality: quality, compatible: Platform.isIOS, audioOnly: track.isVideo);
     api.streamStatus(url).then((status) {
       if (status == 426) notice.show();
+      // Die Einstellung war hier noch unbekannt, der Server antwortet aber: neu holen – verlangt er inzwischen
+      // eine Mindest-Version, geben sich die Stream-Links ab dann zu erkennen (siehe [streamHeadersProvider]).
+      if (status != null && streamHeaders == null && ref.mounted) config.refresh().ignore();
     }).ignore();
   };
   // Offline-Musik wird gelöscht (Premium abgelaufen): Die Warteschlange zeigt noch auf die Dateien. Mit Netz geht

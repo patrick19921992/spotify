@@ -379,9 +379,15 @@ Mit einem Lizenztester-Konto (Schritt 10.3) und der Play-Version aus dem Test-Tr
    nach einem frischen Kauf tut das auch die App auf dem Handy. Ob dein **Server** bestätigen darf (Berechtigung
    „Bestellungen und Abos verwalten“ des Dienstkontos, Schritt 10.4), siehst du so:
    - Im Protokoll des Containers (Unraid › Docker › Selfify › *Logs*) darf nach dem Kauf **keine** Zeile
-     „Kauf … konnte bei Google nicht bestätigt werden“ stehen.
-   - Wer es genau wissen will: `GET /api/admin/premium/purchases` (als Admin angemeldet) liefert je Kauf das Feld
-     `acknowledged` – es muss `true` sein.
+     „Kauf … konnte bei Google nicht bestätigt werden“ stehen. Das ist der verlässliche Nachweis: Die Zeile
+     bleibt im Protokoll stehen.
+   - Dieselbe Störung steht in der Kaufliste (*Premium-Codes › Käufe über Google Play*, Spalte „Zuletzt geprüft“)
+     als Hinweis „Der Kauf konnte bei Google noch nicht bestätigt werden – es wird erneut versucht …“. Sieh
+     **gleich nach dem Kauf** nach und drück vorher nicht „Neu prüfen“: Hat inzwischen die App bestätigt,
+     verschwindet der Hinweis bei der nächsten gelungenen Prüfung wieder.
+   - **Kein Beweis** ist das Feld `acknowledged` der Schnittstelle (`GET /api/admin/premium/purchases`): Der
+     Server übernimmt es bei jeder Prüfung von Google. Es steht also auch dann auf `true`, wenn nur die App
+     bestätigt hat und der Server es gar nicht dürfte.
 
    Das ist wichtig für Käufe, die die App erst später nachreicht (Server war beim Kauf nicht erreichbar): Die
    bestätigt nur der Server. Darf er das nicht, erstattet Google nach 3 Tagen und Premium endet.
@@ -432,11 +438,14 @@ Wichtig zu wissen:
   von hier aus nicht nachzusehen – siehe „Nicht geprüft“.*
 - **Rund um die Verlängerung:** Ist der bezahlte Zeitraum gerade um und Google hat die Verlängerung noch nicht
   verbucht, antwortet der Server der App bis zu einer Stunde lang „kann gerade nicht geprüft werden“ statt „kein
-  Premium“ – es wird nichts gelöscht.
+  Premium“ – es wird nichts gelöscht. Aus demselben Grund bekommt ein Abonnent in dieser Zeit auch kein „Bitte
+  aktualisiere die App.“ (HTTP 426), falls „Sperre durchsetzen ab App-Build“ gesetzt ist.
 - **Google kennt einen Kauf plötzlich nicht mehr** (in der Kaufliste steht „Google kennt diesen Kauf nicht … Stimmt
   der Paketname?“): Das passiert bei einem toten Kauf – aber auch, wenn `PLAY_PACKAGE_NAME` falsch eingestellt ist.
-  Der Server beendet Premium deshalb nicht sofort, sondern erst einige Tage nach dem bezahlten Ende, und prüft den
-  Kauf weiter; nach der Korrektur der Einstellung lebt er von selbst wieder auf.
+  Der Server beendet Premium deshalb nicht sofort: Bis **3 Tage nach dem bezahlten Ende** gilt der Stand als
+  „unbekannt“ (die App löscht nichts, solange ihre Gnadenfrist läuft), erst danach als beendet. Der Kauf wird
+  weiter geprüft; nach der Korrektur der Einstellung lebt er von selbst wieder auf. Nur wenn Google ausdrücklich
+  meldet, dass es den Kauf nicht mehr gibt (Antwort 410), endet Premium sofort.
 - **Codes und Kauf zusammen:** Ein Code, der während eines laufenden Abos eingelöst wird, hängt sich hinter das
   aktuelle Abo-Ende. Verlängert Google das Abo danach, überlappen sich die Zeiten (die Code-Zeit „verfällt“ dann
   teilweise) – lös Codes also besser erst ein, wenn das Abo gekündigt ist. Endet das Abo vorzeitig (Erstattung mit
@@ -445,8 +454,12 @@ Wichtig zu wissen:
 - **Premium aus Codes und aus dem Dashboard zählt für das Offline-Hören genauso wie ein Kauf** – und endet genauso:
   Nach Ablauf, Sperren oder Entziehen löscht die App die Offline-Musik.
 - **Ein Kauf gehört zu einem Konto.** Derselbe Google-Kauf lässt sich nicht für ein zweites Selfify-Konto verwenden.
-- **Mehrere Benutzer an einem Gerät:** Die Offline-Musik gehört zum Gerät. Meldet sich dort jemand ohne Premium an,
-  wird sie gelöscht.
+- **Mehrere Benutzer an einem Gerät:** Solange „Offline-Hören nur mit Premium“ **an** ist, gehört die Offline-Musik
+  zu dem Konto, das sie geladen hat. Bei **jedem** Wechsel des Kontos oder des Servers wird sie gelöscht („Die
+  Offline-Musik gehörte zu einem anderen Konto und wurde von diesem Gerät entfernt.“) – auch wenn das neue Konto
+  selbst Premium hat oder der andere Server keine Sperre kennt. Sonst bliebe sie nach dem Ende von Premium über
+  einen Kontowechsel spielbar. Wer sich ab- und mit **demselben** Konto wieder anmeldet, behält sie. Ist der
+  Schalter **aus**, bleibt es wie bisher: Die Offline-Musik gehört zum Gerät und bleibt beim Wechsel liegen.
 - **Die Sperre sitzt in der App – und gilt erst ab der App-Version, die sie kennt.** Der Server kann Offline-Laden
   nicht vom normalen Abspielen unterscheiden. Ältere Apps laden deshalb weiter; dagegen hilft „Sperre durchsetzen ab
   App-Build“ (Schritt 10.6): Der Server gibt zu alten Apps ohne Premium dann gar keine Musik mehr. Wer die App
@@ -491,8 +504,10 @@ ist alles, was sich mit Tests und Attrappen prüfen lässt; **ungeprüft** ist:
   Zeitraums als laufend meldet, stammt aus Googles Beschreibung der Schnittstelle; wie die Play Console die beiden
   Wege benennt und was sie voreinstellt, ist ungeprüft. Im Zweifel nach einer Erstattung im Dashboard „Neu prüfen“
   drücken und, wenn dort weiter „aktiv“ steht, entziehen.
-- **Bestätigung durch den Server:** Das Dashboard zeigt (noch) nicht an, ob ein Kauf vom Server bestätigt wurde –
-  nur das Protokoll und das Feld `acknowledged` der Schnittstelle (Schritt 10.7).
+- **Bestätigung durch den Server:** Dass ein Kauf **vom Server** bestätigt wurde, zeigt das Dashboard nicht an –
+  nur das Gegenteil: Scheitert das Bestätigen, steht es im Protokoll und als Hinweis in der Kaufliste (Schritt
+  10.7). Das Feld `acknowledged` der Schnittstelle sagt nur, dass *irgendwer* bestätigt hat. Ob das Dienstkonto
+  bei Google wirklich bestätigen darf, zeigt erst ein echter Testkauf.
 - **Start der Play-Version mit der Billing-Bibliothek** auf einem echten Gerät – und der Start der GitHub-Version
   ohne sie. (Ein natives Bauteil hat die GitHub-App schon einmal beim Start abstürzen lassen; deshalb steckt die
   Billing-Bibliothek nur im Play-Bundle, und die CI prüft das.)

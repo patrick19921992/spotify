@@ -106,7 +106,9 @@ jobs:
           fi
           echo "NDK $NDK_VERSION"
           for attempt in 1 2 3; do
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null; then
+            # "yes" nicht per Pipe davorhängen: Es endet mit SIGPIPE, sobald der sdkmanager fertig ist – mit
+            # "pipefail" gälte der gelungene Download dann als fehlgeschlagen
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" < <(yes) > /dev/null; then
               exit 0
             fi
             echo "::warning::NDK-Download fehlgeschlagen (Versuch $attempt), neuer Versuch …"
@@ -281,7 +283,9 @@ jobs:
           fi
           echo "NDK $NDK_VERSION"
           for attempt in 1 2 3; do
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null; then
+            # "yes" nicht per Pipe davorhängen: Es endet mit SIGPIPE, sobald der sdkmanager fertig ist – mit
+            # "pipefail" gälte der gelungene Download dann als fehlgeschlagen
+            if "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" < <(yes) > /dev/null; then
               exit 0
             fi
             echo "::warning::NDK-Download fehlgeschlagen (Versuch $attempt), neuer Versuch ..."
@@ -345,8 +349,14 @@ jobs:
           FOUND=""
           # shellcheck disable=SC2086
           if [ -n "$FILES" ] && grep -q 'com\.android\.billingclient' $FILES; then FOUND="zusammengeführtes Manifest"; fi
-          if [ -z "$FOUND" ] && unzip -p build/selfify-play.aab base/manifest/AndroidManifest.xml 2>/dev/null | grep -a -q 'com\.android\.billingclient'; then
-            FOUND="Manifest im Bundle"
+          if [ -z "$FOUND" ]; then
+            # Erst in eine Datei auspacken, dann suchen – nicht "unzip -p … | grep -q": grep beendet sich beim ersten
+            # Treffer, unzip bekäme SIGPIPE, und mit "pipefail" gälte der Treffer als Fehlschlag
+            BUNDLE_MANIFEST="$RUNNER_TEMP/play-bundle-manifest.bin"
+            if unzip -p build/selfify-play.aab base/manifest/AndroidManifest.xml > "$BUNDLE_MANIFEST" 2>/dev/null \
+              && grep -a -q 'com\.android\.billingclient' "$BUNDLE_MANIFEST"; then
+              FOUND="Manifest im Bundle"
+            fi
           fi
           if [ -z "$FOUND" ]; then
             echo "::error::Die Billing-Bibliothek (com.android.billingclient) fehlt im Play-Bundle - der Kauf in der App würde nicht funktionieren."

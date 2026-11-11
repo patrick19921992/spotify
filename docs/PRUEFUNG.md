@@ -500,7 +500,8 @@ standardmäßig **aus**; ohne sie verhalten sich Server und alle App-Ausgaben wi
   Abrechnungszeitraum steht nicht auf dem Kaufknopf.
 - Windows: Offline-Dateien bleiben nach der Deinstallation in `AppData` liegen; iPhone: iCloud sichert den
   Dokumente-Ordner samt Offline-Musik.
-- Offline-Dateien gehören zum Gerät, nicht zum Konto: Meldet sich jemand ohne Premium an, wird alles gelöscht.
+- Offline-Dateien: Unter der Sperre geladene Musik wird bei jedem Wechsel des Kontos oder Servers gelöscht (auch
+  wenn das neue Konto Premium hat); ohne Sperre gehört sie wie bisher zum Gerät.
 - Entzieht der Admin gekauftes Premium, läuft das Abo bei Google weiter (Hinweis im Dashboard und in der Anleitung).
 - Selbst-Registrierung und Sichtbarkeit je Rubrik kommen danach.
 
@@ -508,82 +509,114 @@ standardmäßig **aus**; ohne sie verhalten sich Server und alle App-Ausgaben wi
 
 Vier unabhängige Prüfer (Geld/Sicherheit, Offline-Löschen, „unverändert“ und Build, Kauf-Ablauf und Doku) haben den
 Stand von „Premium Teil 1“ gegengeprüft: **16 bestätigte Funde** (3 hoch, 4 mittel, 9 niedrig). Die vollständigen
-Funde mit Nachweis und Lösungsvorschlag liegen im Arbeitsordner der Sitzung (`funde-teil1.json`). Die Haken setzt der
-Abschlusslauf, wenn Korrektur **und** Test (der ohne die Korrektur fehlschlägt) da sind und alle Prüfungen grün sind.
+Funde mit Nachweis und Lösungsvorschlag liegen im Arbeitsordner der Sitzung (`funde-teil1.json`). Abgehakt ist, was im Code
+nachvollzogen wurde und einen Test hat (Server: `tests/test_premium_part1_fixes.py`, `tests/test_premium_part1_recheck.py`,
+Rücksprung in `tests/test_billing_offline.py`; App: `test/premium_offline_test.dart`, `test/installer_test.dart`). Die
+beiden CI-Funde haben keinen Test im Repository – sie sind mit Attrappen der Bau-Ergebnisse nachgestellt und auf
+GitHub noch nie gelaufen (siehe „Offen“).
 
 **Geld und Sicherheit (Server)**
 
-- [ ] **Entzug bei gerade abgelaufener Play-Lizenz** (hoch): „Alles entziehen“ traf eine Lizenz nicht, deren
+- [x] **Entzug bei gerade abgelaufener Play-Lizenz** (hoch): „Alles entziehen“ traf eine Lizenz nicht, deren
       Zeitraum eben um war oder deren Zahlung hing – Premium kam bei der nächsten Prüfung von selbst zurück → Entzug
       trifft auch abgelaufene Lizenzen, solange der Kauf sie wieder verlängern könnte
-- [ ] **HTTP 400/404 von Google beendete Premium endgültig** (mittel), auch bei falsch eingestelltem Paketnamen →
+- [x] **HTTP 400/404 von Google beendete Premium endgültig** (mittel), auch bei falsch eingestelltem Paketnamen →
       nur 410 gilt sofort als „beendet“; 400/404 bei einem bekannten Kauf heißt „unbekannt“ (Hinweis in der
-      Kaufliste), beendet wird erst einige Tage nach dem bezahlten Ende, der Kauf wird weiter nachgeprüft
-- [ ] **Code hinter dem Abo** (mittel): Endete das Abo vorzeitig, gab es trotz gültiger Code-Lizenz kein Premium
+      Kaufliste), beendet wird erst 3 Tage nach dem bezahlten Ende, der Kauf wird weiter nachgeprüft
+- [x] **Code hinter dem Abo** (mittel): Endete das Abo vorzeitig, gab es trotz gültiger Code-Lizenz kein Premium
       (Musik gelöscht) → angehängte Lizenzen rücken beim vorzeitigen Ende sofort nach; Doku: Codes besser erst nach
       der Kündigung einlösen (bei Verlängerung überlappen sich die Zeiten weiterhin)
-- [ ] **Kauf nach Konto-Neuanlage nicht übernehmbar** (niedrig): Die Konto-Kennung im Kauf nannte die alte
+- [x] **Kauf nach Konto-Neuanlage nicht übernehmbar** (niedrig): Die Konto-Kennung im Kauf nannte die alte
       Benutzer-Nummer → Übernahme erlaubt, wenn es das genannte Konto nicht mehr gibt
-- [ ] **Rücksprung auf die alte Version** (niedrig): Lizenzen mit `source='play'` ließen die Lizenzliste der
+- [x] **Rücksprung auf die alte Version** (niedrig): Lizenzen mit `source='play'` ließen die Lizenzliste der
       Vorversion mit 500 scheitern und liefen ungeprüft weiter → `downgrade()` beendet sie und führt sie als Vergabe
       mit Vermerk; Anleitung `docs/PLAYSTORE.md` 10.12 (Reihenfolge, Folgen für Käufer)
 
 **Offline-Sperre und Löschen (App, Server)**
 
-- [ ] **Ältere App-Versionen laden weiter und löschen nie** (hoch) → neue Einstellung `offline_min_client_build`
+- [x] **Ältere App-Versionen laden weiter und löschen nie** (hoch) → neue Einstellung `offline_min_client_build`
       („Sperre durchsetzen ab App-Build“, Standard 0 = aus): Schalter an und Wert > 0 → Nicht-Admins ohne Premium mit
       älterer oder unbekannter Build-Nummer (`X-Selfify-Client`) bekommen beim Stream HTTP 426 „Bitte aktualisiere
       die App.“; `GET /api/app/config` liefert das Feld; die App zeigt die Meldung; Dashboard-Text, README und
       `docs/PLAYSTORE.md` (10.6, 10.7, 10.8, Checkliste) sagen jetzt „gilt erst ab der App-Version, die die Sperre
       kennt“
-- [ ] **Gnadenfrist mit vorgestellter Geräteuhr verlängerbar** (mittel) → Abgleich mit der Serverzeit
+- [x] **Gnadenfrist mit vorgestellter Geräteuhr verlängerbar** (mittel) → Abgleich mit der Serverzeit
       (`checked_at`); ein Stand aus der Zukunft verlangt eine neue Prüfung
-- [ ] **Anderer Server/anderes Konto ließ die Offline-Musik liegen** (niedrig, GitHub-Version) → der Offline-Speicher
+- [x] **Anderer Server/anderes Konto ließ die Offline-Musik liegen** (niedrig, GitHub-Version) → der Offline-Speicher
       merkt sich Server und Konto und wird beim Wechsel geleert
-- [ ] **Beim Sperren lief die Wiedergabe weiter; unter Windows blieb die offene Datei liegen** (niedrig) →
+- [x] **Beim Sperren lief die Wiedergabe weiter; unter Windows blieb die offene Datei liegen** (niedrig) →
       Wiedergabe vor dem Löschen beenden, fehlgeschlagene Löschungen und verwaiste Dateien nachholen
 
 **Build und CI**
 
-- [ ] **Play-Job: Billing-Prüfung war immer grün** (mittel) – sie suchte nur die Berechtigung, die fest im
+- [x] **Play-Job: Billing-Prüfung war immer grün** (mittel) – sie suchte nur die Berechtigung, die fest im
       Play-Manifest steht → der Play-Job bricht vor `flutter pub get` ab, wenn `pubspec_overrides.yaml` existiert,
       und prüft nach dem Bau positiv: Plugin `in_app_purchase_android` in `.flutter-plugins-dependencies`,
       `com.android.billingclient` im zusammengeführten Manifest **oder** im Manifest des Bundles, dazu die
       Berechtigung; `pubspec_overrides.yaml` steht in `mobile/.gitignore`. Nachgestellt mit Attrappen der
       Bau-Ergebnisse (alter Schritt grün bei Platzhalter-Bundle, neuer rot; echtes Bundle grün)
-- [ ] **Backup-Prüfung wurde vom eigenen Kommentar im Manifest erfüllt** (niedrig) → beide Android-Jobs prüfen
+- [x] **Backup-Prüfung wurde vom eigenen Kommentar im Manifest erfüllt** (niedrig) → beide Android-Jobs prüfen
       `android:dataExtractionRules="@xml/data_extraction_rules"` **und**
       `android:fullBackupContent="@xml/backup_rules"` (Attribut samt Wert); nachgestellt wie oben
-- [ ] **Windows: Offline-Musik blieb nach der Deinstallation liegen** (niedrig) → `[UninstallDelete]` im Installer
+- [x] **Windows: Offline-Musik blieb nach der Deinstallation liegen** (niedrig) → `[UninstallDelete]` im Installer
       für `%LOCALAPPDATA%\Selfify\Selfify\offline`; README und Anleitung angepasst. iPhone (iCloud-Sicherung)
       bleibt eine bekannte Grenze
 
 **Kauf-Ablauf und Doku**
 
-- [ ] **Verlängerung: kurz nach dem Enddatum „kein Premium“** (hoch) – die App löschte die Musik eines zahlenden
+- [x] **Verlängerung: kurz nach dem Enddatum „kein Premium“** (hoch) – die App löschte die Musik eines zahlenden
       Kunden → nach Ablauf wird sofort bei Google nachgesehen; solange Google das Abo noch als laufend meldet, gilt
       der Stand bis zu einer Stunde als „unbekannt“ (503) statt „kein Premium“
-- [ ] **Bezahlte Käufe wurden beim App-Start nicht nachgeholt** (mittel) → stilles Wiederherstellen beim Start und
+- [x] **Bezahlte Käufe wurden beim App-Start nicht nachgeholt** (mittel) → stilles Wiederherstellen beim Start und
       beim Zurückkehren in die App; Käufe im Zustand „ausstehend“ werden dem Server gemeldet
-- [ ] **Gemerkte unbestätigte Käufe galten für das Gerät statt für das Konto** (niedrig) → Konto und Server werden
+- [x] **Gemerkte unbestätigte Käufe galten für das Gerät statt für das Konto** (niedrig) → Konto und Server werden
       mit dem Token gespeichert, fremde Einträge bleiben liegen
-- [ ] **Doku: „keine Erstattungs-Mail = Server hat bestätigt“ und „Erstattung beendet Premium“** (niedrig) →
+- [x] **Doku: „keine Erstattungs-Mail = Server hat bestätigt“ und „Erstattung beendet Premium“** (niedrig) →
       `docs/PLAYSTORE.md` 10.3/10.7/10.8/Checkliste und README: Bestätigt wird vom Server **und** vom Gerät; den
-      Server prüft man am Protokoll bzw. am Feld `acknowledged`; eine Erstattung beendet Premium nur mit Widerruf des
+      Server prüft man am Protokoll bzw. am Hinweis in der Kaufliste (`last_error`) – **nicht** am Feld
+      `acknowledged`, das bei jeder Prüfung von Google übernommen wird (in der Nachprüfung berichtigt); eine Erstattung beendet Premium nur mit Widerruf des
       Zugangs, sonst zum Ende des Zeitraums (sofort: im Dashboard entziehen)
 
 **Zusätzlich in der Anleitung (README, `docs/PLAYSTORE.md` Abschnitt 6 und 10.8)**
 
-- [ ] Premium-Codes und die Vergabe im Dashboard schalten das Offline-Hören genauso frei wie ein Kauf; bei Ablauf,
+- [x] Premium-Codes und die Vergabe im Dashboard schalten das Offline-Hören genauso frei wie ein Kauf; bei Ablauf,
       Sperren oder Entziehen wird die Offline-Musik gelöscht (Test: `docs/PLAYSTORE.md` 10.7 Nr. 9)
+
+**Nachprüfung der Korrekturen**
+
+- [x] **Play-Job, Billing-Prüfung:** `unzip -p … | grep -a -q …` wäre unter `bash -eo pipefail` trotz Treffer
+      gescheitert (grep endet beim ersten Treffer, unzip bekommt SIGPIPE) → das Manifest wird erst in eine Datei
+      ausgepackt, dann durchsucht. Nachgestellt mit einem 64 MB großen Manifest im Bundle: alter Schritt rot trotz
+      Treffer, neuer grün; ohne Bibliothek weiter rot. Ebenso `yes | sdkmanager …` in beiden Android-Jobs (jetzt
+      `< <(yes)`). Die Schritte laufen heute mit der Standard-Shell von GitHub (`bash -e`, ohne `pipefail`) – der
+      Fehler wäre erst mit `shell: bash` aufgetreten. Übrige Pipelines durchgesehen (`unzip -l … | grep`,
+      `grep -m1 … | sed`, `sha256sum | cut`, `echo | base64`): Dort liest der hintere Befehl alles. YAML und
+      `bash -n` aller 29 Shell-Schritte geprüft. Kein Test im Repository (CI-Datei)
+- [x] **Doku 10.7 Nr. 4:** Das Feld `acknowledged` beweist nicht, dass der Server bestätigen darf → Verweis auf die
+      Protokollzeile und den Hinweis in der Kaufliste; ein gescheitertes Bestätigen steht jetzt als `last_error` in
+      der Kaufliste (Test `test_a_failed_acknowledge_shows_up_in_the_purchase_list`)
+- [x] **Doku „Mehrere Benutzer an einem Gerät“** (README, `docs/PLAYSTORE.md` 10.8): Unter der Sperre geladene Musik
+      wird bei **jedem** Konto- oder Serverwechsel gelöscht, ohne Sperre gehört sie weiter zum Gerät (so steht es in
+      `mobile/lib/state/offline.dart`, `_applyAccess`)
+- [x] **Doku zu den Server-Änderungen:** `offline_min_client_build`/HTTP 426, 400/404 = „unbekannt“ bis 3 Tage nach
+      dem bezahlten Ende, eine Stunde „unbekannt“ bei noch nicht verbuchter Verlängerung (dann auch kein 426 für
+      Abonnenten), vorgezogene Code-Zeit bei Erstattung, Rücksprung der Migration – README und `docs/PLAYSTORE.md`
+      10.6–10.8, 10.12
+- [x] Tests in diesem Stand: Server `test_premium_part1_fixes.py`, `test_premium_part1_recheck.py`,
+      `test_billing_offline.py`, `test_premium.py` grün; App `premium_offline_test.dart` und `installer_test.dart`
+      grün (125 Tests). Die vollständigen Läufe (alle Tests, `ruff`, `flutter analyze`) macht der Abschlusslauf
 
 **Offen nach der Gegenprüfung**
 
 - [ ] Die geänderten CI-Schritte sind **noch nie auf GitHub gelaufen** (kein Android-SDK hier): erster Lauf zeigt, ob
       `com.android.billingclient` im zusammengeführten Manifest bzw. im Manifest des Bundles
       (`base/manifest/AndroidManifest.xml`) gefunden wird und ob der Merger die Backup-Attribute wörtlich so schreibt
-- [ ] Das Dashboard zeigt nicht an, ob der **Server** einen Kauf bestätigt hat, und ein fehlgeschlagenes Bestätigen
-      steht nur im Protokoll (nicht als `last_error` in der Kaufliste) – Vorschlag aus dem Fund, nicht umgesetzt
+- [ ] Das Dashboard zeigt nicht an, **dass** der Server einen Kauf bestätigt hat – nur ein gescheitertes Bestätigen
+      (Hinweis in der Kaufliste, verschwindet bei der nächsten gelungenen Prüfung wieder; dauerhaft steht es nur im
+      Protokoll). Ob das Dienstkonto bei Google bestätigen darf, zeigt erst ein echter Testkauf
+- [ ] Keine der Korrekturen ist auf einem Gerät oder gegen Google gelaufen: 426 mit einer echten alten App,
+      Kontowechsel mit Offline-Musik am Handy, Löschen bei laufender Wiedergabe unter Windows, stilles Nachholen
+      eines Kaufs beim Start, Verlängerung/400/404 gegen die echte Schnittstelle – alles nur mit Tests und Attrappen
 - [ ] Rücksprung-Befehl (`docker exec -u 99:100 selfify alembic downgrade 0006`) im echten Unraid-Container
       ausprobieren; Pfad des Offline-Ordners unter Windows an einem Rechner bestätigen
 - [ ] Erstattung mit/ohne Widerruf in der Play Console am Testkonto nachstellen (Benennung dort ungeprüft)

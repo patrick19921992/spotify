@@ -10,8 +10,8 @@ from fastapi.responses import FileResponse
 from app.deps import AppSettings, AuthContext, DbSession, MediaAuth
 from app.library.covers import COVER_SIZES
 from app.library.transcode import QUALITY_BITRATES, TranscodeUnavailableError, needs_transcode
-from app.models import Cover, Track
-from app.services import app_config, premium
+from app.models import Cover, Track, utcnow
+from app.services import app_config, play_billing, premium
 from app.services.clients import CLIENT_HEADER, parse_client
 
 router = APIRouter(tags=["Streaming"])
@@ -42,7 +42,8 @@ def media_type_for(path: Path, kind: str) -> str:
 
 
 def _require_current_app(request: Request, auth: AuthContext, db: DbSession) -> None:
-    """426, wenn die Offline-Sperre eine neuere App verlangt. Admins und Premium-Nutzer sind immer ausgenommen."""
+    """426, wenn die Offline-Sperre eine neuere App verlangt. Admins und Premium-Nutzer sind immer ausgenommen –
+    auch Abonnenten, deren Zeitraum gerade um ist und bei denen die Verlängerung noch nicht nachgesehen wurde."""
     if auth.user.is_admin:
         return
     # Build-Nummer aus dem Header dieser Anfrage; Player rufen den Link ohne Header ab – dann zählt, was die App
@@ -51,7 +52,13 @@ def _require_current_app(request: Request, auth: AuthContext, db: DbSession) -> 
     build = client.build if client is not None and client.build is not None else auth.session.client_build
     if not app_config.client_too_old(app_config.get_all(db), build):
         return
-    if premium.premium_status(db, auth.user).active:
+    now = utcnow()
+    if premium.premium_status(db, auth.user, now).active:
+        return
+    # Abo über Google Play, dessen Zeitraum gerade um ist: Die Lizenz ist hier kurz „abgelaufen“, bis die App den
+    # Premium-Stand wieder abfragt (erst dann wird Google gefragt). Zahlende Abonnenten bekommen deshalb kein 426 –
+    # entschieden wird nur anhand des gespeicherten Kaufs, ohne Anfrage bei Google
+    if play_billing.premium_unsettled(db, auth.user.id, now):
         return
     raise HTTPException(status.HTTP_426_UPGRADE_REQUIRED, app_config.MSG_UPDATE_REQUIRED)
 

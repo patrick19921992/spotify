@@ -390,6 +390,10 @@ def recheck_purchase(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, play_billing.MSG_NOT_CONFIGURED)
     try:
         play_billing.recheck_purchase(db, purchase, verifier, utcnow())
+    except play_billing.UnclearNotFound as exc:
+        # Kein Ausfall von Google, sondern vermutlich eine falsche Einstellung: Der Admin braucht diesen Hinweis,
+        # nicht den Text für Benutzer („Käufe wiederherstellen“)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from None
     except play_billing.VerifierUnavailable:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, play_billing.MSG_UNAVAILABLE) from None
     request.app.state.billing_backoff.pop(purchase.id, None)
