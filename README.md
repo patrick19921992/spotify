@@ -199,9 +199,11 @@ Die allererste Windows-Version (Build 31) sucht noch nicht nach Updates (in den 
 „Nach Updates suchen“): einmal `selfify-windows-setup.exe` aus dem Release `app-latest` von Hand darüber
 installieren – danach kommen Updates von selbst.
 
-**Deinstallieren:** *Einstellungen → Apps → Installierte Apps → Selfify → Deinstallieren*. Anmeldung,
-Einstellungen und Offline-Titel bleiben dabei auf dem PC. Wer alles entfernen will, löscht danach noch die
-Ordner `%APPDATA%\Selfify` (Anmeldung, Einstellungen) und `%LOCALAPPDATA%\Selfify` (Offline-Musik).
+**Deinstallieren:** *Einstellungen → Apps → Installierte Apps → Selfify → Deinstallieren*. Die **Offline-Musik
+wird dabei gelöscht** (Ordner `%LOCALAPPDATA%\Selfify\Selfify\offline`; bei einem Update bleibt sie erhalten).
+Anmeldung und Einstellungen bleiben auf dem PC. Wer alles entfernen will, löscht danach noch die Ordner
+`%APPDATA%\Selfify` (Anmeldung, Einstellungen) und `%LOCALAPPDATA%\Selfify` (Zwischenspeicher). Wer die
+ZIP-Version nutzt, hat keinen Deinstaller und löscht die Ordner selbst.
 
 > **Warum die Warnung?** Ohne (kostenpflichtiges) Code-Signatur-Zertifikat kennt SmartScreen den Herausgeber
 > nicht und warnt bei jeder neuen Version. Die Dateien baut GitHub direkt aus diesem Repository.
@@ -403,6 +405,10 @@ Zusatzsoftware im Browser (Handy und PC).
 - Entziehen geht je Lizenz, je Benutzer („Alles entziehen“) und je Code. Entzogenes Premium gilt sofort nicht
   mehr.
 - Premium direkt an einen Benutzer vergeben (ohne Code): Benutzer → **Premium**.
+- **Codes und vergebenes Premium schalten alles frei, was Premium beinhaltet** – auch das Offline-Hören, wenn
+  „Offline-Hören nur mit Premium“ eingeschaltet ist (siehe unten), genau wie ein Kauf über Google Play. Läuft der
+  Code ab, sperrst du ihn samt vergebenem Premium oder entziehst du die Lizenz, löscht die App die Offline-Musik
+  vom Gerät, sobald sie den Stand beim Server geprüft hat.
 - Falsche Codes werden wie falsche Passwörter gebremst (nach zu vielen Fehlversuchen kurze Sperre).
 - **Wichtig für den Play Store:** Verschenke Codes. Wer Codes gegen Geld außerhalb von Google Play verkauft und
   in der App einlösen lässt, verstößt gegen die Zahlungsregeln von Google. Verkaufen geht in der Play-Version nur
@@ -413,29 +419,41 @@ Schalter verhalten sich Server und Apps wie bisher):
 
 | Einstellung | Wirkung |
 |-------------|---------|
-| **Offline-Hören nur mit Premium** | Ohne Premium lässt sich nichts mehr aufs Gerät laden; vorhandene Offline-Musik wird vom Gerät gelöscht, sobald die App den Stand beim Server geprüft hat. Gilt für alle App-Versionen (Play, GitHub, Windows, iPhone). **Admins sind ausgenommen.** Gib Familie und Freunden Premium, *bevor* du einschaltest |
+| **Offline-Hören nur mit Premium** | Ohne Premium lässt sich nichts mehr aufs Gerät laden; vorhandene Offline-Musik wird vom Gerät gelöscht, sobald die App den Stand beim Server geprüft hat. Gilt für alle App-Ausgaben (Play, GitHub, Windows, iPhone), **aber erst ab der App-Version, die die Sperre kennt** – ältere Apps laden weiter und löschen nie (dafür die nächste Zeile). **Admins sind ausgenommen.** Gib Familie und Freunden Premium, *bevor* du einschaltest |
+| **Sperre durchsetzen ab App-Build** (`offline_min_client_build`) | Standard 0 = aus; wirkt nur, solange der Schalter darüber an ist. Benutzer **ohne Premium**, deren App eine kleinere Build-Nummer hat (oder keine meldet, Header `X-Selfify-Client`), bekommen vom Server keine Musik mehr (HTTP 426 beim Abspielen/Laden) und sehen „Bitte aktualisiere die App.“ Premium-Nutzer und Admins sind nie betroffen. Trag die Build-Nummer der ersten App-Version mit Offline-Sperre ein, sobald sie verteilt ist (*Geräte & Versionen* zeigt, wer welche hat) |
 | **Gnadenfrist ohne Verbindung (Tage)** | Standard 7 (1–30). So lange bleibt Offline-Musik spielbar, wenn die App den Server nicht erreicht – gerechnet ab der letzten erfolgreichen Prüfung. Danach wird gesperrt und gelöscht |
 | **Überschrift, Beschreibung, Vorteile** | Texte der Premium-Seite in der App (Vorteile: eine Zeile je Vorteil, höchstens 8). Leer = Standardtexte |
 | **Premium in der Play-Version zum Kauf anbieten** | Abo über Google Play Billing, nur in der Play-Version. Braucht die **Produkt-ID des Abos** (wie in der Play Console, mehrere mit Komma) und die eingerichtete Kaufprüfung (Schlüsseldatei, „Verbindung testen“). **Der Preis wird in der Play Console festgelegt** und von der App aus dem Store angezeigt |
 
-- **Löschen vom Gerät:** Läuft Premium ab (Abo gekündigt und abgelaufen, erstattet, von dir entzogen, Code
-  abgelaufen), löscht die App die Offline-Musik, sobald der Server das bestätigt. Ist der Stand nur *unbekannt*
+- **Löschen vom Gerät:** Läuft Premium ab (Abo gekündigt und abgelaufen, Kauf widerrufen, von dir entzogen, Code
+  abgelaufen oder gesperrt), löscht die App die Offline-Musik, sobald der Server das bestätigt. Ist der Stand nur *unbekannt*
   (kein Netz, Server oder Google gestört), wird nichts gelöscht, solange die Gnadenfrist läuft. Kommt Premium
   wieder, lädt der Benutzer seine Musik neu.
-- **Deinstallation (Android):** Die Offline-Musik liegt im privaten Speicher der App und verschwindet mit ihr. Die
-  Google-Sicherung und der Geräteumzug sichern nur die Einstellungen, keine Dateien.
-- **Kauf, Code und Vergabe zählen gleich.** Ein Code während eines laufenden Abos hängt sich hinter das aktuelle
-  Abo-Ende; verlängert Google danach, überlappen sich die Zeiten. Unbegrenztes Premium schlägt alles.
+- **Deinstallation:** Unter Android liegt die Offline-Musik im privaten Speicher der App und verschwindet mit ihr;
+  die Google-Sicherung und der Geräteumzug sichern nur die Einstellungen, keine Dateien. Unter Windows löscht der
+  Deinstaller den Offline-Ordner. Das iPhone sichert die Offline-Musik dagegen mit in iCloud.
+- **Kauf, Code und Vergabe zählen gleich** – auch für das Offline-Hören. Ein Code während eines laufenden Abos
+  hängt sich hinter das aktuelle Abo-Ende; verlängert Google danach, überlappen sich die Zeiten (Codes also besser
+  erst nach der Kündigung einlösen). Endet das Abo vorzeitig, beginnt die Code-Zeit sofort. Unbegrenztes Premium
+  schlägt alles.
 - **Kaufprüfung:** Der Server prüft jeden Kauf bei Google (ein Kauf = ein Konto) und fragt laufende Abos erneut ab,
   wenn die App den Premium-Stand holt – höchstens alle `PLAY_RECHECK_HOURS` Stunden, rund um das Enddatum öfter.
-  Kündigung, Erstattung und Ablauf beenden Premium von selbst. Sofort nachsehen: *Premium-Codes › Käufe über Google
-  Play › Neu prüfen*.
+  Kündigung und Ablauf beenden Premium von selbst (bei Kündigung zum Ende des bezahlten Zeitraums). Eine
+  **Erstattung beendet Premium nur, wenn Google dabei den Zugang widerruft** – erstattest du in der Play Console nur
+  das Geld, bleibt das Abo bis zum Ende des Zeitraums aktiv; zum sofortigen Beenden zusätzlich im Dashboard
+  entziehen. Sofort nachsehen: *Premium-Codes › Käufe über Google Play › Neu prüfen*.
+- **Bestätigung des Kaufs:** Google erstattet einen Kauf, den niemand bestätigt (nach 3 Tagen, Testkäufe nach
+  Minuten). Bestätigt wird vom Server und zusätzlich von der App auf dem Gerät – dass keine Erstattungs-Mail kommt,
+  beweist also nicht, dass das Dienstkonto des Servers bestätigen darf (Prüfung: `docs/PLAYSTORE.md`, Schritt 10.7).
 - **Entziehst du** gekauftes Premium im Dashboard, läuft das Abo bei Google weiter – in der Play Console erstatten
   oder kündigen.
 - **Schlüsseldatei:** Die Kaufprüfung braucht den JSON-Schlüssel eines Google-Dienstkontos als Datei im Datenordner
   (`/mnt/user/appdata/selfify/play-service-account.json`). Nie weitergeben, nie ins Repository, nie in einen Chat.
 - Die Sperre sitzt in der App; ein Kopierschutz ist sie nicht (der Server kann Offline-Laden nicht vom Abspielen
-  unterscheiden).
+  unterscheiden). Gegen ältere Apps, die die Sperre nicht kennen, hilft nur „Sperre durchsetzen ab App-Build“.
+- **Zurück auf die vorherige Server-Version:** erst die Schalter aus, dann mit der noch laufenden neuen Version
+  `docker exec -u 99:100 selfify alembic downgrade 0006`, dann das alte Image – Lizenzen aus Käufen werden dabei
+  beendet (das Abo bei Google läuft weiter). Schritt für Schritt: `docs/PLAYSTORE.md`, Schritt 10.12.
 
 Die ganze Einrichtung Schritt für Schritt (Play Console, Dienstkonto, Testkäufe, Gebühren, was ungeprüft ist):
 **[docs/PLAYSTORE.md](docs/PLAYSTORE.md), Schritt 10.**
@@ -518,7 +536,7 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Bibliothek | `GET /artists`, `GET /artists/{id}`, `GET /albums`, `GET /albums/{id}`, `GET /tracks`, `GET /tracks/{id}` |
 | Suche | `GET /search?q=…` – Top-Treffer, Songs, Künstler, Alben, Videos (findet „Ärzte“ auch als „aerzte“) |
 | Scan | `GET /library` (Statistik), `GET /library/scan` (Status), `POST /library/scan` (Admin) |
-| Streaming | `GET /tracks/{id}/stream` (Spulen per Range; `quality`, `compatible`), `GET /covers/{id}?size=64\|128\|300\|600` |
+| Streaming | `GET /tracks/{id}/stream` (Spulen per Range; `quality`, `compatible`; **426** „Bitte aktualisiere die App.“, wenn `offline_min_client_build` gilt und die App ohne Premium zu alt ist), `GET /covers/{id}?size=64\|128\|300\|600` |
 | Songtexte | `GET /tracks/{id}/lyrics` (zeitsynchron, wenn vorhanden) |
 | Playlists | `GET/POST /playlists`, `GET/PATCH/DELETE /playlists/{id}`, `POST …/items`, `POST …/items/remove`, `POST …/items/move`, `PUT/DELETE …/cover`, `PUT/DELETE …/follow` |
 | Persönlich | `GET /home`, `GET /me/library`, `GET /me/likes`, `GET /me/likes/ids`, `PUT/DELETE /me/likes/{track}`, `PUT/DELETE /me/albums/{id}`, `PUT/DELETE /me/artists/{id}` |
@@ -528,7 +546,7 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Downloads | `POST /downloads`, `POST /downloads/album`, `POST /downloads/url`, `GET /downloads`, `POST /downloads/{id}/cancel\|retry`, `DELETE /downloads/{id}` |
 | Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse (eigene Downloads; Admins mit `&scope=all` alle) |
 | Admin | `DELETE /tracks/{id}?delete_file=true`, `GET /downloads-system`, `POST /downloads-system/update` |
-| App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links, Offline-Regel (`offline_requires_premium`, `offline_grace_days`), Kauf (`billing_enabled`, `billing_product_ids`), Premium-Texte |
+| App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links, Offline-Regel (`offline_requires_premium`, `offline_grace_days`, `offline_min_client_build`), Kauf (`billing_enabled`, `billing_product_ids`), Premium-Texte |
 | Premium | `GET /premium` (Stand samt `offline_allowed`, `checked_at`, Abo `play`; 503 = gerade nicht prüfbar), `POST /premium/redeem` {code}, `POST /premium/play/verify` {product_id, purchase_token} (Kauf oder Wiederherstellung melden) |
 | Wünsche & Fehler melden | `POST/GET /requests`, `DELETE /requests/{id}`, `POST /bugreports` |
 | Konto löschen | `POST /me/delete` {password} |
@@ -590,8 +608,10 @@ die beim App-Start laufen – mit ihm startete die GitHub-App am Handy nicht meh
 Versionen ohne Werbung (GitHub-APK, Windows, iPhone) durch einen Platzhalter
 (`mobile/packages/google_mobile_ads_stub`). Dasselbe gilt für `in_app_purchase` (Google Play Billing): Gekauft wird nur
 in der Play-Version, alle anderen bekommen `mobile/packages/in_app_purchase_stub`. Die CI prüft, dass in der
-GitHub-APK weder Werbe-SDK noch Billing stecken und dass das Play-Bundle die Billing-Berechtigung hat. Für einen
-lokalen Bau der GitHub-Version legst du dieselbe Datei an:
+GitHub-APK weder Werbe-SDK noch Billing stecken und dass im Play-Bundle das echte Kauf-Bauteil steckt (Plugin
+`in_app_purchase_android`, Billing-Bibliothek und Berechtigung – nicht der Platzhalter). Für einen lokalen Bau der
+GitHub-Version legst du dieselbe Datei an (**nie einchecken** – sie steht in `mobile/.gitignore`, und der Play-Job
+der CI bricht ab, wenn sie im Repository liegt):
 
 ```bash
 cd mobile

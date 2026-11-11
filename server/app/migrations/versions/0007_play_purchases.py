@@ -54,7 +54,29 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Lizenzen mit source="play" bleiben als Historie stehen
+    # Lizenzen mit source="play" bleiben als Historie stehen – aber so, dass die Vorversion damit umgehen kann: Sie
+    # kennt nur "code" und "admin" (die Lizenzliste im Dashboard scheiterte sonst), und niemand prüft dort mehr, ob
+    # das Abo noch bezahlt wird. Deshalb enden noch laufende Play-Lizenzen jetzt; der Vermerk nennt die Herkunft.
+    # Nach einem erneuten Upgrade stellt „Käufe wiederherstellen“ in der App das Premium wieder her
+    licenses = sa.table(
+        "premium_licenses",
+        sa.column("source", sa.String()),
+        sa.column("note", sa.String()),
+        sa.column("expires_at", app.models.base.UTCDateTime()),
+    )
+    now = app.models.base.utcnow()
+    op.execute(
+        licenses.update()
+        .where(licenses.c.source == "play")
+        .values(
+            source="admin",
+            note=sa.func.substr("Abo über Google Play (beendet beim Rücksprung) – " + licenses.c.note, 1, 200),
+            expires_at=sa.case(
+                (sa.or_(licenses.c.expires_at.is_(None), licenses.c.expires_at > now), now),
+                else_=licenses.c.expires_at,
+            ),
+        )
+    )
     with op.batch_alter_table("play_purchases") as batch:
         batch.drop_index(batch.f("ix_play_purchases_user_id"))
         batch.drop_index(batch.f("ix_play_purchases_state"))

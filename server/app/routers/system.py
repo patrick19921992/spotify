@@ -64,6 +64,7 @@ def public_config(
         deletion_url=f"{base}/konto-loeschen" if base else "",
         offline_requires_premium=values["offline_requires_premium"],
         offline_grace_days=values["offline_grace_days"],
+        offline_min_client_build=values["offline_min_client_build"],
         billing_enabled=billing,
         billing_product_ids=product_ids if billing else [],
         premium_headline=values["premium_headline"],

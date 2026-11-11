@@ -158,6 +158,11 @@ der Ziel-API des verwendeten Flutter (derzeit 36) – du musst nichts tun.
   die Sperre der App. Verkaufen darfst du Premium in der Play-Version nur über **Google Play Billing** – das ist
   eingebaut und wird in Schritt 10 eingerichtet. Codes und die Vergabe im Dashboard bleiben daneben bestehen und
   zählen genauso wie ein Kauf.
+- **Codes schalten auch das Offline-Hören frei.** Ist „Offline-Hören nur mit Premium“ eingeschaltet (Schritt 10.6),
+  darf jeder mit Premium Musik aufs Gerät laden – egal ob das Premium aus einem Code, aus deiner Vergabe im Dashboard
+  oder aus einem Kauf stammt. Umgekehrt gilt dasselbe Ende: **Läuft der Code ab, sperrst du ihn samt vergebenem
+  Premium oder entziehst du die Lizenz, löscht die App die Offline-Musik vom Gerät**, sobald sie den Stand beim
+  Server geprüft hat.
 
 ## 7. Zugang für die Google-Prüfer
 
@@ -256,8 +261,11 @@ laut Google ([Testanleitung](https://developer.android.com/google/play/billing/t
   **kein echtes Geld** abgebucht.
 - Ein Monats-Abo verlängert sich im Test etwa **alle 5 Minuten** und endet nach **höchstens 6 Verlängerungen** von
   selbst. Zahlungsproblem-Phasen sind ebenfalls verkürzt (Kulanzzeit 5 Minuten, Kontosperre 10 Minuten).
-- Ein Testkauf, den der Server nicht innerhalb weniger Minuten bei Google bestätigt, wird automatisch erstattet
-  (du bekommst eine E-Mail). Daran erkennst du, dass die Kaufprüfung nicht funktioniert.
+- Ein Testkauf, den **niemand** innerhalb weniger Minuten bei Google bestätigt, wird automatisch erstattet (du
+  bekommst eine E-Mail). Bestätigt wird doppelt: vom Server (über das Dienstkonto) **und** von der App auf dem
+  Handy, sobald der Server den Kauf angenommen hat. Kommt die Erstattungs-Mail, hat also keins von beiden geklappt.
+  **Bleibt sie aus, beweist das aber nicht, dass der Server bestätigen darf** – das Handy kann es allein getan
+  haben. Wie du den Server prüfst, steht in Schritt 10.7.
 - **Achtung:** Tester eines Test-Tracks, die **nicht** als Lizenztester eingetragen sind, zahlen echtes Geld.
 - Das Google-Konto des Testers muss auf dem Handy angemeldet sein; die App muss den Paketnamen
   `de.selfify.selfify.play` haben.
@@ -341,7 +349,18 @@ Offline-Musik, bevor sie Premium haben.
      Admins brauchen kein Premium.
    - **Dann** **„Offline-Hören nur mit Premium“** einschalten. Das Dashboard fragt nach, weil ab jetzt alle ohne
      Premium ihre Offline-Musik auf dem Gerät verlieren, sobald ihre App den Stand geprüft hat. Der Schalter gilt
-     für **alle** App-Versionen (auch GitHub, Windows, iPhone).
+     für alle App-Ausgaben (Play, GitHub, Windows, iPhone) – **aber erst ab der App-Version, die die Sperre kennt.**
+     Ältere Apps wissen nichts davon: Sie laden weiter aufs Gerät und löschen nie.
+   - Deshalb gibt es darunter **„Sperre durchsetzen ab App-Build“** (`offline_min_client_build`, Standard 0 = aus).
+     Trag dort die Build-Nummer der ersten App-Version mit Offline-Sperre ein, **sobald sie verteilt ist** (Play
+     Store, GitHub-Release, Windows, iPhone – die Build-Nummer ist bei allen Ausgaben eines Standes dieselbe;
+     *Geräte & Versionen* zeigt, wer welche hat). Solange der Schalter an ist, bekommt dann jeder **ohne Premium**,
+     dessen App älter ist oder keine Build-Nummer meldet, vom Server keine Musik mehr (weder zum Abspielen noch zum
+     Laden; HTTP 426) und sieht in der App **„Bitte aktualisiere die App.“** Premium-Nutzer und Admins sind nie
+     betroffen, auch nicht mit alter App. Ist der Schalter aus, wirkt die Zahl nicht.
+     Wer danach aktualisiert, hört wieder – und die neue App sperrt und löscht nach den Regeln oben.
+     Für die Play-Version kannst du zusätzlich wie gewohnt die „mindestens nötige Build-Nummer“ setzen (Schritt 9);
+     die zeigt den Update-Bildschirm mit Link zum Store.
 
 Die beiden Schalter sind unabhängig: Du kannst das Offline-Hören an Premium binden, ohne etwas zu verkaufen (dann
 gibt es Premium nur per Code oder von dir) – und umgekehrt.
@@ -355,9 +374,17 @@ Mit einem Lizenztester-Konto (Schritt 10.3) und der Play-Version aus dem Test-Tr
 2. Kaufen mit „Testkarte, immer genehmigt“ → „Premium ist freigeschaltet. Danke!“. Im Dashboard unter
    **Premium-Codes › Käufe über Google Play** steht der Kauf mit dem Zusatz „Test“.
 3. Musik aufs Gerät laden – das geht jetzt.
-4. Etwa 5 Minuten warten: Das Abo verlängert sich (Dashboard › „Neu prüfen“ zeigt das neue Enddatum). Bleibt der
-   Kauf länger als ein paar Minuten bestehen und kommt keine Erstattungs-Mail von Google, hat der Server ihn
-   richtig bestätigt.
+4. Etwa 5 Minuten warten: Das Abo verlängert sich (Dashboard › „Neu prüfen“ zeigt das neue Enddatum). Kommt eine
+   Erstattungs-Mail von Google, wurde der Kauf nicht bestätigt. **Keine Mail heißt nur: irgendwer hat bestätigt** –
+   nach einem frischen Kauf tut das auch die App auf dem Handy. Ob dein **Server** bestätigen darf (Berechtigung
+   „Bestellungen und Abos verwalten“ des Dienstkontos, Schritt 10.4), siehst du so:
+   - Im Protokoll des Containers (Unraid › Docker › Selfify › *Logs*) darf nach dem Kauf **keine** Zeile
+     „Kauf … konnte bei Google nicht bestätigt werden“ stehen.
+   - Wer es genau wissen will: `GET /api/admin/premium/purchases` (als Admin angemeldet) liefert je Kauf das Feld
+     `acknowledged` – es muss `true` sein.
+
+   Das ist wichtig für Käufe, die die App erst später nachreicht (Server war beim Kauf nicht erreichbar): Die
+   bestätigt nur der Server. Darf er das nicht, erstattet Google nach 3 Tagen und Premium endet.
 5. Kündigen (in der App „Abo verwalten“ oder in Google Play bei den Abos des Kontos): Die App zeigt
    „Abo gekündigt – Premium bis …“. Nach dem Ablauf (im Test wenige Minuten) die App öffnen: Premium endet, die
    Offline-Musik wird gelöscht, die App meldet es.
@@ -366,6 +393,12 @@ Mit einem Lizenztester-Konto (Schritt 10.3) und der Play-Version aus dem Test-Tr
    einem anderen Konto verbunden.“ kommen.
 7. Flugmodus: Offline-Musik spielt weiter; in den Einstellungen steht kurz vor Ablauf der Gnadenfrist ein Hinweis.
 8. Die **GitHub-Version** starten: kein Kaufknopf, „Code einlösen“ wie bisher.
+9. **Code statt Kauf:** Einem Konto ohne Abo einen kurzen Code geben (oder Premium im Dashboard vergeben), Musik
+   laden, dann die Lizenz im Dashboard entziehen bzw. den Code samt Premium sperren und die App öffnen: Die
+   Offline-Musik wird gelöscht wie nach einem abgelaufenen Abo.
+10. **Mindest-Build** (falls du „Sperre durchsetzen ab App-Build“ nutzt): eine höhere Zahl als die Build-Nummer
+    deiner App eintragen und mit einem Konto **ohne** Premium einen Titel starten → „Bitte aktualisiere die App.“
+    Mit Premium oder als Admin spielt derselbe Titel. Danach die Zahl wieder richtig stellen.
 
 ### 10.8 Was passiert bei Kündigung, Erstattung und ohne Internet?
 
@@ -375,7 +408,10 @@ Mit einem Lizenztester-Konto (Schritt 10.3) und der Play-Version aus dem Test-Tr
 | Abo **verlängert** sich | Enddatum wird hochgesetzt | nichts |
 | **Zahlungsproblem** (Kulanzzeit bei Google) | Premium bleibt, solange Google den Zugang verlängert | Hinweis „Zahlungsproblem – bitte in Google Play prüfen“ |
 | Zahlung **ausgesetzt** / Abo **pausiert** | Premium endet sofort; zahlt der Benutzer nach, gilt es wieder | Offline-Musik wird gelöscht; nach der Zahlung muss neu geladen werden |
-| **Erstattung** oder Widerruf (durch Google oder dich) | Premium endet, sobald der Server es bei Google sieht | Offline-Musik wird gelöscht |
+| **Erstattung mit Widerruf des Zugangs** (durch Google oder dich in der Play Console) | Premium endet, sobald der Server es bei Google sieht | Offline-Musik wird gelöscht |
+| **Erstattung ohne Widerruf** (nur Geld zurück; das Abo bleibt bei Google bis zum Ende des Zeitraums aktiv) | Premium läuft bis zum Ende des Zeitraums weiter – der Server sieht bei Google weiter ein laufendes Abo. Soll es sofort enden: Premium im Dashboard **entziehen** | nichts, bis der Zeitraum endet oder du entziehst |
+| **Code läuft ab**, Code wird samt Premium **gesperrt**, vergebenes Premium endet | Premium endet (bei Ablauf zum Enddatum, beim Sperren/Entziehen sofort) | Offline-Musik wird gelöscht – genau wie bei einem Abo |
+| App ist **älter als „Sperre durchsetzen ab App-Build“** (Schalter an, kein Premium, kein Admin) | Weist das Abspielen und Laden ab (HTTP 426) | „Bitte aktualisiere die App.“ – nach dem Update gelten die Regeln dieser Tabelle |
 | Du **entziehst** Premium im Dashboard | Premium endet sofort; der Kauf lässt sich nicht erneut übernehmen | Offline-Musik wird gelöscht. **Das Abo läuft bei Google weiter** – erstatte oder kündige es in der Play Console (Bestellverwaltung), sonst zahlt der Benutzer weiter |
 | Handy **ohne Internet** / Server nicht erreichbar | – | Offline-Musik bleibt höchstens die **Gnadenfrist** (Standard 7 Tage seit der letzten erfolgreichen Prüfung) spielbar. Danach versucht die App einmal zu prüfen; gelingt das nicht, wird gesperrt und gelöscht |
 | Google oder die Schlüsseldatei **gestört** | Antwortet der App „kann gerade nicht geprüft werden“ statt „kein Premium“ | Nichts wird gelöscht, solange die Gnadenfrist läuft |
@@ -386,17 +422,35 @@ Wichtig zu wissen:
 
 - **Wie schnell merkt es der Server?** Es gibt keine Sofort-Benachrichtigung von Google. Der Server fragt bei Google
   nach, wenn die App den Premium-Stand abruft (beim Start, beim Zurückkehren, stündlich) – je Kauf höchstens alle
-  `PLAY_RECHECK_HOURS` Stunden (Standard 12), rund um das Enddatum alle paar Minuten. Eine Erstattung wirkt also
-  spätestens nach einem halben Tag, wenn die App benutzt wird. Sofort geht es im Dashboard: *Premium-Codes › Käufe
-  über Google Play ›* **„Neu prüfen“**.
+  `PLAY_RECHECK_HOURS` Stunden (Standard 12), rund um das Enddatum alle paar Minuten. Eine Erstattung **mit
+  Widerruf** wirkt also spätestens nach einem halben Tag, wenn die App benutzt wird. Sofort geht es im Dashboard:
+  *Premium-Codes › Käufe über Google Play ›* **„Neu prüfen“**.
+- **Erstattung ist nicht gleich Ende.** Ob Premium nach einer Erstattung endet, hängt davon ab, ob Google dabei den
+  Zugang widerruft. Erstattest du in der Play Console nur das Geld, meldet Google das Abo weiter als laufend, und
+  Premium bleibt bis zum Ende des Zeitraums. Willst du sicher sein: zusätzlich im Dashboard entziehen (das wirkt
+  sofort und sperrt den Kauf für eine erneute Übernahme). *Wie die Play Console die beiden Fälle heute nennt, war
+  von hier aus nicht nachzusehen – siehe „Nicht geprüft“.*
+- **Rund um die Verlängerung:** Ist der bezahlte Zeitraum gerade um und Google hat die Verlängerung noch nicht
+  verbucht, antwortet der Server der App bis zu einer Stunde lang „kann gerade nicht geprüft werden“ statt „kein
+  Premium“ – es wird nichts gelöscht.
+- **Google kennt einen Kauf plötzlich nicht mehr** (in der Kaufliste steht „Google kennt diesen Kauf nicht … Stimmt
+  der Paketname?“): Das passiert bei einem toten Kauf – aber auch, wenn `PLAY_PACKAGE_NAME` falsch eingestellt ist.
+  Der Server beendet Premium deshalb nicht sofort, sondern erst einige Tage nach dem bezahlten Ende, und prüft den
+  Kauf weiter; nach der Korrektur der Einstellung lebt er von selbst wieder auf.
 - **Codes und Kauf zusammen:** Ein Code, der während eines laufenden Abos eingelöst wird, hängt sich hinter das
   aktuelle Abo-Ende. Verlängert Google das Abo danach, überlappen sich die Zeiten (die Code-Zeit „verfällt“ dann
-  teilweise). Unbegrenztes Premium (Code oder Vergabe) schlägt alles – so jemand braucht kein Abo.
+  teilweise) – lös Codes also besser erst ein, wenn das Abo gekündigt ist. Endet das Abo vorzeitig (Erstattung mit
+  Widerruf), beginnt die angehängte Code-Zeit sofort. Unbegrenztes Premium (Code oder Vergabe) schlägt alles – so
+  jemand braucht kein Abo.
+- **Premium aus Codes und aus dem Dashboard zählt für das Offline-Hören genauso wie ein Kauf** – und endet genauso:
+  Nach Ablauf, Sperren oder Entziehen löscht die App die Offline-Musik.
 - **Ein Kauf gehört zu einem Konto.** Derselbe Google-Kauf lässt sich nicht für ein zweites Selfify-Konto verwenden.
 - **Mehrere Benutzer an einem Gerät:** Die Offline-Musik gehört zum Gerät. Meldet sich dort jemand ohne Premium an,
   wird sie gelöscht.
-- **Die Sperre sitzt in der App.** Der Server kann Offline-Laden nicht vom normalen Abspielen unterscheiden. Wer die
-  App umbaut oder den Ton mitschneidet, umgeht die Sperre – für 1 € unter Bekannten ist das vertretbar, ein
+- **Die Sperre sitzt in der App – und gilt erst ab der App-Version, die sie kennt.** Der Server kann Offline-Laden
+  nicht vom normalen Abspielen unterscheiden. Ältere Apps laden deshalb weiter; dagegen hilft „Sperre durchsetzen ab
+  App-Build“ (Schritt 10.6): Der Server gibt zu alten Apps ohne Premium dann gar keine Musik mehr. Wer die App
+  umbaut oder den Ton mitschneidet, umgeht die Sperre trotzdem – für 1 € unter Bekannten ist das vertretbar, ein
   Kopierschutz ist es nicht.
 
 ### 10.9 Was nimmt Google?
@@ -433,6 +487,12 @@ ist alles, was sich mit Tests und Attrappen prüfen lässt; **ungeprüft** ist:
 
 - **Jeder echte Kauf:** Kaufdialog, Bestätigung bei Google (ohne sie erstattet Google einen Kauf nach 3 Tagen, einen
   Testkauf nach wenigen Minuten), Verlängerung, Kündigung, Erstattung, Wiederherstellen.
+- **Erstattung mit und ohne Widerruf:** Dass Google ein nur erstattetes (nicht widerrufenes) Abo bis zum Ende des
+  Zeitraums als laufend meldet, stammt aus Googles Beschreibung der Schnittstelle; wie die Play Console die beiden
+  Wege benennt und was sie voreinstellt, ist ungeprüft. Im Zweifel nach einer Erstattung im Dashboard „Neu prüfen“
+  drücken und, wenn dort weiter „aktiv“ steht, entziehen.
+- **Bestätigung durch den Server:** Das Dashboard zeigt (noch) nicht an, ob ein Kauf vom Server bestätigt wurde –
+  nur das Protokoll und das Feld `acknowledged` der Schnittstelle (Schritt 10.7).
 - **Start der Play-Version mit der Billing-Bibliothek** auf einem echten Gerät – und der Start der GitHub-Version
   ohne sie. (Ein natives Bauteil hat die GitHub-App schon einmal beim Start abstürzen lassen; deshalb steckt die
   Billing-Bibliothek nur im Play-Bundle, und die CI prüft das.)
@@ -446,10 +506,46 @@ ist alles, was sich mit Tests und Attrappen prüfen lässt; **ungeprüft** ist:
 - Ob 0,99 € bzw. 1,00 € in der Play Console als Preis **auswählbar** ist (Google gibt Preisgrenzen je Land vor).
 - **Löschen bei der Deinstallation und Backup-Regeln:** am Code und an der Konfiguration geprüft (privater
   App-Speicher, Sicherung nur der Einstellungen), nicht auf einem Gerät.
-- **Windows und iPhone:** Unter Windows bleiben Offline-Dateien nach der Deinstallation im Benutzerordner
-  (`AppData`) liegen; das iPhone sichert den Dokumente-Ordner der App samt Offline-Musik in iCloud. Die Sperre und
-  das Löschen bei abgelaufenem Premium gelten dort trotzdem, das „weg mit der Deinstallation“ aber nur für Android.
+- **Windows und iPhone:** Der Windows-Installer löscht bei der Deinstallation den Ordner der Offline-Musik
+  (`%LOCALAPPDATA%\Selfify\Selfify\offline`) – der Pfad ist aus dem Code abgeleitet und **nicht an einem
+  Windows-Rechner bestätigt**; wer die ZIP-Version nutzt, hat keinen Deinstaller und löscht den Ordner selbst. Das
+  iPhone sichert den Dokumente-Ordner der App samt Offline-Musik in iCloud. Die Sperre und das Löschen bei
+  abgelaufenem Premium gelten überall.
+- **„Sperre durchsetzen ab App-Build“** ist mit Tests geprüft, nicht mit echten alten App-Versionen auf Geräten.
 - Der **Abrechnungszeitraum** steht nicht auf dem Kaufknopf der App (nur der Preis); Googles Kaufdialog zeigt ihn.
+
+### 10.12 Zurück auf die vorherige Server-Version (Rücksprung)
+
+Falls nach dem Update etwas nicht stimmt und du den Server auf die Version **vor** dem Kauf über Google Play
+zurückstellen willst:
+
+1. **Zuerst die Schalter aus:** „Premium in der Play-Version zum Kauf anbieten“ und – wenn niemand seine Musik
+   verlieren soll – „Offline-Hören nur mit Premium“ ausschalten, speichern. (Die alte Server-Version kennt beide
+   Schalter nicht; die neue App verhält sich gegen einen alten Server wie ohne Schalter.)
+2. **Sicherung** des Datenordners (`/mnt/user/appdata/selfify/`) anlegen.
+3. **Datenbank zurückstellen, solange noch die neue Version läuft** – im Unraid-Terminal (als der Benutzer, unter
+   dem der Server läuft, damit die Dateirechte stimmen):
+
+   ```bash
+   docker exec -u 99:100 selfify alembic downgrade 0006
+   ```
+
+   Das entfernt die Tabelle der Käufe. Lizenzen aus Käufen bleiben als Historie stehen, werden aber **beendet** und
+   als Vergabe mit dem Vermerk „Abo über Google Play (beendet beim Rücksprung) …“ geführt: Die alte Version kennt
+   Käufe nicht (ihre Lizenzliste im Dashboard scheiterte sonst mit einem Fehler) und könnte nicht mehr prüfen, ob
+   das Abo noch bezahlt wird.
+4. Den Container **gleich danach** auf das alte Image umstellen. Startet vorher noch einmal die neue Version, zieht
+   sie die Datenbank von selbst wieder hoch – dann Schritt 3 wiederholen.
+
+*Geprüft ist die Rückwärts-Migration selbst (mit Bestandsdaten, automatischer Test); der Befehl im laufenden
+Unraid-Container ist nicht ausprobiert – deshalb die Sicherung aus Schritt 2.*
+
+Was das für Käufer heißt: **Ihr Abo läuft bei Google weiter und wird weiter abgebucht**, Premium haben sie auf dem
+alten Server aber nicht mehr. Gib ihnen für die Zwischenzeit Premium von Hand (*Benutzer › Premium*) oder kündige/
+erstatte die Abos in der Play Console. Nach einem erneuten Update auf die neue Version stellt **„Käufe
+wiederherstellen“** in der App das gekaufte Premium wieder her (die Datenbank wird beim Start von selbst wieder
+hochgezogen). Ohne Schritt 3 kennt die alte Version den Stand der Datenbank nicht und startet nicht – dann die
+neue Version noch einmal starten und Schritt 3 nachholen.
 
 ## Checkliste
 
@@ -471,7 +567,12 @@ ist alles, was sich mit Tests und Attrappen prüfen lässt; **ungeprüft** ist:
 - [ ] Dashboard: „Kaufprüfung eingerichtet“, „Verbindung testen“ grün, Produkt-ID eingetragen, Kauf eingeschaltet
 - [ ] Premium-Texte geschrieben (mit „im Monat“), Gnadenfrist gewählt
 - [ ] Familie/Freunde haben Premium, **danach** „Offline-Hören nur mit Premium“ eingeschaltet
+- [ ] Neue App-Version überall verteilt, **danach** „Sperre durchsetzen ab App-Build“ auf ihre Build-Nummer gesetzt
+      (vorher laden ältere Apps weiter); mit einem Konto ohne Premium und alter App: „Bitte aktualisiere die App.“
 - [ ] Testkauf mit Lizenztester: Premium aktiv, Kauf im Dashboard, **keine** Erstattungs-Mail nach einigen Minuten
+- [ ] Server hat den Testkauf selbst bestätigt: im Protokoll **keine** Zeile „… konnte bei Google nicht bestätigt
+      werden“ (die ausbleibende Erstattungs-Mail allein beweist das nicht – auch das Handy bestätigt)
+- [ ] Code getestet: schaltet Offline-Hören frei; nach Entziehen/Sperren wird die Offline-Musik gelöscht
 - [ ] Kündigung getestet: Nach Ablauf wird die Offline-Musik vom Gerät gelöscht
 - [ ] „Käufe wiederherstellen“ auf zweitem Gerät; anderes Selfify-Konto wird abgelehnt
 - [ ] Play-Version **und** GitHub-Version starten auf einem echten Handy

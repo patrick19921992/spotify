@@ -1087,6 +1087,10 @@ class AppConfig {
   /// So viele Tage bleibt Offline-Musik ohne erfolgreiche Premium-Prüfung spielbar.
   final int offlineGraceDays;
 
+  /// Mindest-Build für alle ohne Premium, solange „Offline-Hören nur mit Premium“ an ist (0 = aus): Ältere Apps –
+  /// die die Sperre noch nicht kennen – weist der Server beim Abspielen mit HTTP 426 ab.
+  final int offlineMinClientBuild;
+
   /// Kauf in der App – der Server meldet den wirksamen Wert (nur Play-Version, Kaufprüfung eingerichtet).
   final bool billingEnabled;
   final List<String> billingProductIds;
@@ -1106,6 +1110,7 @@ class AppConfig {
     this.deletionUrl = '',
     this.offlineRequiresPremium = false,
     this.offlineGraceDays = 7,
+    this.offlineMinClientBuild = 0,
     this.billingEnabled = false,
     this.billingProductIds = const [],
     this.premiumHeadline = '',
@@ -1123,6 +1128,7 @@ class AppConfig {
         deletionUrl: j['deletion_url'] as String? ?? '',
         offlineRequiresPremium: j['offline_requires_premium'] == true,
         offlineGraceDays: _graceDays(j['offline_grace_days']),
+        offlineMinClientBuild: _minBuild(j['offline_min_client_build']),
         billingEnabled: j['billing_enabled'] == true,
         billingProductIds: _texts(j['billing_product_ids']),
         premiumHeadline: j['premium_headline'] is String ? j['premium_headline'] as String : '',
@@ -1135,6 +1141,12 @@ class AppConfig {
 int _graceDays(dynamic value) {
   final days = value is num ? value.toInt() : 0;
   return days <= 0 ? 7 : days;
+}
+
+/// Mindest-Build; fehlt er (alter Server) oder ist er unsinnig, gilt 0 = aus.
+int _minBuild(dynamic value) {
+  final build = value is num ? value.toInt() : 0;
+  return build < 0 ? 0 : build;
 }
 
 /// Liste nicht leerer Texte (alles andere fällt weg).

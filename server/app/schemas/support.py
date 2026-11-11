@@ -93,6 +93,7 @@ class AppConfigOut(BaseModel):
     maintenance_message: str
     offline_requires_premium: bool
     offline_grace_days: int
+    offline_min_client_build: int
     billing_enabled: bool
     billing_product_ids: str
     premium_headline: str
@@ -113,6 +114,7 @@ class AppConfigIn(BaseModel):
     maintenance_message: str | None = None
     offline_requires_premium: bool | None = None
     offline_grace_days: int | None = None
+    offline_min_client_build: int | None = None
     billing_enabled: bool | None = None
     billing_product_ids: str | None = None
     premium_headline: str | None = None
@@ -143,6 +145,9 @@ class PublicConfigOut(BaseModel):
     # Offline-Hören nur mit Premium (gilt für alle App-Ausgaben; Admins sind ausgenommen)
     offline_requires_premium: bool = False
     offline_grace_days: int = 7
+    # Mindest-Build-Nummer der App für Benutzer ohne Premium, solange die Offline-Sperre an ist (0 = aus):
+    # Ältere Apps bekommen beim Abspielen und Laden HTTP 426
+    offline_min_client_build: int = 0
     # Wirksamer Wert: Schalter an, Play-Version, Kaufprüfung eingerichtet und mindestens eine Produkt-ID
     billing_enabled: bool = False
     billing_product_ids: list[str] = []

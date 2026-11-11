@@ -637,14 +637,19 @@ def test_code_stacks_behind_a_running_subscription_and_unlimited_beats_all(
     assert parse(stacked.json()["until"]) == info.expires_at + timedelta(days=10)
     assert stacked.json()["play"]["state"] == "active"
 
-    # das Abo endet (Erstattung): Der Code gilt weiter für seinen Zeitraum, aber erst ab dem alten Abo-Ende
+    # das Abo endet vor dem bezahlten Ende (Erstattung): Der Code beginnt jetzt – nicht erst am alten Abo-Ende,
+    # sonst gäbe es trotz gültiger Lizenz kein Premium und die App löschte die Offline-Musik
     shop.subscriptions[TOKEN] = sub(state="expired", days=30, acknowledged=True)
     age_checks(client, hours=13)
     after = premium(client, headers)
-    assert after["active"] is False, "die angehängte Code-Zeit beginnt erst am ursprünglichen Abo-Ende"
+    assert after["active"] is True and after["offline_allowed"] is True and after["play"] is None
     with client.app.state.session_factory() as db:
         code_license = db.scalars(select(PremiumLicense).where(PremiumLicense.source == "code")).unique().one()
-        assert code_license.revoked_at is None and code_license.expires_at == info.expires_at + timedelta(days=10)
+        assert code_license.revoked_at is None
+        # die Laufzeit des Codes bleibt bei seinen zehn Tagen
+        assert code_license.expires_at - code_license.starts_at == timedelta(days=10)
+        assert abs(code_license.starts_at - utcnow()) < timedelta(minutes=1)
+        assert parse(after["until"]) == code_license.expires_at
 
     # unbegrenztes Premium vom Admin schlägt alles
     client.post(f"/api/admin/users/{user['id']}/premium", headers=admin_headers, json={"unlimited": True})
@@ -994,8 +999,10 @@ def test_real_verifier_tells_unknown_purchases_from_outages(tmp_path: Path, rsa_
     secret_token = "geheimer-kauf-token-123"
     for status in (400, 404, 410):
         google.http_error(status)
-        with pytest.raises(PurchaseNotFound):
+        with pytest.raises(PurchaseNotFound) as missing:
             verifier.get_subscription(secret_token)
+        # nur 410 heißt eindeutig „Token gilt nicht mehr“; 400/404 kann auch ein falscher Paketname sein
+        assert missing.value.definite is (status == 410)
     for status in (401, 403):
         google.http_error(status)
         with pytest.raises(VerifierUnavailable) as rejected:
@@ -1155,18 +1162,33 @@ def test_migration_0007_keeps_existing_data_and_matches_the_models(tmp_path: Pat
         assert compare_metadata(context, Base.metadata) == []
     engine.dispose()
 
-    # zurück: Die Tabelle verschwindet, Lizenzen (auch solche aus Käufen) bleiben als Historie
+    # zurück: Die Tabelle verschwindet, Lizenzen aus Käufen bleiben als Historie – aber so, dass die Vorversion sie
+    # versteht (sie kennt nur "code" und "admin") und nichts ungeprüft weiterläuft
     with sqlite3.connect(db_file) as con:
-        con.execute(
-            "INSERT INTO premium_licenses (id, user_id, code_id, source, starts_at, expires_at, note, created_at) "
-            "VALUES (9, 1, NULL, 'play', ?, '2026-12-01 00:00:00.000000', 'Google Play: premium_monat', ?)",
-            (now, now),
-        )
+        for license_id, expires in ((9, "2099-12-01 00:00:00.000000"), (10, "2020-01-01 00:00:00.000000")):
+            con.execute(
+                "INSERT INTO premium_licenses (id, user_id, code_id, source, starts_at, expires_at, note, created_at) "
+                "VALUES (?, 1, NULL, 'play', ?, ?, 'Google Play: premium_monat', ?)",
+                (license_id, now, expires, now),
+            )
+        others_before = con.execute("SELECT * FROM premium_licenses WHERE source != 'play' ORDER BY id").fetchall()
     command.downgrade(config, "0006")
     with sqlite3.connect(db_file) as con:
         tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert "play_purchases" not in tables
-        assert con.execute("SELECT source FROM premium_licenses WHERE id = 9").fetchone()[0] == "play"
+        assert con.execute("SELECT count(*) FROM premium_licenses WHERE source = 'play'").fetchone()[0] == 0
+        running, ended = con.execute(
+            "SELECT source, note, expires_at FROM premium_licenses WHERE id IN (9, 10) ORDER BY id"
+        ).fetchall()
+        note = "Abo über Google Play (beendet beim Rücksprung) – Google Play: premium_monat"
+        assert running[:2] == ("admin", note) and ended[:2] == ("admin", note)
+        # die laufende endet jetzt (niemand prüft dort mehr bei Google), die längst beendete bleibt, wie sie war
+        ended_at = datetime.fromisoformat(running[2])
+        assert abs(ended_at - utcnow().replace(tzinfo=None)) < timedelta(minutes=5)
+        assert ended[2] == "2020-01-01 00:00:00.000000"
+        # Lizenzen aus Codes und vom Admin sind unberührt
+        unchanged = con.execute("SELECT * FROM premium_licenses WHERE id NOT IN (9, 10) ORDER BY id").fetchall()
+        assert unchanged == others_before
     command.upgrade(config, "head")
 
 

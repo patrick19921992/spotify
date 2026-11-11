@@ -40,6 +40,10 @@ SPECS: dict[str, Spec] = {
     "maintenance_message": Spec("", 300),
     # Offline-Hören (Laden aufs Gerät) nur mit Premium – aus, bis der Admin es einschaltet. Admins sind ausgenommen
     "offline_requires_premium": Spec(False),
+    # Ältere App-Versionen kennen die Offline-Sperre nicht. Ist der Schalter an und dieser Wert größer als 0,
+    # bekommen Benutzer ohne Premium mit einer älteren (oder unbekannten) Build-Nummer keine Musik mehr, bis sie
+    # die App aktualisieren (0 = aus). Gilt für alle App-Ausgaben; Premium-Nutzer und Admins sind ausgenommen
+    "offline_min_client_build": Spec(0, 10_000_000),
     # Gnadenfrist in Tagen: So lange bleibt Offline-Musik spielbar, wenn die App den Server nicht erreicht
     "offline_grace_days": Spec(7, 30, 1),
     # Kauf in der App (nur Play-Version, Google Play Billing). Der Preis steht in der Play Console, nicht hier
@@ -176,3 +180,13 @@ def update_level(config: dict[str, Any], channel: str, build: int | None) -> str
     if config["play_latest_build"] and build < config["play_latest_build"]:
         return "available"
     return "none"
+
+
+MSG_UPDATE_REQUIRED = "Bitte aktualisiere die App."
+
+
+def client_too_old(config: dict[str, Any], build: int | None) -> bool:
+    """Offline-Sperre an und die App ist älter als die eingestellte Mindest-Build-Nummer (oder nennt keine)?
+    Ob der Benutzer ausgenommen ist (Admin, Premium), prüft der Aufrufer."""
+    minimum = config["offline_min_client_build"]
+    return bool(config["offline_requires_premium"]) and minimum > 0 and (build is None or build < minimum)

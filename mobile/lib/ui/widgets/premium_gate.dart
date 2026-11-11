@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
+import '../../player/player.dart';
 import '../../state/app_config.dart';
 import '../../state/offline_access.dart';
 import '../nav.dart';
@@ -61,6 +62,10 @@ class OfflineAccessBanner extends ConsumerWidget {
       case OfflineAccess.free:
         return null;
       case OfflineAccess.checking:
+        if (access.clockSuspect) {
+          return 'Die Uhr dieses Geräts wurde zurückgestellt. Bitte geh einmal online, damit dein Premium neu '
+              'geprüft werden kann – bis dahin ist die Offline-Musik nicht verfügbar.';
+        }
         return 'Dein Premium-Stand wird noch geprüft. Bis dahin kann nichts Neues aufs Gerät geladen werden.';
       case OfflineAccess.locked:
         return 'Offline-Hören gibt es mit Premium.';
@@ -113,7 +118,8 @@ class OfflineAccessBanner extends ConsumerWidget {
 }
 
 /// Zeigt den Hinweis nach dem Löschen der Offline-Musik (Premium abgelaufen oder zu lange nicht geprüft) – einmal,
-/// als Dialog, damit er nicht übersehen wird.
+/// als Dialog, damit er nicht übersehen wird. Ebenso „Bitte aktualisiere die App.“, wenn der Server das Abspielen
+/// wegen einer zu alten App abweist.
 class OfflineWipeNoticeListener extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -125,6 +131,7 @@ class OfflineWipeNoticeListener extends ConsumerStatefulWidget {
 
 class _OfflineWipeNoticeListenerState extends ConsumerState<OfflineWipeNoticeListener> {
   bool _showing = false;
+  bool _showingUpdate = false;
 
   Future<void> _show(String text) async {
     if (_showing || !mounted) return;
@@ -151,10 +158,30 @@ class _OfflineWipeNoticeListenerState extends ConsumerState<OfflineWipeNoticeLis
     if (open == true && mounted) Nav.premium(context);
   }
 
+  /// „Bitte aktualisiere die App.“ – der Server spielt dieser App-Version ohne Premium nichts mehr ab (HTTP 426).
+  Future<void> _showUpdateRequired() async {
+    if (_showingUpdate || !mounted) return;
+    _showingUpdate = true;
+    ref.read(updateRequiredNoticeProvider.notifier).clear();
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Update nötig'),
+        content: const Text(updateRequiredMessage),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('OK'))],
+      ),
+    );
+    _showingUpdate = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(offlineWipeNoticeProvider, (_, text) {
       if (text != null) _show(text);
+    });
+    ref.listen(updateRequiredNoticeProvider, (_, show) {
+      if (show) _showUpdateRequired();
     });
     // Schon vor dem Aufbau gelöscht (beim Start): gleich nach dem ersten Bild zeigen
     final pending = ref.read(offlineWipeNoticeProvider);

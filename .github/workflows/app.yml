@@ -165,7 +165,10 @@ jobs:
           FILES=$(find build/app/intermediates -path '*merged_manifest*fullRelease*' -name AndroidManifest.xml)
           if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
           # shellcheck disable=SC2086
-          grep -q 'dataExtractionRules' $FILES || { echo "::error::Backup-Regeln (dataExtractionRules) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung zurückkommen."; exit 1; }
+          # Attribut samt Wert - der bloße Name steht auch in einem Kommentar des Manifests und bewiese nichts
+          grep -q 'android:dataExtractionRules="@xml/data_extraction_rules"' $FILES || { echo "::error::Backup-Regeln (android:dataExtractionRules, Android 12+) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung oder Geräteumzug zurückkommen."; exit 1; }
+          # shellcheck disable=SC2086
+          grep -q 'android:fullBackupContent="@xml/backup_rules"' $FILES || { echo "::error::Backup-Regeln (android:fullBackupContent, bis Android 11) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung zurückkommen."; exit 1; }
           # shellcheck disable=SC2086
           if grep -q 'hasFragileUserData="true"' $FILES; then
             echo "::error::hasFragileUserData ist gesetzt - Android böte beim Deinstallieren an, die Daten (Offline-Musik) zu behalten."
@@ -258,7 +261,15 @@ jobs:
           keyPassword=$KEY_PASSWORD
           PROPS
           echo "signed=true" >> "$GITHUB_OUTPUT"
-      # Ohne pubspec_overrides.yaml: Die Play-Version bekommt die echten Pakete (Werbe-SDK und Google Play Billing)
+      # Ohne pubspec_overrides.yaml: Die Play-Version bekommt die echten Pakete (Werbe-SDK und Google Play Billing).
+      # Liegt die Datei doch im Repository (versehentlich mit eingecheckt - die README leitet für den lokalen Bau der
+      # GitHub-Version dazu an), bekäme das Bundle die Platzhalter: keine Werbung, und niemand könnte kaufen.
+      - name: Abbrechen, wenn die Platzhalter-Pakete eingestellt sind (pubspec_overrides.yaml)
+        run: |
+          if [ -e pubspec_overrides.yaml ] || [ -L pubspec_overrides.yaml ]; then
+            echo "::error::mobile/pubspec_overrides.yaml liegt im Repository - die Play-Version würde mit den Platzhaltern statt mit Werbe-SDK und Google Play Billing gebaut. Datei aus dem Repository entfernen (git rm mobile/pubspec_overrides.yaml)."
+            exit 1
+          fi
       - run: flutter pub get
       - name: Android-NDK laden (mit Wiederholung)
         run: |
@@ -320,10 +331,32 @@ jobs:
           grep -q 'com.google.android.gms.ads.APPLICATION_ID' $FILES || { echo "::error::AdMob-App-ID fehlt im Manifest - das Werbe-SDK würde beim Start abstürzen."; exit 1; }
       - name: Prüfen, dass die Play-Version kaufen kann (Google Play Billing)
         run: |
+          # Die Berechtigung allein beweist nichts: Sie steht fest im Play-Manifest der App. Geprüft wird deshalb, dass
+          # das echte Kauf-Bauteil eingebaut ist und nicht der Platzhalter (in_app_purchase_stub).
+          # 1. Plugin-Liste der App: Das native Billing-Plugin gibt es nur mit dem echten Paket
+          if ! grep -q 'in_app_purchase_android' .flutter-plugins-dependencies; then
+            echo "::error::Die Play-Version enthält das Plugin in_app_purchase_android nicht - statt Google Play Billing steckt der Platzhalter im Bundle, niemand könnte kaufen."
+            exit 1
+          fi
+          # 2. Bauteil der Billing-Bibliothek (com.android.billingclient.api.ProxyBillingActivity): Es kommt nur aus der
+          #    echten Bibliothek ins Manifest. Gesucht wird in der zusammengeführten Manifest-Datei und im Manifest des
+          #    fertigen Bundles (dort binär gespeichert, die Namen stehen aber lesbar darin)
           FILES=$(find build/app/intermediates -path '*merged_manifest*playRelease*' -name AndroidManifest.xml)
-          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
+          FOUND=""
           # shellcheck disable=SC2086
-          grep -q 'com.android.vending.BILLING' $FILES || { echo "::error::Billing-Berechtigung fehlt - der Kauf in der App würde nicht funktionieren."; exit 1; }
+          if [ -n "$FILES" ] && grep -q 'com\.android\.billingclient' $FILES; then FOUND="zusammengeführtes Manifest"; fi
+          if [ -z "$FOUND" ] && unzip -p build/selfify-play.aab base/manifest/AndroidManifest.xml 2>/dev/null | grep -a -q 'com\.android\.billingclient'; then
+            FOUND="Manifest im Bundle"
+          fi
+          if [ -z "$FOUND" ]; then
+            echo "::error::Die Billing-Bibliothek (com.android.billingclient) fehlt im Play-Bundle - der Kauf in der App würde nicht funktionieren."
+            exit 1
+          fi
+          echo "Billing-Bibliothek gefunden: $FOUND"
+          # 3. Berechtigung zum Kaufen
+          if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Billing-Berechtigung nicht geprüft."; exit 0; fi
+          # shellcheck disable=SC2086
+          grep -q 'com\.android\.vending\.BILLING' $FILES || { echo "::error::Billing-Berechtigung fehlt - der Kauf in der App würde nicht funktionieren."; exit 1; }
       - name: Prüfen, dass Offline-Musik nicht per Sicherung zurückkommt
         run: |
           # Offline-Dateien liegen im privaten App-Speicher und verschwinden beim Deinstallieren. Damit sie nicht über die
@@ -331,7 +364,10 @@ jobs:
           FILES=$(find build/app/intermediates -path '*merged_manifest*playRelease*' -name AndroidManifest.xml)
           if [ -z "$FILES" ]; then echo "::warning::Zusammengeführte Manifest-Datei nicht gefunden - Prüfung übersprungen."; exit 0; fi
           # shellcheck disable=SC2086
-          grep -q 'dataExtractionRules' $FILES || { echo "::error::Backup-Regeln (dataExtractionRules) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung zurückkommen."; exit 1; }
+          # Attribut samt Wert - der bloße Name steht auch in einem Kommentar des Manifests und bewiese nichts
+          grep -q 'android:dataExtractionRules="@xml/data_extraction_rules"' $FILES || { echo "::error::Backup-Regeln (android:dataExtractionRules, Android 12+) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung oder Geräteumzug zurückkommen."; exit 1; }
+          # shellcheck disable=SC2086
+          grep -q 'android:fullBackupContent="@xml/backup_rules"' $FILES || { echo "::error::Backup-Regeln (android:fullBackupContent, bis Android 11) fehlen im Manifest - Offline-Musik könnte per Google-Sicherung zurückkommen."; exit 1; }
           # shellcheck disable=SC2086
           if grep -q 'hasFragileUserData="true"' $FILES; then
             echo "::error::hasFragileUserData ist gesetzt - Android böte beim Deinstallieren an, die Daten (Offline-Musik) zu behalten."

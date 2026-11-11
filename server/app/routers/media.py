@@ -7,10 +7,12 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 
-from app.deps import AppSettings, DbSession, MediaAuth
+from app.deps import AppSettings, AuthContext, DbSession, MediaAuth
 from app.library.covers import COVER_SIZES
 from app.library.transcode import QUALITY_BITRATES, TranscodeUnavailableError, needs_transcode
 from app.models import Cover, Track
+from app.services import app_config, premium
+from app.services.clients import CLIENT_HEADER, parse_client
 
 router = APIRouter(tags=["Streaming"])
 
@@ -39,11 +41,26 @@ def media_type_for(path: Path, kind: str) -> str:
     return MIME_TYPES.get(suffix) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
+def _require_current_app(request: Request, auth: AuthContext, db: DbSession) -> None:
+    """426, wenn die Offline-Sperre eine neuere App verlangt. Admins und Premium-Nutzer sind immer ausgenommen."""
+    if auth.user.is_admin:
+        return
+    # Build-Nummer aus dem Header dieser Anfrage; Player rufen den Link ohne Header ab – dann zählt, was die App
+    # auf diesem Gerät zuletzt gemeldet hat. Fehlt beides, gilt die App als zu alt
+    client = parse_client(request.headers.get(CLIENT_HEADER))
+    build = client.build if client is not None and client.build is not None else auth.session.client_build
+    if not app_config.client_too_old(app_config.get_all(db), build):
+        return
+    if premium.premium_status(db, auth.user).active:
+        return
+    raise HTTPException(status.HTTP_426_UPGRADE_REQUIRED, app_config.MSG_UPDATE_REQUIRED)
+
+
 @router.get("/tracks/{track_id}/stream")
 def stream_track(
     track_id: int,
     request: Request,
-    _: MediaAuth,
+    auth: MediaAuth,
     db: DbSession,
     settings: AppSettings,
     quality: Literal["original", "high", "normal", "low"] = "original",
@@ -54,7 +71,11 @@ def stream_track(
         bool, Query(description="true = bei Videos nur den Ton als AAC (Video in einer Musik-Warteschlange)")
     ] = False,
 ) -> FileResponse:
-    """Liefert die Datei mit Spulen (HTTP Range). Bei Bedarf als AAC umgewandelt (Datensparmodus/iPhone)."""
+    """Liefert die Datei mit Spulen (HTTP Range). Bei Bedarf als AAC umgewandelt (Datensparmodus/iPhone).
+
+    Ist „Offline-Hören nur mit Premium“ an und eine Mindest-Build-Nummer eingestellt, bekommen Benutzer ohne Premium
+    mit einer älteren App HTTP 426: Alte Apps kennen die Sperre nicht und würden weiter aufs Gerät laden."""
+    _require_current_app(request, auth, db)
     track = db.get(Track, track_id)
     if track is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Titel nicht gefunden.")

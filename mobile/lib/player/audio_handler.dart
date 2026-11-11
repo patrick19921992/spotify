@@ -29,7 +29,9 @@ typedef AutoplayProvider = Future<List<Track>> Function(Track lastTrack);
 
 /// Hintergrund-Wiedergabe mit Sperrbildschirm-/Kopfhörer-/Auto-Steuerung (audio_service + just_audio).
 class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
-  final AudioPlayer player = AudioPlayer();
+  // Kopfzeilen an Stream-Links (siehe [streamHeaders]) schickt der Player selbst mit – ohne den lokalen
+  // Zwischen-Server von just_audio. Ohne Kopfzeilen ändert die Angabe nichts.
+  final AudioPlayer player = AudioPlayer(useProxyForRequestHeaders: false);
 
   SourceResolver? resolveSource;
   ArtResolver? resolveArt;
@@ -62,6 +64,21 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     if (previous != null && previous != value && _tracks.isNotEmpty) refreshUpcoming().ignore();
   }
 
+  Map<String, String>? _streamHeaders;
+  bool _streamHeadersSet = false;
+
+  /// Kopfzeilen der Stream-Links. Ändern sie sich (der Betreiber verlangt jetzt eine Mindest-Version), bekommen die
+  /// kommenden Titel neue Quellen – wie bei einer neuen Qualität.
+  set streamHeaders(Map<String, String>? value) {
+    final changed = _streamHeadersSet && (value == null) != (_streamHeaders == null);
+    _streamHeaders = value;
+    _streamHeadersSet = true;
+    if (changed && _tracks.isNotEmpty) refreshUpcoming().ignore();
+  }
+
+  /// Wird gerufen, wenn der Player einen Titel nicht abspielen kann (z. B. weist der Server den Stream ab).
+  void Function()? onPlaybackError;
+
   final List<Track> _tracks = [];
   PlayContext? _context;
   int? _lastIndex;
@@ -77,6 +94,8 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {
       playbackState.add(playbackState.value.copyWith(processingState: AudioProcessingState.error));
     });
+    // Ein Titel lässt sich nicht abspielen (Datei fehlt, Server weist den Stream ab …)
+    player.errorStream.listen((_) => onPlaybackError?.call());
     player.currentIndexStream.listen(_onIndexChanged);
     player.positionStream.listen((position) {
       if (player.currentIndex == _lastIndex) _lastPosition = position;

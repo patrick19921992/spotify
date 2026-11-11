@@ -119,7 +119,11 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
     if (ref.read(settingsProvider).offlineMode) throw const _VideoProblem(_offlineModeMessage, offlineMode: true);
     final api = ref.read(apiProvider);
     if (api == null) throw const _VideoProblem('Bitte melde dich erneut an.');
-    return VideoPlayerController.networkUrl(Uri.parse(api.streamUrl(trackId)));
+    // Verlangt der Server eine Mindest-Version, gibt sich die App auch hier zu erkennen (sonst HTTP 426)
+    return VideoPlayerController.networkUrl(
+      Uri.parse(api.streamUrl(trackId)),
+      httpHeaders: ref.read(streamHeadersProvider) ?? const {},
+    );
   }
 
   Future<void> _initialize({bool initial = false}) async {
@@ -142,7 +146,13 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       await controller.initialize().timeout(const Duration(seconds: 45));
     } catch (_) {
       controller.dispose().ignore();
-      if (mounted && generation == _generation) setState(() => _problem = _VideoProblem(_unsupportedMessage));
+      var message = _unsupportedMessage;
+      // Mit Mindest-Version am Server: Liegt es an einer zu alten App (HTTP 426)? Dann das sagen.
+      final api = ref.read(apiProvider);
+      if (api != null && ref.read(streamHeadersProvider) != null && controller.dataSourceType == DataSourceType.network) {
+        if (await api.streamStatus(api.streamUrl(_trackId)) == 426) message = updateRequiredMessage;
+      }
+      if (mounted && generation == _generation) setState(() => _problem = _VideoProblem(message));
       return;
     }
     // Am Computer gilt dieselbe Lautstärke wie für die Musik (wie bei Spotify)

@@ -100,7 +100,8 @@ class PlayPurchaseGateway implements PurchaseGateway {
     try {
       await _iap.completePurchase(raw);
     } catch (e) {
-      // Der Server hat den Kauf schon bei Google bestätigt – ein Fehler hier ändert nichts
+      // Bestätigen soll den Kauf der Server (nach seiner Prüfung bei Google); dies hier ist der zweite Weg.
+      // Scheitern beide, erstattet Google den Kauf nach 3 Tagen.
       debugPrint('Kauf konnte auf dem Gerät nicht abgeschlossen werden: $e');
     }
   }

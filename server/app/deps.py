@@ -113,7 +113,7 @@ def get_media_auth(
         raise _unauthorized()
     if payload is None:
         raise _unauthorized("Anmeldung abgelaufen oder ungültig.")
-    return auth_from_payload(db, payload)
+    return auth_from_payload(db, payload, parse_client(request.headers.get(CLIENT_HEADER)))
 
 
 MediaAuth = Annotated[AuthContext, Depends(get_media_auth)]

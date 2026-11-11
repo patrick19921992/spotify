@@ -45,7 +45,8 @@ abstract class PurchaseGateway {
   /// Fehlende IDs fehlen einfach in der Liste.
   Future<List<StoreProduct>> loadProducts(Set<String> ids);
 
-  /// Käufe, Wiederherstellungen, Abbrüche und Fehler – auch unaufgefordert (nachgeholte Käufe).
+  /// Käufe, Wiederherstellungen, Abbrüche und Fehler der laufenden App. Was vorher liegen blieb, kommt nur nach
+  /// [restore].
   Stream<StorePurchase> get purchases;
 
   /// Öffnet den Kaufdialog. Das Ergebnis kommt über [purchases]. [accountId] verknüpft den Kauf mit dem Konto.

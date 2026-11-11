@@ -31,6 +31,20 @@ class FakePlayer extends AudioPlayerPlatform {
         androidAudioSessionId: null,
       ));
 
+  /// Der Player kann den Titel nicht abspielen (z. B. weist der Server den Stream ab).
+  void fail(int code, String message) => _events.add(PlaybackEventMessage(
+        processingState: ProcessingStateMessage.idle,
+        updateTime: DateTime.now(),
+        updatePosition: pos,
+        bufferedPosition: pos,
+        duration: null,
+        icyMetadata: null,
+        currentIndex: current,
+        androidAudioSessionId: null,
+        errorCode: code,
+        errorMessage: message,
+      ));
+
   @override
   Stream<PlaybackEventMessage> get playbackEventMessageStream => _events.stream;
   @override

@@ -383,6 +383,12 @@ class FakeApi extends ApiClient {
   PlayVerifyResult? verifyResult;
   ApiException? verifyError;
 
+  /// Status, mit dem der Server Stream-Links beantwortet (426 = App zu alt).
+  int? streamStatusCode = 200;
+
+  @override
+  Future<int?> streamStatus(String url) async => _log('streamStatus', streamStatusCode);
+
   @override
   Future<PremiumStatus> premium() async {
     _log('premium', null);

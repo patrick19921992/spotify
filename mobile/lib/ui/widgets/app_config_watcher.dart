@@ -46,8 +46,9 @@ class _AppConfigWatcherState extends ConsumerState<AppConfigWatcher> with Widget
     if (!(ref.read(authProvider).value?.isLoggedIn ?? false)) return;
     unawaited(ref.read(appConfigProvider.notifier).refresh());
     ref.invalidate(premiumProvider);
-    // Käufe, die der Server noch nicht bestätigen konnte, erneut melden (nur wenn der Kauf angeboten wird)
-    if (ref.read(billingVisibleProvider)) unawaited(ref.read(billingProvider.notifier).retryUnverified());
+    // Käufe nachholen (nur wenn der Kauf angeboten wird): gemerkte erneut melden und den Store nach Käufen fragen,
+    // die er der App nicht gemeldet hat (App während der Zahlung beendet, Zahlung erst später bestätigt)
+    if (ref.read(billingVisibleProvider)) unawaited(ref.read(billingProvider.notifier).catchUp());
   }
 
   /// Offline-Berechtigung neu auswerten – ohne Netzabfrage, nur mit der Uhr und dem gespeicherten Stand.

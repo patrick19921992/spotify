@@ -251,6 +251,9 @@ def verify_play_purchase(
             raise HTTPException(status.HTTP_409_CONFLICT, play_billing.MSG_OTHER_ACCOUNT) from None
     # Erst nach dem Zuordnen bei Google bestätigen: Einen abgelehnten Kauf erstattet Google dann von selbst
     play_billing.acknowledge(db, purchase, verifier, now)
+    if play_billing.awaiting_renewal(purchase, now) and not service.premium_status(db, user, now).active:
+        # Zeitraum gerade um, Verlängerung bei Google noch nicht verbucht: „unbekannt“ – die App löscht nichts
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, play_billing.MSG_STATUS_UNKNOWN)
     if play_billing.has_access(purchase.state, purchase.expires_at, now):
         result = "active"
     elif purchase.state == "pending":

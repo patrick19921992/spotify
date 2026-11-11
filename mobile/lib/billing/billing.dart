@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/flavor.dart';
 import '../data/api.dart';
+import '../data/models.dart';
 import '../state/app_config.dart';
 import '../state/auth.dart';
+import '../state/offline_access.dart' show accountKey;
 import 'purchase_gateway.dart';
 
 export 'purchase_gateway.dart';
@@ -84,7 +86,8 @@ final billingVisibleProvider = Provider<bool>((ref) {
 /// Die App schaltet nie selbst frei: Jeder Kauf geht mit seinem Token an den Server, der bei Google prüft. Erst
 /// nach dessen „aktiv“ wird der Kauf auf dem Gerät abgeschlossen.
 class BillingController extends Notifier<BillingState> {
-  /// Käufe, die der Server noch nicht bestätigen konnte (kein Netz, Server nicht erreichbar, abgemeldet).
+  /// Käufe, die der Server noch nicht bestätigen konnte (kein Netz, Server nicht erreichbar, abgemeldet) – jeder
+  /// mit dem Konto (Server und Benutzer), das gekauft hat: Nur dieses Konto reicht ihn später nach.
   static const unverifiedKey = 'billing.unverified';
 
   /// So lange wartet „Käufe wiederherstellen“ auf eine Antwort des Stores (in Tests kürzer).
@@ -94,6 +97,15 @@ class BillingController extends Notifier<BillingState> {
   Timer? _restoreTimer;
   bool _restoring = false;
   bool _retrying = false;
+  bool _askingStore = false;
+
+  /// Konto, das zuletzt angemeldet war, während der Kauf sichtbar war (für Käufe, deren Meldung erst nach dem
+  /// Abmelden eintrifft).
+  String? _lastAccount;
+
+  /// Käufe aus dem Store, die der Server für dieses Konto endgültig abgelehnt hat („Konto|Token“): Die stille
+  /// Abfrage meldet sie in dieser Sitzung nicht noch einmal.
+  final _declined = <String>{};
 
   @override
   BillingState build() {
@@ -104,9 +116,13 @@ class BillingController extends Notifier<BillingState> {
     final gateway = ref.watch(purchaseGatewayProvider);
     if (gateway == null) return const BillingState();
     _gateway = gateway;
+    // Wechselt das Konto, beginnt alles neu (gemerkte Käufe gelten je Konto)
+    ref.watch(currentUserProvider.select((u) => u?.id));
+    _lastAccount = _account ?? _lastAccount;
     // Neu laden, wenn der Betreiber andere Produkte einträgt
     ref.watch(appConfigValueProvider.select((c) => c.billingProductIds.join(',')));
-    // Der Strom läuft ab jetzt: Der Store meldet auch Käufe, die beim letzten Mal nicht fertig wurden
+    // Der Strom liefert nur, was während der laufenden App passiert (und was die App selbst abfragt): Käufe, die
+    // beim letzten Mal nicht fertig wurden, meldet Google Play nicht von selbst – dafür unten [catchUp].
     final subscription = gateway.purchases.listen(_onPurchase);
     ref.onDispose(() {
       subscription.cancel();
@@ -114,7 +130,7 @@ class BillingController extends Notifier<BillingState> {
     });
     Future.microtask(() async {
       await load();
-      await retryUnverified();
+      await catchUp();
     });
     return const BillingState(loading: true);
   }
@@ -122,6 +138,47 @@ class BillingController extends Notifier<BillingState> {
   String? get _accountId {
     final user = ref.read(currentUserProvider);
     return user == null ? null : '${user.id}';
+  }
+
+  /// Das angemeldete Konto (Server und Benutzer) – null, wenn niemand angemeldet ist.
+  String? get _account {
+    final auth = ref.read(authProvider).value;
+    final user = auth?.user;
+    final serverUrl = auth?.serverUrl;
+    return user == null || serverUrl == null ? null : accountKey(serverUrl, user.id);
+  }
+
+  /// Holt nach, was liegen geblieben ist – beim Start und beim Zurückkehren in die App, ohne Meldungen:
+  /// gemerkte Käufe erneut an den Server, und den Store nach Käufen fragen, von denen der Server nichts weiß.
+  Future<void> catchUp() async {
+    await retryUnverified();
+    await _askStoreSilently();
+  }
+
+  /// Fragt Google Play still nach vorhandenen Käufen (ein Abruf auf dem Gerät). Nötig, weil der Store einen Kauf
+  /// nur der laufenden App meldet: Wurde sie während der Zahlung beendet (Bank-App, 3-D-Secure) oder die Zahlung
+  /// erst später bestätigt, erführe sonst niemand davon – und Google erstattet unbestätigte Käufe nach 3 Tagen.
+  /// Nur wenn der Server für dieses Konto keinen laufenden Kauf kennt.
+  Future<void> _askStoreSilently() async {
+    final gateway = _gateway;
+    final accountId = _accountId;
+    if (gateway == null || accountId == null || _askingStore || _restoring || state.busy) return;
+    _askingStore = true;
+    try {
+      final PremiumStatus premium;
+      try {
+        premium = await ref.read(premiumProvider.future);
+      } catch (_) {
+        return; // Stand unbekannt: beim nächsten Mal
+      }
+      if (!ref.mounted || _gateway != gateway || _restoring || state.busy) return;
+      if (premium.checkedAt == null || premium.play != null) return;
+      await gateway.restore(accountId: accountId);
+    } catch (e) {
+      debugPrint('Stille Abfrage der Käufe gescheitert: $e');
+    } finally {
+      _askingStore = false;
+    }
   }
 
   /// Fragt den Store nach den Abos (Titel und Preis).
@@ -211,10 +268,16 @@ class BillingController extends Notifier<BillingState> {
   Future<void> _onPurchase(StorePurchase purchase) async {
     if (!ref.mounted) return;
     final restoring = _restoring || purchase.status == StorePurchaseStatus.restored;
+    // Antwort auf die stille Abfrage (niemand hat „Käufe wiederherstellen“ angetippt): keine Meldungen, außer
+    // wenn dabei Premium freigeschaltet wird
+    final silent = purchase.status == StorePurchaseStatus.restored && !_restoring;
     switch (purchase.status) {
       case StorePurchaseStatus.pending:
         _endRestore();
         state = state.copyWith(busy: false, notice: () => BillingText.pending, error: () => null);
+        // Dem Server schon jetzt melden: Er prüft offene Zahlungen selbst weiter und bestätigt den Kauf bei
+        // Google, sobald bezahlt ist – auch wenn die App dann nicht läuft.
+        if (purchase.token.isNotEmpty) await _verify(purchase, restoring: false, storePending: true);
       case StorePurchaseStatus.cancelled:
         state = state.copyWith(busy: false);
       case StorePurchaseStatus.failed:
@@ -232,7 +295,7 @@ class BillingController extends Notifier<BillingState> {
       case StorePurchaseStatus.purchased:
       case StorePurchaseStatus.restored:
         _endRestore();
-        await _verify(purchase, restoring: restoring);
+        await _verify(purchase, restoring: restoring, silent: silent);
     }
   }
 
@@ -242,20 +305,33 @@ class BillingController extends Notifier<BillingState> {
   }
 
   /// Lässt den Server den Kauf prüfen und setzt das Ergebnis um.
-  Future<void> _verify(StorePurchase purchase, {required bool restoring}) async {
+  ///
+  /// [silent]: Der Kauf kam aus der stillen Abfrage – Hinweise gibt es nur, wenn dabei Premium freigeschaltet wird.
+  /// [storePending]: Die Zahlung ist laut Store noch offen – der Hinweis dazu steht schon da und bleibt stehen.
+  Future<void> _verify(
+    StorePurchase purchase, {
+    required bool restoring,
+    bool silent = false,
+    bool storePending = false,
+  }) async {
     final gateway = _gateway;
     final api = ref.read(apiProvider);
+    final quiet = silent || storePending;
     if (purchase.token.isEmpty) {
-      state = state.copyWith(busy: false, error: () => BillingText.failed('Google Play hat keinen Kaufbeleg geliefert.'));
+      if (!quiet) {
+        state = state.copyWith(busy: false, error: () => BillingText.failed('Google Play hat keinen Kaufbeleg geliefert.'));
+      }
       return;
     }
+    final account = _account ?? _lastAccount;
     if (api == null) {
       // Abgemeldet während des Kaufs: merken und nach der Anmeldung prüfen
-      _remember(purchase.productId, purchase.token);
-      state = state.copyWith(busy: false);
+      _remember(purchase.productId, purchase.token, account);
+      if (!quiet) state = state.copyWith(busy: false);
       return;
     }
-    state = state.copyWith(busy: true, error: () => null);
+    if (silent && _declined.contains('$account|${purchase.token}')) return;
+    if (!quiet) state = state.copyWith(busy: true, error: () => null);
     try {
       final result = await api.verifyPlayPurchase(productId: purchase.productId, token: purchase.token);
       if (!ref.mounted) return;
@@ -266,26 +342,36 @@ class BillingController extends Notifier<BillingState> {
         case 'active':
           await gateway?.complete(purchase);
           if (!ref.mounted) return;
-          state = state.copyWith(busy: false, notice: () => restoring ? BillingText.restored : BillingText.purchased);
+          state = state.copyWith(
+            busy: silent ? null : false,
+            notice: () => restoring ? BillingText.restored : BillingText.purchased,
+            error: () => null,
+          );
         case 'pending':
-          // Nicht abschließen: Google hat die Zahlung noch nicht bestätigt
-          state = state.copyWith(busy: false, notice: () => BillingText.pending);
+          // Nicht abschließen: Google hat die Zahlung noch nicht bestätigt. Der Server kennt den Kauf jetzt und
+          // prüft ihn selbst weiter.
+          if (!silent) state = state.copyWith(busy: false, notice: () => BillingText.pending);
         default:
+          if (storePending) return; // ein offener Kauf lässt sich nicht abschließen
           await gateway?.complete(purchase);
-          if (!ref.mounted) return;
+          if (!ref.mounted || silent) return;
           state = state.copyWith(busy: false, notice: () => BillingText.noRunningSubscription);
       }
     } catch (e) {
       if (!ref.mounted) return;
       final error = toApiException(e);
       if (_isTemporary(error)) {
-        _remember(purchase.productId, purchase.token);
-        state = state.copyWith(busy: false, notice: () => BillingText.unverified);
+        _remember(purchase.productId, purchase.token, account);
+        if (!quiet) state = state.copyWith(busy: false, notice: () => BillingText.unverified);
       } else {
         // Der Server lehnt ab (anderes Konto, gesperrt, unbekannt): nicht abschließen – einen falsch zugeordneten
         // Neukauf erstattet Google dann von selbst.
         _forget(purchase.token);
-        state = state.copyWith(busy: false, error: () => error.message);
+        if (silent) {
+          _declined.add('$account|${purchase.token}');
+        } else {
+          state = state.copyWith(busy: false, notice: storePending ? () => null : null, error: () => error.message);
+        }
       }
     }
   }
@@ -298,36 +384,46 @@ class BillingController extends Notifier<BillingState> {
 
   // ---------------------------------------------------------------- gemerkte Käufe
 
-  List<({String productId, String token})> _unverified() {
+  List<_Unverified> _unverified() {
     try {
       final raw = ref.read(sharedPreferencesProvider).getString(unverifiedKey);
       if (raw == null) return [];
       return [
         for (final item in jsonDecode(raw) as List)
           if (item is Map && item['product_id'] is String && item['token'] is String)
-            (productId: item['product_id'] as String, token: item['token'] as String),
+            (
+              productId: item['product_id'] as String,
+              token: item['token'] as String,
+              // Einträge ohne Konto (Stand vor dieser Angabe) gelten für das angemeldete Konto
+              account: item['account'] is String ? item['account'] as String : null,
+            ),
       ];
     } catch (_) {
       return [];
     }
   }
 
-  void _store(List<({String productId, String token})> items) {
+  void _store(List<_Unverified> items) {
     final prefs = ref.read(sharedPreferencesProvider);
     if (items.isEmpty) {
       prefs.remove(unverifiedKey).ignore();
     } else {
       prefs
-          .setString(unverifiedKey, jsonEncode([for (final i in items) {'product_id': i.productId, 'token': i.token}]))
+          .setString(
+            unverifiedKey,
+            jsonEncode([
+              for (final i in items) {'product_id': i.productId, 'token': i.token, 'account': ?i.account},
+            ]),
+          )
           .ignore();
     }
   }
 
-  void _remember(String productId, String token) {
+  void _remember(String productId, String token, String? account) {
     final items = _unverified();
     if (items.any((i) => i.token == token)) return;
     // Höchstens die letzten 5 – mehr offene Käufe gibt es praktisch nie
-    final next = [...items, (productId: productId, token: token)];
+    final next = [...items, (productId: productId, token: token, account: account)];
     _store(next.length > 5 ? next.sublist(next.length - 5) : next);
   }
 
@@ -336,13 +432,17 @@ class BillingController extends Notifier<BillingState> {
     if (items.any((i) => i.token == token)) _store(items.where((i) => i.token != token).toList());
   }
 
-  /// Prüft gemerkte Käufe erneut (beim Start, beim Zurückkehren in die App, bei „Käufe wiederherstellen“).
+  /// Prüft gemerkte Käufe erneut (beim Start, beim Zurückkehren in die App, bei „Käufe wiederherstellen“) – nur
+  /// die des angemeldeten Kontos: Der Kauf eines anderen Kontos (oder an einem anderen Server) bleibt liegen, bis
+  /// dessen Besitzer wieder angemeldet ist. Der Server würde ihn hier ablehnen, und er wäre verloren.
   /// Liefert true, wenn dabei Premium freigeschaltet wurde.
   Future<bool> retryUnverified() async {
     if (_retrying || _gateway == null) return false;
     final api = ref.read(apiProvider);
-    final items = _unverified();
-    if (api == null || items.isEmpty) return false;
+    final account = _account;
+    if (api == null || account == null) return false;
+    final items = _unverified().where((i) => i.account == null || i.account == account).toList();
+    if (items.isEmpty) return false;
     _retrying = true;
     var activated = false;
     try {
@@ -369,5 +469,8 @@ class BillingController extends Notifier<BillingState> {
     return activated;
   }
 }
+
+/// Gemerkter Kauf: Produkt, Kauf-Token und das Konto („Server|Benutzer-Nummer“), das gekauft hat.
+typedef _Unverified = ({String productId, String token, String? account});
 
 final billingProvider = NotifierProvider<BillingController, BillingState>(BillingController.new);

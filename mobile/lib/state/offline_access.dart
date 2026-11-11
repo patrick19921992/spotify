@@ -11,6 +11,10 @@ import 'connectivity.dart';
 /// Uhr des Geräts (in Tests ersetzbar).
 final clockProvider = Provider<DateTime Function()>((_) => DateTime.now);
 
+/// Schlüssel eines Kontos auf diesem Gerät: Server und Benutzer (für den gespeicherten Stand der
+/// Offline-Berechtigung, den Besitzer der Offline-Musik und gemerkte Käufe).
+String accountKey(String serverUrl, int userId) => '$serverUrl|$userId';
+
 /// Zuletzt vom Server bestätigter Stand „Darf dieser Benutzer offline hören?“ – liegt auf dem Gerät, damit die
 /// Antwort auch ohne Netz gilt (höchstens die Gnadenfrist lang).
 class AccessRecord {
@@ -90,13 +94,24 @@ class OfflineAccessState {
   /// Länge der Gnadenfrist in Tagen (für den Hinweis nach dem Löschen).
   final int graceDays;
 
-  const OfflineAccessState(this.access, {this.daysLeft, this.graceExpired = false, this.graceDays = 7});
+  /// Bei `checking`: Die Uhr des Geräts steht deutlich vor dem Zeitpunkt der letzten Prüfung – sie wurde
+  /// zurückgestellt. Wie lange die Prüfung her ist, lässt sich dann nicht sagen: Bis der Server neu bestätigt hat,
+  /// wird nichts geladen und nichts vom Gerät abgespielt. Gelöscht wird deswegen nichts.
+  final bool clockSuspect;
+
+  const OfflineAccessState(
+    this.access, {
+    this.daysLeft,
+    this.graceExpired = false,
+    this.graceDays = 7,
+    this.clockSuspect = false,
+  });
 
   /// Darf Neues aufs Gerät geladen werden?
   bool get canDownload => access == OfflineAccess.free || access == OfflineAccess.allowed;
 
   /// Dürfen Dateien vom Gerät abgespielt werden?
-  bool get canPlayLocal => access != OfflineAccess.locked;
+  bool get canPlayLocal => access != OfflineAccess.locked && !clockSuspect;
 
   @override
   bool operator ==(Object other) =>
@@ -104,14 +119,20 @@ class OfflineAccessState {
       other.access == access &&
       other.daysLeft == daysLeft &&
       other.graceExpired == graceExpired &&
-      other.graceDays == graceDays;
+      other.graceDays == graceDays &&
+      other.clockSuspect == clockSuspect;
 
   @override
-  int get hashCode => Object.hash(access, daysLeft, graceExpired, graceDays);
+  int get hashCode => Object.hash(access, daysLeft, graceExpired, graceDays, clockSuspect);
 
   @override
-  String toString() => 'OfflineAccessState($access, daysLeft: $daysLeft, graceExpired: $graceExpired)';
+  String toString() =>
+      'OfflineAccessState($access, daysLeft: $daysLeft, graceExpired: $graceExpired, clockSuspect: $clockSuspect)';
 }
+
+/// So weit darf die Uhr des Geräts hinter der größten je gesehenen Zeit liegen, ohne dass es als „zurückgestellt“
+/// gilt (kleine Korrekturen der Uhr über das Netz sind normal).
+const clockTolerance = Duration(minutes: 10);
 
 /// Der Zustandsautomat als reine Funktion.
 ///
@@ -134,19 +155,28 @@ OfflineAccessState evaluateOfflineAccess({
   if (!record.required) return const OfflineAccessState(OfflineAccess.free);
   // 8: vom Server bestätigt – kein Premium
   if (!record.allowed) return OfflineAccessState(OfflineAccess.locked, graceDays: record.graceDays);
-  final reference = now.isAfter(record.lastSeenAt) ? now : record.lastSeenAt;
+  // Größte je gesehene Gerätezeit (die Prüfung selbst zählt dazu)
+  final seen = record.lastSeenAt.isAfter(record.verifiedAt) ? record.lastSeenAt : record.verifiedAt;
+  final reference = now.isAfter(seen) ? now : seen;
   final age = reference.difference(record.verifiedAt);
   final grace = Duration(days: record.graceDays);
   // 7: Frist ohne Prüfung abgelaufen
   if (age > grace) return OfflineAccessState(OfflineAccess.locked, graceExpired: true, graceDays: record.graceDays);
-  // 5/6: bestätigt und innerhalb der Frist
   final left = grace - age;
   final daysLeft = (left.inMicroseconds / Duration.microsecondsPerDay).ceil();
+  // Die Uhr steht deutlich vor einer schon gesehenen Zeit: Sie wurde zurückgestellt (oder war bei der Prüfung
+  // vorgestellt). Dann stünde die Frist still – der Stand gilt nicht mehr als bestätigt, bis der Server neu
+  // geantwortet hat. Nichts laden, nichts lokal abspielen, aber auch nichts löschen.
+  if (seen.difference(now) > clockTolerance) {
+    return OfflineAccessState(OfflineAccess.checking,
+        daysLeft: daysLeft, graceDays: record.graceDays, clockSuspect: true);
+  }
+  // 5/6: bestätigt und innerhalb der Frist
   return OfflineAccessState(OfflineAccess.allowed, daysLeft: daysLeft, graceDays: record.graceDays);
 }
 
 /// Schlüssel des gespeicherten Stands – je Server und Benutzer.
-String offlineAccessKey(String serverUrl, int userId) => 'offline.access.$serverUrl|$userId';
+String offlineAccessKey(String serverUrl, int userId) => 'offline.access.${accountKey(serverUrl, userId)}';
 
 /// Entscheidet, ob dieses Gerät Musik laden und lokal abspielen darf („Offline-Hören nur mit Premium“).
 ///
@@ -232,15 +262,20 @@ class OfflineAccessController extends Notifier<OfflineAccessState> {
       _write(record);
     }
     final result = evaluateOfflineAccess(isAdmin: _isAdmin, configRequires: _configRequires, record: record, now: now);
-    if (result.access != OfflineAccess.locked || !result.graceExpired || _lastCheckFailedFor == key) return result;
-    // R3: Frist um – vor dem Löschen einmal versuchen, den Stand zu holen, wenn eine Verbindung besteht
+    if (!_needsFreshCheck(result) || _lastCheckFailedFor == key) return result;
+    // R3: Frist um – vor dem Löschen einmal versuchen, den Stand zu holen, wenn eine Verbindung besteht.
+    // Ebenso bei zurückgestellter Uhr: Nur eine neue Antwort des Servers macht den Stand wieder gültig.
     if (ref.read(isOfflineProvider) || ref.read(apiProvider) == null) return result;
     if (!_lastCheckRunning) {
       _lastCheckRunning = true;
       Future.microtask(() => _lastCheck(key));
     }
-    return const OfflineAccessState(OfflineAccess.checking);
+    return result.clockSuspect ? result : const OfflineAccessState(OfflineAccess.checking);
   }
+
+  /// Der gespeicherte Stand trägt nicht mehr: Frist abgelaufen oder Uhr zurückgestellt.
+  static bool _needsFreshCheck(OfflineAccessState result) =>
+      (result.access == OfflineAccess.locked && result.graceExpired) || result.clockSuspect;
 
   Future<void> _lastCheck(String key) async {
     try {
@@ -254,8 +289,8 @@ class OfflineAccessController extends Notifier<OfflineAccessState> {
     if (_key == key) {
       final record = _read();
       final stillExpired = record != null &&
-          evaluateOfflineAccess(isAdmin: _isAdmin, configRequires: _configRequires, record: record, now: ref.read(clockProvider)())
-              .graceExpired;
+          _needsFreshCheck(evaluateOfflineAccess(
+              isAdmin: _isAdmin, configRequires: _configRequires, record: record, now: ref.read(clockProvider)()));
       if (stillExpired) _lastCheckFailedFor = key;
     }
     state = _evaluate();
@@ -267,8 +302,9 @@ class OfflineAccessController extends Notifier<OfflineAccessState> {
     final before = state;
     final next = _evaluate();
     if (next != before) state = next;
-    // Gesperrt, weil lange nicht geprüft werden konnte, und jetzt wieder online: gleich nachfragen
-    if (next.access == OfflineAccess.locked && next.graceExpired && !ref.read(isOfflineProvider)) {
+    // Gesperrt, weil lange nicht geprüft werden konnte (oder die Uhr zurückgestellt wurde), und jetzt wieder
+    // online: gleich nachfragen
+    if (_needsFreshCheck(next) && !_lastCheckRunning && !ref.read(isOfflineProvider)) {
       ref.invalidate(premiumProvider);
     }
   }
@@ -293,3 +329,7 @@ String offlineWipeMessage(OfflineAccessState access) => access.graceExpired
     ? 'Dein Premium konnte ${access.graceDays} Tage lang nicht geprüft werden – die Offline-Musik wurde von diesem '
         'Gerät entfernt.'
     : 'Dein Premium ist abgelaufen – die Offline-Musik wurde von diesem Gerät entfernt.';
+
+/// Hinweis, wenn die Offline-Musik eines anderen Kontos (oder Servers) entfernt wurde.
+const offlineOtherAccountMessage =
+    'Die Offline-Musik gehörte zu einem anderen Konto und wurde von diesem Gerät entfernt.';

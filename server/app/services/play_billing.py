@@ -30,12 +30,18 @@ from typing import Any, Protocol
 
 import jwt
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.config import Settings
 from app.locks import write_lock
 from app.models import PlayPurchase, PremiumLicense, User
-from app.services.premium import PremiumError, live_licenses, status_of
+from app.services.premium import (
+    PLAY_TOKEN_LIFETIME_AFTER_EXPIRY,
+    PremiumError,
+    close_gaps,
+    live_licenses,
+    status_of,
+)
 
 logger = logging.getLogger("app.billing")
 
@@ -55,10 +61,19 @@ GOOGLE_STATES = {
     "SUBSCRIPTION_STATE_PENDING": "pending",
 }
 # Google nimmt einen Kauf-Token bis 60 Tage nach dem Ablauf an – danach lohnt keine Abfrage mehr
-TOKEN_LIFETIME_AFTER_EXPIRY = timedelta(days=60)
+TOKEN_LIFETIME_AFTER_EXPIRY = PLAY_TOKEN_LIFETIME_AFTER_EXPIRY
 # Rund um die Verlängerung zügig nachsehen
 RENEWAL_WINDOW = timedelta(hours=1)
 RENEWAL_RECHECK = timedelta(minutes=5)
+# Zeitraum um, Google meldet das Abo aber noch als laufend (die Verlängerung ist noch nicht verbucht): So lange gilt
+# der Stand als „unbekannt“ statt „kein Premium“ – und es wird höchstens so oft nachgefragt
+RENEWAL_TOLERANCE = timedelta(hours=1)
+OVERDUE_RECHECK = timedelta(minutes=1)
+# Zustände, in denen Google von sich aus verlängert bzw. das Ende verschiebt
+RENEWING_STATES = ("active", "grace")
+# Google antwortet bei der erneuten Prüfung mit 400/404: Das kann ein toter Token sein – oder ein falsch
+# eingestellter Paketname. So lange über das bezahlte Ende hinaus gilt der Stand als „unbekannt“, erst dann als beendet
+NOT_FOUND_TOLERANCE = timedelta(days=3)
 # Unbestätigte Käufe erstattet Google nach drei Tagen – das Bestätigen deshalb bald erneut versuchen
 UNACKNOWLEDGED_RECHECK = timedelta(minutes=10)
 # Nach einer Störung (Google nicht erreichbar, Schlüssel abgelehnt) frühestens dann wieder anfragen: Sonst hinge
@@ -77,6 +92,11 @@ MSG_BLOCKED = "Dieser Kauf wurde vom Betreiber gesperrt."
 MSG_NOT_FOUND = "Dieser Kauf wurde bei Google Play nicht gefunden."
 MSG_KEY_INVALID = "Schlüsseldatei ist ungültig."
 MSG_UNREACHABLE = "Google ist nicht erreichbar."
+# Steht bei einem Kauf, den Google bei der erneuten Prüfung nicht (mehr) kannte – er wird weiter nachgeprüft
+MSG_NOT_FOUND_ON_RECHECK = (
+    "Google kennt diesen Kauf nicht (Antwort 400/404). Stimmt der Paketname (PLAY_PACKAGE_NAME) und gehört das "
+    "Dienstkonto zu dieser App?"
+)
 
 
 @dataclass(frozen=True)
@@ -95,7 +115,15 @@ class SubscriptionInfo:
 
 
 class PurchaseNotFound(Exception):
-    """Google kennt den Token nicht (unbekannt, ungültig oder zu alt)."""
+    """Google kennt den Token nicht (unbekannt, ungültig oder zu alt).
+
+    `definite=False`: Die Antwort (400/404) kann auch von einer falschen Einstellung kommen (Paketname passt nicht
+    zum Token). Für einen neu gemeldeten Kauf heißt beides „nicht gefunden“; ein bereits bekannter Kauf darf
+    deswegen aber nicht sofort enden."""
+
+    def __init__(self, *, definite: bool = True) -> None:
+        super().__init__()
+        self.definite = definite
 
 
 class VerifierUnavailable(Exception):
@@ -264,8 +292,10 @@ class GooglePlayVerifier:
         status_code, raw = self._send(request)
         if 200 <= status_code < 300:
             return raw
-        if status_code in (400, 404, 410):
+        if status_code == 410:  # eindeutig: Der Token gilt nicht mehr
             raise PurchaseNotFound()
+        if status_code in (400, 404):
+            raise PurchaseNotFound(definite=False)
         if status_code in (401, 403):
             with self._lock:
                 self._access_token, self._access_until = "", 0.0
@@ -328,7 +358,12 @@ def _end_license(license_: PremiumLicense | None, now: datetime) -> None:
     """Premium aus diesem Kauf endet sofort. Eine Play-Lizenz ist nie unbegrenzt (expires_at nie None)."""
     if license_ is None:
         return
+    cut_short = license_.expires_at is None or license_.expires_at > now
     license_.expires_at = now if license_.expires_at is None else min(license_.expires_at, now)
+    db = object_session(license_)
+    if cut_short and db is not None and license_.revoked_at is None:
+        # Vor dem bezahlten Ende beendet (Erstattung): Dahinter gehängte Codes beginnen jetzt statt erst dann
+        close_gaps(db, license_.user_id, now)
 
 
 def sync_license(purchase: PlayPurchase, info: SubscriptionInfo, now: datetime) -> None:
@@ -369,6 +404,14 @@ def _expire(purchase: PlayPurchase, now: datetime, *, checked: bool) -> None:
     _end_license(purchase.license, now)
 
 
+def _account_is_gone(db: Session, account_id: str) -> bool:
+    """Die Kennung im Kauf nennt eine Benutzer-Nummer, die es nicht mehr gibt (Konto gelöscht): Dann darf ein neues
+    Konto den Kauf übernehmen. Alles andere (fremde Kennung, vorhandenes Konto) bleibt gesperrt."""
+    if not account_id.isascii() or not account_id.isdigit() or len(account_id) > 18:
+        return False
+    return db.get(User, int(account_id)) is None
+
+
 def register_purchase(
     db: Session, user: User, product_id: str, token: str, info: SubscriptionInfo, now: datetime
 ) -> PlayPurchase:
@@ -378,7 +421,9 @@ def register_purchase(
     if product_id not in info.product_ids:
         raise PremiumError(400, MSG_UNKNOWN_PRODUCT)
     # Die App gibt beim Kauf die Benutzer-Nummer mit – Google liefert sie hier zurück
-    if info.obfuscated_account_id and info.obfuscated_account_id != str(user.id):
+    if info.obfuscated_account_id and info.obfuscated_account_id != str(user.id) and not _account_is_gone(
+        db, info.obfuscated_account_id
+    ):
         raise PremiumError(409, MSG_OTHER_ACCOUNT)
 
     digest = hash_token(token)
@@ -455,10 +500,34 @@ def acknowledge(db: Session, purchase: PlayPurchase, verifier: PurchaseVerifier,
     return True
 
 
+def awaiting_renewal(purchase: PlayPurchase, now: datetime) -> bool:
+    """Der Zeitraum ist gerade um, Google meldet das Abo aber (noch) als laufend: Die Verlängerung ist vermutlich
+    nur noch nicht verbucht. Daraus darf niemand „kein Premium“ lesen."""
+    return (
+        purchase.state in RENEWING_STATES
+        and purchase.expires_at is not None
+        and purchase.expires_at <= now < purchase.expires_at + RENEWAL_TOLERANCE
+    )
+
+
+def _suspect(purchase: PlayPurchase, now: datetime) -> bool:
+    """Beendet, weil Google den Kauf bei der erneuten Prüfung nicht kannte – solange der Token noch gelten kann,
+    wird weiter nachgesehen (nach einer korrigierten Einstellung lebt der Kauf von selbst wieder auf)."""
+    return (
+        purchase.state == "expired"
+        and purchase.last_error == MSG_NOT_FOUND_ON_RECHECK
+        and (purchase.expires_at is None or purchase.expires_at >= now - TOKEN_LIFETIME_AFTER_EXPIRY)
+    )
+
+
 def _is_due(purchase: PlayPurchase, now: datetime, recheck: timedelta) -> bool:
     age = now - purchase.last_checked_at
     if age >= recheck:
         return True
+    if purchase.state in ENTITLED and purchase.expires_at is not None and purchase.expires_at <= now:
+        # Der Zeitraum ist um: Sofort nachsehen, ob verlängert wurde – die Lizenz ist sonst zu Unrecht zu Ende.
+        # Hat Google nach dem Ablauf schon geantwortet (Verlängerung noch nicht verbucht), nur noch minütlich
+        return purchase.last_checked_at < purchase.expires_at or age >= OVERDUE_RECHECK
     if purchase.expires_at is not None and purchase.expires_at <= now + RENEWAL_WINDOW and age >= RENEWAL_RECHECK:
         return True
     return not purchase.acknowledged and age >= UNACKNOWLEDGED_RECHECK
@@ -469,11 +538,23 @@ def recheck_purchase(db: Session, purchase: PlayPurchase, verifier: PurchaseVeri
     Auskunft möglich ist (dann wird nur `last_error` gesetzt)."""
     try:
         info = verifier.get_subscription(purchase.purchase_token)  # bewusst ohne write_lock (Netz)
-    except PurchaseNotFound:
+    except PurchaseNotFound as exc:
+        if exc.definite:
+            with write_lock:
+                _expire(purchase, now, checked=True)
+                db.commit()
+            return
+        # 400/404: toter Token oder falsche Einstellung (Paketname)? Bis einige Tage nach dem bezahlten Ende nichts
+        # beenden; danach gilt der Kauf als beendet, wird aber weiter nachgeprüft (siehe _suspect)
+        paid_until = purchase.expires_at or purchase.last_checked_at
         with write_lock:
-            _expire(purchase, now, checked=True)
+            if purchase.state == "expired" or now >= paid_until + NOT_FOUND_TOLERANCE:
+                _expire(purchase, now, checked=True)
+            purchase.last_error = MSG_NOT_FOUND_ON_RECHECK
             db.commit()
-        return
+        if purchase.state == "expired":
+            return
+        raise VerifierUnavailable(MSG_NOT_FOUND_ON_RECHECK) from None
     except VerifierUnavailable as exc:
         with write_lock:
             purchase.last_error = str(exc)[:300]
@@ -495,6 +576,19 @@ def open_purchases(db: Session, user_id: int) -> list[PlayPurchase]:
     return [row for row in rows if row.license is None or row.license.revoked_at is None]
 
 
+def _suspect_purchases(db: Session, user_id: int, now: datetime) -> list[PlayPurchase]:
+    rows = db.scalars(
+        select(PlayPurchase)
+        .where(
+            PlayPurchase.user_id == user_id,
+            PlayPurchase.state == "expired",
+            PlayPurchase.last_error == MSG_NOT_FOUND_ON_RECHECK,
+        )
+        .order_by(PlayPurchase.id)
+    ).unique()
+    return [row for row in rows if _suspect(row, now) and (row.license is None or row.license.revoked_at is None)]
+
+
 def refresh_user(
     db: Session,
     user: User,
@@ -510,6 +604,18 @@ def refresh_user(
     hätte der Benutzer kein Premium. Dann darf niemand „kein Premium“ daraus lesen (die App löscht sonst Musik)."""
     recheck = timedelta(hours=recheck_hours)
     unclear: list[PlayPurchase] = []
+    for purchase in _suspect_purchases(db, user.id, now):
+        # Nebenbei und ohne Folgen für die Antwort: Der Kauf gilt als beendet, bis Google ihn wieder kennt
+        failed_at = backoff.get(purchase.id) if backoff is not None else None
+        if verifier is None or now - purchase.last_checked_at < recheck:
+            continue
+        if failed_at is not None and timedelta(0) <= now - failed_at < FAILURE_BACKOFF:
+            continue
+        try:
+            recheck_purchase(db, purchase, verifier, now)
+        except VerifierUnavailable:
+            if backoff is not None:
+                backoff[purchase.id] = now
     for purchase in open_purchases(db, user.id):
         if purchase.expires_at is not None and purchase.expires_at < now - TOKEN_LIFETIME_AFTER_EXPIRY:
             with write_lock:
@@ -538,6 +644,9 @@ def refresh_user(
         else:
             if backoff is not None:
                 backoff.pop(purchase.id, None)
+    # Zeitraum gerade um, Verlängerung bei Google noch nicht verbucht: „unbekannt“, nicht „kein Premium“
+    known = {purchase.id for purchase in unclear}
+    unclear += [p for p in open_purchases(db, user.id) if p.id not in known and awaiting_renewal(p, now)]
     if not unclear:
         return True
     # Reichen die übrigen Lizenzen (Code, Admin, andere Käufe) für Premium, ist der Stand trotzdem klar

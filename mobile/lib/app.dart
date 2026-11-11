@@ -21,8 +21,9 @@ class SelfifyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Player mit Server/Offline/Einstellungen verbinden
     ref.watch(playbackBridgeProvider);
-    // Kauf in der App (nur Play-Version, wenn eingeschaltet): Der Kauf-Strom muss ab dem Start laufen, damit
-    // nachgeholte Käufe ankommen. In allen anderen Fällen wird das Kauf-Paket nie angefasst.
+    // Kauf in der App (nur Play-Version, wenn eingeschaltet): Die Steuerung läuft ab dem Start – sie hört auf den
+    // Kauf-Strom und fragt den Store selbst nach Käufen, die beim letzten Mal nicht fertig wurden (von sich aus
+    // meldet Google Play sie nicht). In allen anderen Fällen wird das Kauf-Paket nie angefasst.
     if (ref.watch(billingVisibleProvider)) ref.listen(billingProvider, (_, _) {});
     // Beim Abmelden Wiedergabe beenden
     ref.listen(authProvider, (previous, next) {
