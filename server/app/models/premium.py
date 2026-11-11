@@ -26,6 +26,8 @@ class PremiumCode(Base):
     # Einlösbar bis (None = beliebig lange)
     valid_until: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # Welche Leistungen der Code freischaltet (kommagetrennt, siehe services/features.py); None = alle
+    features: Mapped[str | None] = mapped_column(String(200), default=None)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
@@ -50,6 +52,9 @@ class PremiumLicense(Base):
     expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     note: Mapped[str] = mapped_column(String(200), default="")
+    # Umfang (kommagetrennt, beim Einlösen vom Code übernommen); None = alle Leistungen (Admin-Vergabe, Abo, alte
+    # Lizenzen)
+    features: Mapped[str | None] = mapped_column(String(200), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
     user: Mapped[User] = relationship(lazy="joined")
@@ -89,6 +94,9 @@ class PlayPurchase(Base):
     last_checked_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     # Letzte Störung beim Prüfen (ohne Geheimnisse)
     last_error: Mapped[str] = mapped_column(String(300), default="")
+    # Laufzeit laut Google: Kennung des Basis-Abos ("" = unbekannt) und des Angebots ("" = keins)
+    base_plan_id: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    offer_id: Mapped[str] = mapped_column(String(64), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 

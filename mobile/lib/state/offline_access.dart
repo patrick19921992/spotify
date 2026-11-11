@@ -11,6 +11,9 @@ import 'connectivity.dart';
 /// Uhr des Geräts (in Tests ersetzbar).
 final clockProvider = Provider<DateTime Function()>((_) => DateTime.now);
 
+/// Gemerkte, vom Server noch nicht bestätigte Käufe (`BillingController.unverifiedKey`).
+const unverifiedPurchasesKey = 'billing.unverified';
+
 /// Schlüssel eines Kontos auf diesem Gerät: Server und Benutzer (für den gespeicherten Stand der
 /// Offline-Berechtigung, den Besitzer der Offline-Musik und gemerkte Käufe).
 String accountKey(String serverUrl, int userId) => '$serverUrl|$userId';
@@ -261,7 +264,13 @@ class OfflineAccessController extends Notifier<OfflineAccessState> {
       record = record.seenAt(now);
       _write(record);
     }
-    final result = evaluateOfflineAccess(isAdmin: _isAdmin, configRequires: _configRequires, record: record, now: now);
+    var result = evaluateOfflineAccess(isAdmin: _isAdmin, configRequires: _configRequires, record: record, now: now);
+    // Ein Kauf dieses Kontos liegt noch unbestätigt auf dem Gerät (z. B. nach einem Wechsel der Laufzeit: der alte
+    // Kauf ist bei Google beendet, der neue noch nicht beim Server): „nicht erlaubt“ gilt dann als unbekannt –
+    // nichts laden, aber auch nichts löschen.
+    if (result.access == OfflineAccess.locked && !result.graceExpired && _hasUnverifiedPurchase(key)) {
+      result = OfflineAccessState(OfflineAccess.checking, graceDays: result.graceDays);
+    }
     if (!_needsFreshCheck(result) || _lastCheckFailedFor == key) return result;
     // R3: Frist um – vor dem Löschen einmal versuchen, den Stand zu holen, wenn eine Verbindung besteht.
     // Ebenso bei zurückgestellter Uhr: Nur eine neue Antwort des Servers macht den Stand wieder gültig.
@@ -271,6 +280,21 @@ class OfflineAccessController extends Notifier<OfflineAccessState> {
       Future.microtask(() => _lastCheck(key));
     }
     return result.clockSuspect ? result : const OfflineAccessState(OfflineAccess.checking);
+  }
+
+  /// Liegt für dieses Konto (oder ohne Konto) ein gemerkter, noch nicht bestätigter Kauf vor?
+  bool _hasUnverifiedPurchase(String key) {
+    final account = key.substring('offline.access.'.length);
+    try {
+      final raw = ref.read(sharedPreferencesProvider).getString(unverifiedPurchasesKey);
+      if (raw == null || raw.isEmpty) return false;
+      final items = jsonDecode(raw);
+      if (items is! List) return false;
+      return items.any((item) =>
+          item is Map && item['token'] is String && (item['account'] == null || item['account'] == account));
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Der gespeicherte Stand trägt nicht mehr: Frist abgelaufen oder Uhr zurückgestellt.

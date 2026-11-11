@@ -2,7 +2,7 @@
 
 import mimetypes
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
@@ -10,9 +10,11 @@ from fastapi.responses import FileResponse
 from app.deps import AppSettings, AuthContext, DbSession, MediaAuth
 from app.library.covers import COVER_SIZES
 from app.library.transcode import QUALITY_BITRATES, TranscodeUnavailableError, needs_transcode
-from app.models import Cover, Track, utcnow
+from app.models import Cover, utcnow
 from app.services import app_config, play_billing, premium
+from app.services import features as feature_set
 from app.services.clients import CLIENT_HEADER, parse_client
+from app.services.visibility import cover_visible, get_track_or_404, visibility_for
 
 router = APIRouter(tags=["Streaming"])
 
@@ -41,7 +43,7 @@ def media_type_for(path: Path, kind: str) -> str:
     return MIME_TYPES.get(suffix) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
-def _require_current_app(request: Request, auth: AuthContext, db: DbSession) -> None:
+def _require_current_app(request: Request, auth: AuthContext, db: DbSession, config: dict[str, Any]) -> None:
     """426, wenn die Offline-Sperre eine neuere App verlangt. Admins und Premium-Nutzer sind immer ausgenommen –
     auch Abonnenten, deren Zeitraum gerade um ist und bei denen die Verlängerung noch nicht nachgesehen wurde."""
     if auth.user.is_admin:
@@ -50,10 +52,11 @@ def _require_current_app(request: Request, auth: AuthContext, db: DbSession) -> 
     # auf diesem Gerät zuletzt gemeldet hat. Fehlt beides, gilt die App als zu alt
     client = parse_client(request.headers.get(CLIENT_HEADER))
     build = client.build if client is not None and client.build is not None else auth.session.client_build
-    if not app_config.client_too_old(app_config.get_all(db), build):
+    if not app_config.client_too_old(config, build):
         return
     now = utcnow()
-    if premium.premium_status(db, auth.user, now).active:
+    # Ausgenommen ist, wessen Premium das Offline-Hören umfasst (ein Teil-Code ohne Offline-Hören zählt nicht)
+    if "offline" in premium.premium_status(db, auth.user, now).features:
         return
     # Abo über Google Play, dessen Zeitraum gerade um ist: Die Lizenz ist hier kurz „abgelaufen“, bis die App den
     # Premium-Stand wieder abfragt (erst dann wird Google gefragt). Zahlende Abonnenten bekommen deshalb kein 426 –
@@ -81,11 +84,21 @@ def stream_track(
     """Liefert die Datei mit Spulen (HTTP Range). Bei Bedarf als AAC umgewandelt (Datensparmodus/iPhone).
 
     Ist „Offline-Hören nur mit Premium“ an und eine Mindest-Build-Nummer eingestellt, bekommen Benutzer ohne Premium
-    mit einer älteren App HTTP 426: Alte Apps kennen die Sperre nicht und würden weiter aufs Gerät laden."""
-    _require_current_app(request, auth, db)
-    track = db.get(Track, track_id)
-    if track is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Titel nicht gefunden.")
+    mit einer älteren App HTTP 426: Alte Apps kennen die Sperre nicht und würden weiter aufs Gerät laden.
+
+    Premium-Leistungen (nur, wenn der Betreiber sie auf „nur Premium“ stellt): Ohne „Videos ansehen“ gibt es ein
+    Video nur als Ton (sonst 403), ohne „Höhere Tonqualität“ wird die Qualität still auf die Gratis-Stufe gesenkt."""
+    config = app_config.get_all(db)
+    _require_current_app(request, auth, db, config)
+    # Unsichtbar (verborgene Rubrik) wie nicht vorhanden – und zwar vor den 403 für Video und Premium. Das gilt auch
+    # für Offline-Downloads, denn sie laufen über diesen Endpunkt
+    track = get_track_or_404(db, visibility_for(db, auth.user), track_id)
+    access = feature_set.access_for(db, auth.user, config)
+    if track.media_type == "video" and not audio_only and not access.allows("video"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, feature_set.MSG_VIDEO)
+    if not access.allows("hq_audio"):
+        # Still: Alte Apps laufen weiter, nur in der Gratis-Qualität
+        quality = feature_set.clamp_quality(quality, config["free_audio_quality"])  # type: ignore[assignment]
     media_root = settings.media_dir.resolve()
     path = (settings.media_dir / track.path).resolve()
     if not path.is_relative_to(media_root) or not path.is_file():
@@ -118,7 +131,7 @@ def stream_track(
 def get_cover(
     cover_id: str,
     request: Request,
-    _: MediaAuth,
+    auth: MediaAuth,
     db: DbSession,
     size: Annotated[int, Query(description=f"0 = Original, sonst eine von {COVER_SIZES}")] = 300,
 ) -> FileResponse:
@@ -127,6 +140,9 @@ def get_cover(
     if size and size not in COVER_SIZES:
         size = min(COVER_SIZES, key=lambda s: abs(s - size))
     if db.get(Cover, cover_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cover nicht gefunden.")
+    # Eingeschränkte Konten: nur Cover von sichtbaren Titeln, Alben, Künstlern und erlaubten Playlists
+    if not cover_visible(db, visibility_for(db, auth.user), cover_id, auth.user):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cover nicht gefunden.")
     db.close()  # Verbindung nicht bis zum Ende der Übertragung belegen
     path = request.app.state.covers.path_for(cover_id, size or None)

@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session, object_session
 from app.config import Settings
 from app.locks import write_lock
 from app.models import PlayPurchase, PremiumLicense, User
+from app.services.features import ALL as ALL_FEATURES
 from app.services.premium import (
     PLAY_TOKEN_LIFETIME_AFTER_EXPIRY,
     PremiumError,
@@ -120,6 +121,9 @@ class SubscriptionInfo:
     obfuscated_account_id: str  # "" wenn nicht gesetzt
     linked_purchase_token: str  # "" wenn nicht gesetzt
     is_test: bool
+    # Laufzeit: Kennung des Basis-Abos und des Angebots laut Google ("" = unbekannt bzw. keins)
+    base_plan_id: str = ""
+    offer_id: str = ""
 
 
 class PurchaseNotFound(Exception):
@@ -174,6 +178,10 @@ def parse_subscription(data: object) -> SubscriptionInfo:
     expiries = [t for t in (_parse_time(item.get("expiryTime")) for item in items) if t is not None]
     plans = [item.get("autoRenewingPlan") for item in items]
     external = data.get("externalAccountIdentifiers")
+    # Laufzeit aus dem Posten mit dem spätesten Ablauf (ohne Ablauf: dem ersten)
+    current = _latest_item(items)
+    offer = current.get("offerDetails")
+    offer = offer if isinstance(offer, dict) else {}
     return SubscriptionInfo(
         state=GOOGLE_STATES.get(str(data.get("subscriptionState", "")), "expired"),
         product_ids=tuple(str(item["productId"]) for item in items if item.get("productId")),
@@ -186,7 +194,21 @@ def parse_subscription(data: object) -> SubscriptionInfo:
         ),
         linked_purchase_token=str(data.get("linkedPurchaseToken") or ""),
         is_test="testPurchase" in data,
+        base_plan_id=_text(offer.get("basePlanId"))[:64],
+        offer_id=_text(offer.get("offerId"))[:64],
     )
+
+
+def _latest_item(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Der Posten mit dem spätesten Ablauf; hat keiner einen, der erste (keiner: leer)."""
+    dated = [(t, item) for item in items if (t := _parse_time(item.get("expiryTime"))) is not None]
+    if dated:
+        return max(dated, key=lambda pair: pair[0])[1]
+    return items[0] if items else {}
+
+
+def _text(value: object) -> str:
+    return value if isinstance(value, str) else ""
 
 
 def load_service_account(key_file: Path) -> dict[str, str]:
@@ -401,6 +423,9 @@ def _apply(purchase: PlayPurchase, info: SubscriptionInfo, now: datetime) -> Non
     purchase.acknowledged = info.acknowledged
     purchase.order_id = info.order_id or purchase.order_id
     purchase.is_test = info.is_test
+    # Eine Antwort ohne Angabe löscht die bekannte Laufzeit nicht
+    purchase.base_plan_id = info.base_plan_id or purchase.base_plan_id
+    purchase.offer_id = info.offer_id or purchase.offer_id
     purchase.last_checked_at = now
     purchase.last_error = ""
     purchase.updated_at = now
@@ -680,7 +705,9 @@ def refresh_user(
     # Reichen die übrigen Lizenzen (Code, Admin, andere Käufe) für Premium, ist der Stand trotzdem klar
     skip = {purchase.license_id for purchase in unclear if purchase.license_id is not None}
     others = [lic for lic in live_licenses(db, user.id, now) if lic.id not in skip]
-    return status_of(others, now).active
+    # Nur ein voller Umfang macht den Stand klar: Ein zusätzlicher Teil-Code (z. B. ohne Offline-Hören) hieße sonst
+    # „klar ohne Offline“ – und die App löschte die Musik eines Abonnenten bei einer Störung
+    return status_of(others, now).features == ALL_FEATURES
 
 
 def premium_unsettled(db: Session, user_id: int, now: datetime) -> bool:

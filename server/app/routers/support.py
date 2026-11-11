@@ -16,8 +16,11 @@ from app.schemas.support import (
     RequestIn,
     RequestOut,
     RequestPatchIn,
+    RequestQuotaOut,
     UserBrief,
 )
+from app.services import app_config
+from app.services import features as feature_set
 from app.services import support as service
 
 router = APIRouter(tags=["Wünsche & Fehlermeldungen"])
@@ -68,15 +71,48 @@ def _bug_out(item: BugReport) -> BugReportOut:
 
 @router.post("/requests", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
 def create_request(body: RequestIn, user: CurrentUser, db: DbSession) -> RequestOut:
-    """„Song wünschen“. Der Admin sieht den Wunsch im Dashboard und entscheidet."""
+    """„Song wünschen“. Der Admin sieht den Wunsch im Dashboard und entscheidet.
+    Stellt der Betreiber „Mehr Song-Wünsche“ auf „nur Premium“, gilt ohne Premium eine Grenze je Woche."""
+    config = app_config.get_all(db)
+    access = feature_set.access_for(db, user, config)
+    weekly_limit = None if access.allows("requests") else int(config["free_requests_per_week"])
     # Zählen, einfügen und speichern am Stück – sonst umgehen gleichzeitige Anfragen die Grenzen
     with write_lock:
         try:
-            item = service.create_request(db, user, title=body.title, artist=body.artist, note=body.note)
+            item = service.create_request(
+                db, user, title=body.title, artist=body.artist, note=body.note, weekly_limit=weekly_limit
+            )
         except service.SupportError as exc:
             raise HTTPException(exc.status_code, exc.message) from None
         db.commit()
     return _request_out(item)
+
+
+@router.get("/requests/quota", response_model=RequestQuotaOut)
+def request_quota(user: CurrentUser, db: DbSession) -> RequestQuotaOut:
+    """Wie viele Wünsche diese Woche noch gehen (rollierend 7 Tage). Ohne Grenze: limit/left/resets_at = null."""
+    now = utcnow()
+    config = app_config.get_all(db)
+    limited = not feature_set.access_for(db, user, config, now).allows("requests")
+    times = service.week_requests(db, user, now)
+    if not limited:
+        return RequestQuotaOut(limited=False, limit=None, used=len(times), left=None, resets_at=None)
+    limit = int(config["free_requests_per_week"])
+    if limit <= 0 or not times:
+        resets_at = None  # ohne Premium nie / es ist noch alles frei
+    elif len(times) >= limit:
+        # Es zählen auch Wünsche aus der Zeit mit Premium oder vor dem Einschalten der Grenze (dann mehr als limit):
+        # Frei wird erst wieder etwas, wenn so viele herausgefallen sind, dass weniger als limit übrig bleiben.
+        resets_at = times[len(times) - limit] + service.REQUEST_WEEK
+    else:
+        resets_at = times[0] + service.REQUEST_WEEK
+    return RequestQuotaOut(
+        limited=True,
+        limit=limit,
+        used=len(times),
+        left=max(0, limit - len(times)),
+        resets_at=resets_at,
+    )
 
 
 @router.get("/requests", response_model=list[RequestOut])

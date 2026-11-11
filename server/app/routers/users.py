@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.deps import AdminUser, DbSession
 from app.locks import write_lock
-from app.models import User
+from app.models import Category, User
 from app.schemas.user import UserCreateIn, UserOut, UserUpdateIn
 from app.security import hash_password
 from app.services.auth import other_active_admins as _other_active_admins
@@ -21,6 +21,15 @@ def _get_user(db: DbSession, user_id: int) -> User:
     return user
 
 
+def _categories(db: DbSession, category_ids: list[int]) -> list[Category]:
+    """Rubriken zu den IDs – eine unbekannte ID ergibt 404."""
+    wanted = set(category_ids)
+    categories = list(db.scalars(select(Category).where(Category.id.in_(wanted)))) if wanted else []
+    if len(categories) != len(wanted):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Rubrik nicht gefunden.")
+    return categories
+
+
 @router.get("", response_model=list[UserOut])
 def list_users(_: AdminUser, db: DbSession) -> list[UserOut]:
     return [UserOut.model_validate(u) for u in db.scalars(select(User).order_by(User.username))]
@@ -30,12 +39,15 @@ def list_users(_: AdminUser, db: DbSession) -> list[UserOut]:
 def create_user(body: UserCreateIn, _: AdminUser, db: DbSession) -> UserOut:
     if db.scalar(select(User.id).where(User.username == body.username)) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Der Benutzername \"{body.username}\" ist schon vergeben.")
+    categories = _categories(db, body.category_ids)
     user = User(
         username=body.username,
         display_name=body.display_name or body.username.capitalize(),
         password_hash=hash_password(body.password),
         is_admin=body.is_admin,
         can_download=body.can_download,
+        all_categories=body.all_categories,
+        categories=categories,
     )
     db.add(user)
     db.commit()
@@ -58,6 +70,7 @@ def update_user(user_id: int, body: UserUpdateIn, admin: AdminUser, db: DbSessio
             raise HTTPException(status.HTTP_409_CONFLICT, "Es muss mindestens ein aktiver Admin bleiben.")
         if user.id == admin.id and body.is_active is False:
             raise HTTPException(status.HTTP_409_CONFLICT, "Du kannst dich nicht selbst deaktivieren.")
+        categories = _categories(db, body.category_ids) if body.category_ids is not None else None
 
         if body.display_name is not None:
             user.display_name = body.display_name
@@ -65,9 +78,17 @@ def update_user(user_id: int, body: UserUpdateIn, admin: AdminUser, db: DbSessio
             user.is_admin = body.is_admin
         if body.can_download is not None:
             user.can_download = body.can_download
+        if categories is not None:
+            user.categories = categories
+        if body.all_categories is not None:
+            # Die gespeicherte Auswahl bleibt erhalten, auch wenn das Konto wieder alles sieht
+            user.all_categories = body.all_categories
         if body.is_active is not None:
             user.is_active = body.is_active
-            if not body.is_active:
+            if body.is_active:
+                # Freischalten: Ein wartendes Konto ist damit freigegeben
+                user.approval_pending = False
+            else:
                 revoke_all_sessions(db, user.id)
         if body.password is not None:
             # Passwort zurückgesetzt -> alle Geräte dieses Benutzers abmelden

@@ -42,14 +42,32 @@ String? playSubscriptionLabel(PlaySubscription play) {
 }
 
 /// Vorteile, die die Premium-Seite aufzählt: die Zeilen des Betreibers (Dashboard) – oder, wenn er keine
-/// eingetragen hat, was sich aus den Schaltern ergibt.
-List<String> premiumBenefitsFor(AppConfig config) {
+/// eingetragen hat, was sich aus den Schaltern ergibt (nur Leistungen, die wirklich auf „nur Premium“ stehen).
+List<String> premiumBenefitsFor(AppConfig config, {bool wishlistVisible = false}) {
   if (config.premiumBenefits.isNotEmpty) return config.premiumBenefits;
+  final only = config.premiumOnly;
   return [
-    if (config.offlineRequiresPremium) 'Musik aufs Gerät laden und offline hören',
+    if (config.offlineRequiresPremium || only.contains(PremiumFeature.offline)) 'Musik aufs Gerät laden und offline hören',
     if (config.adsEnabled && isPlayChannel) 'Keine Werbung',
+    if (only.contains(PremiumFeature.hqAudio))
+      'Beste Tonqualität – ohne Premium höchstens ${config.freeAudioQuality == 'low' ? 96 : 160} kbit/s',
+    if (only.contains(PremiumFeature.video)) 'Videos ansehen – ohne Premium nur als Ton',
+    if (only.contains(PremiumFeature.lyrics)) 'Songtexte mitlesen',
+    if (only.contains(PremiumFeature.requests) && wishlistVisible)
+      config.freeRequestsPerWeek == 0
+          ? 'Songs wünschen'
+          : 'Unbegrenzt Songs wünschen – ohne Premium ${config.freeRequestsPerWeek} pro Woche',
+    if (only.contains(PremiumFeature.skips))
+      'Unbegrenzt überspringen – ohne Premium ${config.freeSkipsPerHour}-mal pro Stunde',
+    if (config.premiumBadgeEnabled) 'Premium-Abzeichen im Profil',
   ];
 }
+
+/// Leistungen, die gerade „nur Premium“ sind – laut App-Konfiguration oder Premium-Antwort.
+List<String> premiumOnlyFeatures(AppConfig config, PremiumStatus? status) => [
+      for (final f in PremiumFeature.all)
+        if (config.premiumOnly.contains(f) || (status?.premiumOnly.contains(f) ?? false)) f,
+    ];
 
 /// „Premium“: Stand anzeigen, in der Play-Version (wenn eingeschaltet) ein Abo über Google Play abschließen und
 /// einen Premium-Code einlösen. Was Premium bringt, legt der Betreiber im Dashboard fest.
@@ -103,7 +121,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
     final premium = ref.watch(premiumProvider);
     final config = ref.watch(appConfigValueProvider);
     final offlineLocked = config.offlineRequiresPremium || (premium.value?.offlineRequiresPremium ?? false);
-    final benefits = premiumBenefitsFor(config);
+    final benefits = premiumBenefitsFor(config, wishlistVisible: ref.watch(wishlistVisibleProvider));
     final showIntro =
         config.premiumHeadline.isNotEmpty || config.premiumDescription.isNotEmpty || benefits.isNotEmpty;
     final billingVisible = ref.watch(billingVisibleProvider);
@@ -116,6 +134,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
           _StatusCard(
             premium: premium,
             offlineLocked: offlineLocked,
+            premiumOnly: premiumOnlyFeatures(config, premium.value),
             onRetry: () => ref.invalidate(premiumProvider),
           ),
           if (play != null && playSubscriptionLabel(play) != null) ...[
@@ -192,13 +211,30 @@ class _StatusCard extends StatelessWidget {
 
   /// „Offline-Hören nur mit Premium“ ist eingeschaltet – dann nennt die Karte das statt der Werbung.
   final bool offlineLocked;
+
+  /// Leistungen, die nur mit Premium gehen.
+  final List<String> premiumOnly;
   final VoidCallback onRetry;
 
-  const _StatusCard({required this.premium, required this.offlineLocked, required this.onRetry});
+  const _StatusCard({
+    required this.premium,
+    required this.offlineLocked,
+    required this.premiumOnly,
+    required this.onRetry,
+  });
 
   String _benefit(PremiumStatus status) {
+    // Mehr als das Offline-Hören ist eingeschränkt: die Leistungen nennen
+    if (premiumOnly.any((f) => f != PremiumFeature.offline)) {
+      if (!status.active) return 'Mit Premium: ${PremiumFeature.names(premiumOnly)}';
+      if (status.hasAll) return 'Alle Premium-Vorteile sind freigeschaltet.';
+      return 'Freigeschaltet: ${PremiumFeature.names(status.features ?? const [])}';
+    }
     if (offlineLocked) {
-      return status.active ? 'Offline-Hören ist freigeschaltet.' : 'Mit Premium kannst du Musik aufs Gerät laden.';
+      // Teil-Code ohne Offline: Premium läuft, Offline aber nicht (alter Server ohne Umfang: wie bisher nach active)
+      if (status.has(PremiumFeature.offline)) return 'Offline-Hören ist freigeschaltet.';
+      if (status.active) return 'Freigeschaltet: ${PremiumFeature.names(status.features ?? const [])}';
+      return 'Mit Premium kannst du Musik aufs Gerät laden.';
     }
     return status.active ? 'Du siehst keine Werbung.' : 'Mit Premium siehst du keine Werbung.';
   }
@@ -291,8 +327,9 @@ class _SubscriptionRow extends ConsumerWidget {
   }
 }
 
-/// Kaufkarte: Abo über Google Play abschließen oder einen vorhandenen Kauf wiederherstellen. Den Preis liefert der
-/// Store (der Betreiber legt ihn in der Play Console fest).
+/// Kaufkarte: Laufzeit wählen und ein Abo über Google Play abschließen, die Laufzeit wechseln oder einen vorhandenen
+/// Kauf wiederherstellen. Die Preise liefert der Store (der Betreiber legt sie in der Play Console fest); die App
+/// rechnet daraus nur den Monatspreis und die Ersparnis gegenüber monatlich aus.
 class _PurchaseCard extends ConsumerWidget {
   final PremiumStatus? status;
 
@@ -302,31 +339,65 @@ class _PurchaseCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final billing = ref.watch(billingProvider);
     final controller = ref.read(billingProvider.notifier);
-    // Mit laufendem Abo oder unbegrenztem Premium gibt es nichts zu kaufen
-    final canBuy = status != null && status!.play == null && !status!.unlimited;
+    final config = ref.watch(appConfigValueProvider);
+    final status = this.status;
+    final play = status?.play;
+    // Ohne laufendes Abo und ohne volles unbegrenztes Premium gibt es etwas zu kaufen (mit unbegrenztem Teil-Code
+    // darf man abonnieren – das Abo schaltet alles frei)
+    final canBuy = status != null && play == null && !(status.unlimited && status.hasAll);
+    // Laufzeit wechseln: nur bei laufendem Abo, dessen Laufzeit bekannt ist
+    final canChange = play != null && (play.state == 'active' || play.state == 'canceled') && play.basePlanId.isNotEmpty;
+    final plans = billing.plans;
+    final selected = billing.selected;
+    final recommended = recommendedPlan(plans, config);
+    bool isOwn(StorePlan plan) =>
+        play != null && play.basePlanId == plan.basePlanId && play.productId == plan.productId;
     final notice = billing.notice;
     final error = billing.error;
+    final Widget? action;
+    if (selected == null || billing.loading) {
+      action = null;
+    } else if (canBuy) {
+      action = AccountButton(
+        label: hasFreeTrial(selected.offer) ? 'Gratis testen' : '${periodLabel(selected.regular.billingPeriod)} abonnieren',
+        loading: billing.busy,
+        onPressed: () => controller.buy(selected),
+      );
+    } else if (canChange && !isOwn(selected)) {
+      action = AccountButton(
+        label: 'Zu ${periodLabel(selected.regular.billingPeriod)} wechseln',
+        loading: billing.busy,
+        onPressed: () => controller.change(selected),
+      );
+    } else {
+      action = null;
+    }
+    // Karten nur, wenn es etwas zu kaufen oder zu wechseln gibt – oder zur Anzeige des eigenen Abos
+    final showPlans = canBuy || (play != null && play.basePlanId.isNotEmpty);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text('Premium abonnieren', style: AppText.sectionTitle),
         const SizedBox(height: 12),
-        if (billing.loading && billing.products.isEmpty)
+        if (billing.loading && plans.isEmpty)
           const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
-        else if (canBuy)
-          for (final product in billing.products) ...[
-            if (billing.products.length > 1 && product.title.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(product.title, style: AppText.tileSubtitle),
-              ),
-            AccountButton(
-              label: 'Für ${product.price} abonnieren',
-              loading: billing.busy,
-              onPressed: () => controller.buy(product),
+        else if (showPlans) ...[
+          for (final plan in plans) ...[
+            _PlanCard(
+              plan: plan,
+              pricing: pricingFor(plan, plans),
+              selected: plans.length > 1 && plan.basePlanId == selected?.basePlanId && plan.productId == selected?.productId,
+              recommended: plan.basePlanId == recommended,
+              own: isOwn(plan),
+              onTap: plans.length > 1 && !billing.busy ? () => controller.select(plan) : null,
             ),
             const SizedBox(height: 10),
           ],
+          if (action != null) ...[
+            action,
+            const SizedBox(height: 10),
+          ],
+        ],
         if (notice != null) ...[
           AccountNotice(text: notice),
           const SizedBox(height: 10),
@@ -336,8 +407,8 @@ class _PurchaseCard extends ConsumerWidget {
           const SizedBox(height: 10),
         ],
         const Text(
-          'Abo über Google Play. Verlängert sich automatisch, bis du kündigst. Kündigen kannst du jederzeit in '
-          'Google Play.',
+          'Abo über Google Play. Verlängert sich automatisch, bis du kündigst. Kündigen und Zahlungsart ändern kannst '
+          'du jederzeit in Google Play. Beim Wechsel der Laufzeit rechnet Google die restliche Zeit an.',
           style: AppText.caption,
         ),
         Align(
@@ -348,7 +419,7 @@ class _PurchaseCard extends ConsumerWidget {
             child: const Text('Käufe wiederherstellen', style: TextStyle(color: AppColors.accent)),
           ),
         ),
-        if (billing.error != null && billing.products.isEmpty && !billing.loading)
+        if (billing.error != null && plans.isEmpty && !billing.loading)
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton(
@@ -360,6 +431,101 @@ class _PurchaseCard extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Eine Laufzeit: Überschrift, Preis, Monatspreis, Ersparnis und Angebot.
+class _PlanCard extends StatelessWidget {
+  final StorePlan plan;
+  final PlanPricing pricing;
+  final bool selected;
+  final bool recommended;
+  final bool own;
+  final VoidCallback? onTap;
+
+  const _PlanCard({
+    required this.plan,
+    required this.pricing,
+    required this.selected,
+    required this.recommended,
+    required this.own,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final perMonth = pricing.perMonthText;
+    final save = pricing.saveText;
+    final offer = offerText(plan.offer);
+    return Material(
+      color: AppColors.surfaceHigh,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? AppColors.accent : AppColors.surfaceHighest, width: selected ? 2 : 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      periodLabel(plan.regular.billingPeriod),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
+                  ),
+                  if (recommended) const _PlanChip('Empfohlen', accent: true),
+                  if (save != null) _PlanChip(save),
+                  if (own) const _PlanChip('Dein Abo'),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(regularPriceText(plan), style: const TextStyle(fontSize: 15)),
+              if (perMonth != null) ...[
+                const SizedBox(height: 2),
+                Text(perMonth, style: AppText.tileSubtitle),
+              ],
+              if (offer != null) ...[
+                const SizedBox(height: 4),
+                Text(offer, style: const TextStyle(fontSize: 14, color: AppColors.accent, fontWeight: FontWeight.w600)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanChip extends StatelessWidget {
+  final String text;
+  final bool accent;
+
+  const _PlanChip(this.text, {this.accent = false});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(left: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: accent ? AppColors.accent : AppColors.surfaceHighest,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: accent ? Colors.black : Colors.white,
+          ),
+        ),
+      );
 }
 
 /// Macht aus der Eingabe `XXXX-XXXX-XXXX`: Großbuchstaben, nur erlaubte Zeichen, Bindestriche nach je 4 Zeichen.

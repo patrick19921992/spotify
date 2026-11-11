@@ -39,12 +39,22 @@
       body: JSON.stringify({ username: username, password: password, device_name: "Konto löschen (Web)" })
     })
       .then(function (response) {
+        // Wartet das Konto noch auf Freischaltung, ist keine Anmeldung möglich – dann die Registrierung zurückziehen
+        // (löscht das Konto ebenfalls endgültig)
+        if (response.status === 403 && response.headers.get("X-Selfify-Account-State") === "pending") {
+          return fetch("/api/auth/withdraw", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: username, password: password })
+          });
+        }
         return readJson(response).then(function (body) {
           if (!response.ok) throw new Error(detail(body, unreachable(response) || "Anmeldung fehlgeschlagen."));
           return body;
         });
       })
       .then(function (tokens) {
+        if (tokens instanceof Response) return tokens;
         return fetch("/api/me/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + tokens.access_token },

@@ -5,13 +5,17 @@ Regeln:
   werden (jeder Benutzer höchstens einmal) und kann zusätzlich eine „einlösbar bis“-Frist haben.
 - Eine Lizenz gilt, solange sie nicht entzogen und nicht abgelaufen ist. Hat jemand mehrere, zählt die längste:
   zeitlich begrenzte Lizenzen werden aneinandergehängt (ein neuer Code verlängert), eine unbegrenzte gilt immer.
+- Eine Lizenz hat einen Leistungsumfang (siehe services/features.py; None = alle). Codes geben ihren Umfang an
+  die Lizenz weiter; Admin-Vergaben und Abos über Google Play schalten immer alles frei. Eine befristete Lizenz
+  hängt sich nur hinter Lizenzen, die ihren Umfang ganz enthalten – sonst läuft sie sofort.
 - Entzogen wird entweder ein ganzer Code (keine weiteren Einlösungen, auf Wunsch auch alle daraus entstandenen
   Lizenzen) oder das Premium eines einzelnen Benutzers.
 """
 
 import re
 import secrets
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy import ColumnElement, or_, select, update
@@ -19,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import PlayPurchase, PremiumCode, PremiumLicense, User, utcnow
+from app.services import features as feature_set
 
 # Ohne leicht verwechselbare Zeichen (0/O, 1/I/L)
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -44,6 +49,8 @@ class PremiumStatus:
     active: bool
     unlimited: bool
     until: datetime | None
+    # Vereinigung der Umfänge aller laufenden Lizenzen (leer ohne Premium)
+    features: frozenset[str] = field(default_factory=frozenset)
 
 
 def normalize_code(raw: str) -> str:
@@ -108,12 +115,20 @@ def running_licenses(db: Session, user_id: int, now: datetime | None = None) -> 
 
 
 def status_of(licenses: list[PremiumLicense], now: datetime) -> PremiumStatus:
-    """Premium gilt, solange eine Lizenz läuft. „Bis“ zählt auch angehängte Lizenzen mit (Stapeln)."""
-    if not any(_is_running(lic, now) for lic in licenses):
+    """Premium gilt, solange eine Lizenz läuft. „Bis“ zählt auch angehängte Lizenzen mit (Stapeln).
+    Der Umfang ist die Vereinigung der Umfänge aller **laufenden** Lizenzen."""
+    running = [lic for lic in licenses if _is_running(lic, now)]
+    if not running:
         return PremiumStatus(active=False, unlimited=False, until=None)
-    if any(lic.expires_at is None and _is_running(lic, now) for lic in licenses):
-        return PremiumStatus(active=True, unlimited=True, until=None)
-    return PremiumStatus(active=True, unlimited=False, until=max(lic.expires_at for lic in licenses if lic.expires_at))
+    scope: frozenset[str] = frozenset().union(*(feature_set.decode(lic.features) for lic in running))
+    if any(lic.expires_at is None for lic in running):
+        return PremiumStatus(active=True, unlimited=True, until=None, features=scope)
+    return PremiumStatus(
+        active=True,
+        unlimited=False,
+        until=max(lic.expires_at for lic in licenses if lic.expires_at),
+        features=scope,
+    )
 
 
 def premium_status(db: Session, user: User, now: datetime | None = None) -> PremiumStatus:
@@ -135,10 +150,18 @@ def premium_statuses(db: Session, user_ids: list[int], now: datetime | None = No
     return {uid: status_of(items, now) for uid, items in per_user.items()}
 
 
-def _start_for_new_license(db: Session, user_id: int, now: datetime) -> datetime:
+def _start_for_new_license(
+    db: Session, user_id: int, now: datetime, scope: frozenset[str] = feature_set.ALL
+) -> datetime:
     """Zeitlich begrenztes Premium hängt sich hinten an die Kette an: nach der laufenden **und** nach schon
-    angehängten (noch nicht begonnenen) befristeten Lizenzen."""
-    latest = [lic.expires_at for lic in live_licenses(db, user_id, now) if lic.expires_at is not None]
+    angehängten (noch nicht begonnenen) befristeten Lizenzen – aber nur hinter Lizenzen, deren Umfang den neuen
+    ganz enthält. Sonst beginnt sie jetzt (ein Teil-Code soll nicht warten, bis eine Lizenz ohne diese Leistungen
+    abgelaufen ist). Mit lauter Lizenzen ohne Umfang ist das das Verhalten vor Teil 2."""
+    latest = [
+        lic.expires_at
+        for lic in live_licenses(db, user_id, now)
+        if lic.expires_at is not None and scope <= feature_set.decode(lic.features)
+    ]
     return max([now, *latest])
 
 
@@ -161,7 +184,13 @@ def create_codes(
     valid_until: datetime | None,
     label: str,
     created_by: User | None,
+    features: Iterable[str] | None = None,
 ) -> list[PremiumCode]:
+    """features: Leistungen, die die Codes freischalten (None = alle)."""
+    try:
+        scope = feature_set.encode(features)
+    except ValueError as exc:
+        raise PremiumError(422, str(exc)) from None
     codes: list[PremiumCode] = []
     taken = set(db.scalars(select(PremiumCode.code)))
     while len(codes) < count:
@@ -175,6 +204,7 @@ def create_codes(
             duration_days=duration_days,
             max_redemptions=max_redemptions,
             valid_until=valid_until,
+            features=scope,
             created_by_id=created_by.id if created_by else None,
         )
         db.add(code)
@@ -201,11 +231,15 @@ def redeem(db: Session, user: User, raw_code: str, now: datetime | None = None) 
     )
     if already is not None:
         raise PremiumError(409, "Du hast diesen Code schon eingelöst.")
+    scope = feature_set.decode(code.features)
     current = running_licenses(db, user.id, now)
-    if code.duration_days is not None and any(lic.expires_at is None for lic in current):
+    # Nur, wenn eine laufende unbegrenzte Lizenz schon alles enthält, was der Code freischaltet
+    if code.duration_days is not None and any(
+        lic.expires_at is None and scope <= feature_set.decode(lic.features) for lic in current
+    ):
         raise PremiumError(409, "Du hast schon unbegrenzt Premium – der Code bleibt unverbraucht.")
 
-    start = _start_for_new_license(db, user.id, now) if code.duration_days is not None else now
+    start = _start_for_new_license(db, user.id, now, scope) if code.duration_days is not None else now
     license_ = PremiumLicense(
         user_id=user.id,
         code_id=code.id,
@@ -213,6 +247,7 @@ def redeem(db: Session, user: User, raw_code: str, now: datetime | None = None) 
         starts_at=start,
         expires_at=_expiry(start, code.duration_days, now),
         note=code.label,
+        features=code.features,
     )
     # Erst die Lizenz anlegen: Die Datenbank erlaubt je Code und Benutzer nur eine – eine gleichzeitige zweite
     # Einlösung desselben Benutzers scheitert hier, ohne einen Platz des Codes zu verbrauchen
@@ -240,7 +275,7 @@ def redeem(db: Session, user: User, raw_code: str, now: datetime | None = None) 
 
 
 def grant(db: Session, user: User, *, days: int | None, note: str, now: datetime | None = None) -> PremiumLicense:
-    """Premium direkt vergeben (ohne Code). days=None = unbegrenzt."""
+    """Premium direkt vergeben (ohne Code). days=None = unbegrenzt. Schaltet immer alle Leistungen frei."""
     now = now or utcnow()
     start = _start_for_new_license(db, user.id, now) if days is not None else now
     license_ = PremiumLicense(
@@ -256,19 +291,33 @@ def close_gaps(db: Session, user_id: int, now: datetime | None = None) -> None:
 
     Gebraucht, wenn ein Abo über Google Play vor dem Ende des bezahlten Zeitraums endet (Erstattung): Ein dahinter
     gehängter Code begänne sonst erst am ursprünglichen Abo-Ende – bis dahin gäbe es trotz gültiger Lizenz kein
-    Premium. Die Laufzeit jeder Lizenz bleibt gleich, es wird nur früher begonnen."""
+    Premium. Die Laufzeit jeder Lizenz bleibt gleich, es wird nur früher begonnen.
+
+    Mit Leistungsumfang: Eine angehängte Lizenz rückt nur an das Ende der vor ihr liegenden Lizenzen heran, deren
+    Umfang ihren ganz enthält (so wurde sie auch angehängt). Ohne Teilumfänge ist das genau das Verhalten von
+    vorher."""
     now = now or utcnow()
     db.flush()
     licenses = live_licenses(db, user_id, now)
-    if any(lic.expires_at is None and lic.starts_at <= now for lic in licenses):
-        return  # unbegrenzt: Es gibt keine Lücke
-    covered_until = now
+    # laufende unbegrenzte Lizenzen: Für alles in ihrem Umfang gibt es keine Lücke
+    unlimited = [
+        feature_set.decode(lic.features) for lic in licenses if lic.expires_at is None and lic.starts_at <= now
+    ]
+    done: list[PremiumLicense] = []
     for lic in sorted((lic for lic in licenses if lic.expires_at is not None), key=lambda lic: (lic.starts_at, lic.id)):
         assert lic.expires_at is not None
+        scope = feature_set.decode(lic.features)
+        if any(cover >= scope for cover in unlimited):
+            done.append(lic)
+            continue
+        covered_until = max(
+            [now]
+            + [m.expires_at for m in done if m.expires_at is not None and feature_set.decode(m.features) >= scope]
+        )
         if lic.starts_at > covered_until:
             lic.expires_at -= lic.starts_at - covered_until
             lic.starts_at = covered_until
-        covered_until = max(covered_until, lic.expires_at)
+        done.append(lic)
 
 
 def revoke_license(db: Session, license_: PremiumLicense, now: datetime | None = None) -> bool:

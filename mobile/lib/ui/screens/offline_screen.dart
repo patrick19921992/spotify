@@ -10,6 +10,7 @@ import '../../player/player.dart';
 import '../../state/auth.dart';
 import '../../state/connectivity.dart';
 import '../../state/offline.dart';
+import '../../state/premium_access.dart';
 import '../../state/settings.dart';
 import '../nav.dart';
 import '../widgets/common.dart';
@@ -88,7 +89,16 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
     if (api == null || _syncing.contains(key)) return;
     setState(() => _syncing.add(key));
     try {
-      final (name, tracks) = await _fetchCollection(api, key);
+      final (String?, List<Track>) fetched;
+      try {
+        fetched = await _fetchCollection(api, key);
+      } on ApiException catch (e) {
+        // Album/Playlist gibt es nicht mehr – oder nicht mehr für dieses Konto (Rubrik entzogen, Playlist privat):
+        // dann darf sie auch nicht auf dem Handy bleiben
+        if (e.isNotFound) await ref.read(offlineProvider.notifier).releaseCollection(key);
+        rethrow;
+      }
+      final (name, tracks) = fetched;
       final notifier = ref.read(offlineProvider.notifier);
       await notifier.syncCollection(key, tracks);
       final current = ref.read(offlineProvider);
@@ -147,7 +157,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
 
   Object _describeSyncError(Object error, String name) {
     if (error is ApiException && error.statusCode == 404) {
-      return ApiException('„$name“ gibt es auf dem Server nicht mehr. Du kannst die Sammlung vom Handy entfernen.');
+      return ApiException('„$name“ gibt es für dich auf dem Server nicht mehr. Die Sammlung wurde vom Handy entfernt.');
     }
     return error;
   }
@@ -228,6 +238,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
 
   Future<void> _pickQuality(String current) async {
     final selected = _offlineQualities.contains(current) ? current : 'original';
+    final access = ref.read(premiumAccessProvider);
     final value = await showModalBottomSheet<String>(
       context: context,
       useRootNavigator: true,
@@ -251,10 +262,13 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
             for (final key in _offlineQualities)
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                // „Höhere Tonqualität nur mit Premium“: Stufen über der Grenze mit Schloss
+                leading: access.isCapped(key) ? const Icon(Icons.lock_rounded, color: AppColors.textSecondary) : null,
                 title: Text(
                   qualityLabels[key] ?? key,
                   style: AppText.tileTitle.copyWith(color: key == selected ? AppColors.accent : Colors.white),
                 ),
+                subtitle: access.isCapped(key) ? const Text('Premium', style: AppText.tileSubtitle) : null,
                 trailing: key == selected ? const Icon(Icons.check_rounded, color: AppColors.accent) : null,
                 onTap: () => Navigator.of(sheetContext).pop(key),
               ),
@@ -264,6 +278,11 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
       ),
     );
     if (value == null || value == selected) return;
+    if (access.isCapped(value)) {
+      // Nicht speichern – zur Premium-Seite (oder nur der Hinweis)
+      if (mounted) openPremiumOrExplain(context, ref, qualityLockedMessage);
+      return;
+    }
     await ref.read(settingsProvider.notifier).update((s) => s.copyWith(offlineQuality: value));
   }
 
@@ -410,7 +429,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
                     leading: const Icon(Icons.high_quality_rounded, color: AppColors.textSecondary),
                     title: const Text('Qualität auf diesem Gerät', style: AppText.tileTitle),
                     subtitle: Text(
-                      qualityLabels[settings.offlineQuality] ?? settings.offlineQuality,
+                      effectiveQualityLabel(settings.offlineQuality, ref.watch(premiumAccessProvider)),
                       style: AppText.tileSubtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

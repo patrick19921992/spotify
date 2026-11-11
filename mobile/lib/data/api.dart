@@ -11,7 +11,12 @@ import 'models.dart';
 class ApiException implements Exception {
   final int? statusCode;
   final String message;
-  const ApiException(this.message, {this.statusCode});
+
+  /// Anmeldung abgewiesen, weil das (selbst erstellte) Konto noch auf Freischaltung wartet
+  /// (403 mit Kopfzeile `X-Selfify-Account-State: pending`).
+  final bool accountPending;
+
+  const ApiException(this.message, {this.statusCode, this.accountPending = false});
 
   bool get isUnauthorized => statusCode == 401;
   bool get isForbidden => statusCode == 403;
@@ -79,7 +84,8 @@ ApiException toApiException(Object error) {
       502 || 503 || 504 => 'Der Server ist gerade nicht erreichbar.',
       _ => 'Fehler $status',
     };
-    return ApiException(detail, statusCode: status);
+    final pending = status == 403 && response.headers.value('x-selfify-account-state')?.trim() == 'pending';
+    return ApiException(detail, statusCode: status, accountPending: pending);
   }
   return ApiException(error.toString());
 }
@@ -89,6 +95,17 @@ class LoginResult {
   final Tokens tokens;
   final User user;
   const LoginResult(this.tokens, this.user);
+}
+
+/// Ergebnis von „Konto erstellen“: wartet auf Freischaltung ([pending]) oder ist gleich angemeldet ([login]).
+class RegisterResult {
+  final bool pending;
+
+  /// Text des Servers (z. B. „Dein Konto wurde angelegt und wartet auf Freischaltung …“).
+  final String message;
+  final LoginResult? login;
+
+  const RegisterResult({required this.pending, required this.message, this.login});
 }
 
 String normalizeBaseUrl(String input) {
@@ -293,6 +310,48 @@ class ApiClient {
     }
   }
 
+  /// Konto selbst erstellen (nur, wenn der Server die Registrierung anbietet). 202 = wartet auf Freischaltung,
+  /// 201 = sofort angemeldet. Fehler (409, 422, 429, 503, 404) kommen mit dem Text des Servers.
+  static Future<RegisterResult> register(
+    String baseUrl, {
+    required String username,
+    required String password,
+    String? displayName,
+    String? deviceName,
+  }) async {
+    try {
+      final response = await _plainDio(baseUrl).post('/auth/register', data: {
+        'username': username,
+        'password': password,
+        if (displayName != null && displayName.trim().isNotEmpty) 'display_name': displayName.trim(),
+        'device_name': deviceName ?? defaultDeviceName(),
+      });
+      final data = Map<String, dynamic>.from(response.data as Map);
+      final message = data['message'] as String? ?? '';
+      final tokens = data['tokens'];
+      if (response.statusCode == 201 && tokens is Map) {
+        final json = Map<String, dynamic>.from(tokens);
+        return RegisterResult(
+          pending: false,
+          message: message,
+          login: LoginResult(Tokens.fromResponse(json), User.fromJson(Map<String, dynamic>.from(json['user'] as Map))),
+        );
+      }
+      return RegisterResult(pending: true, message: message);
+    } catch (e) {
+      throw toApiException(e);
+    }
+  }
+
+  /// Registrierung zurückziehen: löscht ein noch wartendes Konto ohne Anmeldung (Antwort 204).
+  static Future<void> withdrawRegistration(String baseUrl, String username, String password) async {
+    try {
+      await _plainDio(baseUrl).post('/auth/withdraw', data: {'username': username, 'password': password});
+    } catch (e) {
+      throw toApiException(e);
+    }
+  }
+
   /// Holt neue Token (mehrere gleichzeitige Aufrufe teilen sich eine Erneuerung).
   Future<Tokens> refresh() async {
     final running = _refreshing;
@@ -457,6 +516,16 @@ class ApiClient {
           body: {'title': title, 'artist': artist, 'note': note});
   Future<void> deleteWish(int id) => _noContent('DELETE', '/requests/$id');
 
+  /// Song-Wünsche dieser Woche – null bei einem älteren Server ohne Wochengrenze.
+  Future<WishQuota?> wishQuota() async {
+    try {
+      return await _get('/requests/quota', (d) => WishQuota.fromJson(d as Json));
+    } on ApiException catch (e) {
+      if (e.isNotFound) return null;
+      rethrow;
+    }
+  }
+
   /// Schickt eine Fehlermeldung an den Betreiber. [log] nur, wenn der Benutzer es erlaubt hat.
   Future<void> sendBugReport({
     required String message,
@@ -486,6 +555,8 @@ class ApiClient {
     String? displayName,
     bool isAdmin = false,
     bool canDownload = true,
+    bool? allCategories,
+    List<int>? categoryIds,
   }) =>
       _send('POST', '/users', (d) => User.fromJson(d as Json), body: {
         'username': username,
@@ -493,15 +564,26 @@ class ApiClient {
         'display_name': displayName,
         'is_admin': isAdmin,
         'can_download': canDownload,
+        // Nur mitschicken, wenn gesetzt – sonst gilt auf dem Server wie bisher „alle Rubriken“
+        'all_categories': ?allCategories,
+        'category_ids': ?categoryIds,
       });
   Future<User> updateUser(int id,
-          {String? displayName, String? password, bool? isAdmin, bool? isActive, bool? canDownload}) =>
+          {String? displayName,
+          String? password,
+          bool? isAdmin,
+          bool? isActive,
+          bool? canDownload,
+          bool? allCategories,
+          List<int>? categoryIds}) =>
       _send('PATCH', '/users/$id', (d) => User.fromJson(d as Json), body: _clean({
         'display_name': displayName,
         'password': password,
         'is_admin': isAdmin,
         'is_active': isActive,
         'can_download': canDownload,
+        'all_categories': allCategories,
+        'category_ids': categoryIds,
       }));
   Future<void> deleteUser(int id) => _noContent('DELETE', '/users/$id');
 
@@ -559,7 +641,7 @@ class ApiClient {
   Future<void> deleteTrack(int id, {bool deleteFile = false}) =>
       _noContent('DELETE', '/tracks/$id', query: {'delete_file': deleteFile});
 
-  /// Songtext – null, wenn es keinen gibt.
+  /// Songtext – null, wenn es keinen gibt. Gesperrt (nur mit Premium): ApiException mit Status 403.
   Future<Lyrics?> lyrics(int trackId) async {
     try {
       return await _get('/tracks/$trackId/lyrics', (d) => Lyrics.fromJson(d as Json));

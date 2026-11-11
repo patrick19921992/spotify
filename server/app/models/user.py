@@ -2,10 +2,20 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UTCDateTime, utcnow
+from app.models.category import Category
+
+# Freigegebene Rubriken je Konto. Zählt nur bei eingeschränkten Konten (kein Admin, all_categories = false).
+# Wird eine Rubrik oder ein Konto gelöscht, verschwinden die Zeilen per CASCADE
+user_categories = Table(
+    "user_categories",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("category_id", ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True),
+)
 
 
 class User(Base):
@@ -23,10 +33,26 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # Sieht alle Rubriken (auch künftige). Bestandskonten und vom Admin angelegte Konten: ja; selbst registrierte:
+    # nein – sie sehen nur die Rubriken in user_categories. Für Admins zählt das Feld nie, sie sehen immer alles
+    all_categories: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # Selbst registriert und noch nicht freigeschaltet (dann immer auch is_active = false)
+    approval_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # Hat sich selbst in der App registriert (statt vom Admin angelegt)
+    self_registered: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
+    # Freigegebene Rubriken (nur wirksam bei all_categories = false)
+    categories: Mapped[list[Category]] = relationship(
+        secondary=user_categories, passive_deletes=True, order_by=Category.id
+    )
     sessions: Mapped[list["UserSession"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
+
+    @property
+    def category_ids(self) -> list[int]:
+        """IDs der freigegebenen Rubriken, aufsteigend."""
+        return sorted(category.id for category in self.categories)
 
 
 class UserSession(Base):

@@ -5,11 +5,15 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
+from app.services.features import FEATURES, ordered
 from app.services.premium import MAX_DURATION_DAYS
 
 CodeText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=4, max_length=64)]
 Label = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
+# Schlüssel der Premium-Leistungen (siehe services/features.py)
+FeatureKey = Literal["offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "badge"]
+assert tuple(FeatureKey.__args__) == FEATURES  # type: ignore[attr-defined]
 
 
 class PremiumStatusOut(BaseModel):
@@ -18,6 +22,8 @@ class PremiumStatusOut(BaseModel):
     unlimited: bool
     # Bis wann Premium läuft (nur bei begrenztem Premium)
     until: datetime | None
+    # Welche Leistungen das laufende Premium freischaltet (FEATURES-Reihenfolge; leer ohne Premium)
+    features: list[str] = []
 
 
 PurchaseState = Literal["active", "canceled", "grace", "on_hold", "paused", "pending", "expired", "replaced"]
@@ -30,6 +36,9 @@ class PlaySubscriptionOut(BaseModel):
     state: Literal["active", "canceled", "grace", "on_hold", "paused", "pending"]
     expires_at: datetime | None
     auto_renewing: bool
+    # Laufzeit (Kennung des Basis-Abos) und Angebot laut Google; "" = unbekannt bzw. keins
+    base_plan_id: str = ""
+    offer_id: str = ""
 
 
 class MyPremiumOut(PremiumStatusOut):
@@ -42,6 +51,12 @@ class MyPremiumOut(PremiumStatusOut):
     # Serverzeit dieser Antwort
     checked_at: datetime
     play: PlaySubscriptionOut | None = None
+    # Leistungen, die der Betreiber nur mit Premium erlaubt (wie in /app/config)
+    premium_only: list[str] = []
+    # Was dieser Benutzer gerade nicht darf ([] für Admins)
+    locked: list[str] = []
+    # Premium-Abzeichen zeigen (Schalter an und „badge“ im Umfang)
+    badge: bool = False
 
 
 class PlayVerifyIn(BaseModel):
@@ -74,6 +89,8 @@ class PurchaseOut(BaseModel):
     last_checked_at: datetime
     last_error: str
     created_at: datetime
+    base_plan_id: str = ""
+    offer_id: str = ""
 
 
 class BillingStatusOut(BaseModel):
@@ -114,6 +131,18 @@ class CodeCreateIn(_Duration):
     # Bis wann der Code eingelöst werden kann (leer = beliebig lange)
     valid_until: datetime | None = None
     label: Label = ""
+    # Welche Leistungen die Codes freischalten (None = alle). Doppelte werden zusammengefasst, alle 8 = None
+    features: list[FeatureKey] | None = None
+
+    @field_validator("features")
+    @classmethod
+    def _features(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        if not value:
+            raise ValueError("Bitte mindestens eine Leistung wählen.")
+        keys = ordered(value)
+        return None if len(keys) == len(FEATURES) else keys
 
     @field_validator("valid_until")
     @classmethod
@@ -162,6 +191,8 @@ class CodeOut(BaseModel):
     created_at: datetime
     state: Literal["available", "used_up", "expired", "revoked"]
     redemptions: list[RedemptionOut]
+    # Umfang: None = alle Leistungen
+    features: list[str] | None = None
 
 
 class LicenseOut(BaseModel):
@@ -176,6 +207,8 @@ class LicenseOut(BaseModel):
     revoked_at: datetime | None
     note: str
     running: bool
+    # Umfang: None = alle Leistungen
+    features: list[str] | None = None
 
 
 class UserPremiumOut(PremiumStatusOut):

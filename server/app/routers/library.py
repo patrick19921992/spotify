@@ -7,11 +7,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
-from app.deps import AdminUser, AppSettings, CurrentUser, DbSession
+from app.deps import AdminUser, AppSettings, CurrentUser, DbSession, Viewer
 from app.library.covers import IMAGE_EXTENSIONS
 from app.library.lyrics import read_lyrics
 from app.library.metadata import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
-from app.models import Album, Artist, Category, Track
+from app.models import Category, Track
 from app.schemas.downloads import LyricsLineOut, LyricsOut
 from app.schemas.library import (
     AlbumDetailOut,
@@ -25,7 +25,10 @@ from app.schemas.library import (
     SearchOut,
     TrackOut,
 )
+from app.services import app_config
+from app.services import features as feature_set
 from app.services import library as service
+from app.services.visibility import Visibility, get_album_or_404, get_artist_or_404, get_track_or_404
 
 router = APIRouter(tags=["Bibliothek"])
 
@@ -40,7 +43,7 @@ def _not_found(what: str) -> HTTPException:
 
 @router.get("/artists", response_model=Page[ArtistOut])
 def list_artists(
-    _: CurrentUser,
+    v: Viewer,
     db: DbSession,
     limit: Limit = 50,
     offset: Offset = 0,
@@ -48,20 +51,17 @@ def list_artists(
     category_id: int | None = None,
     q: str | None = None,
 ) -> Page[ArtistOut]:
-    return service.list_artists(db, limit=limit, offset=offset, sort=sort, category_id=category_id, q=q)
+    return service.list_artists(db, limit=limit, offset=offset, sort=sort, category_id=category_id, q=q, v=v)
 
 
 @router.get("/artists/{artist_id}", response_model=ArtistDetailOut)
-def get_artist(artist_id: int, _: CurrentUser, db: DbSession) -> ArtistDetailOut:
-    artist = db.get(Artist, artist_id)
-    if artist is None:
-        raise _not_found("Künstler")
-    return service.artist_detail(db, artist)
+def get_artist(artist_id: int, v: Viewer, db: DbSession) -> ArtistDetailOut:
+    return service.artist_detail(db, get_artist_or_404(db, v, artist_id), v=v)
 
 
 @router.get("/albums", response_model=Page[AlbumOut])
 def list_albums(
-    _: CurrentUser,
+    v: Viewer,
     db: DbSession,
     limit: Limit = 50,
     offset: Offset = 0,
@@ -71,21 +71,18 @@ def list_albums(
     q: str | None = None,
 ) -> Page[AlbumOut]:
     return service.list_albums(
-        db, limit=limit, offset=offset, sort=sort, category_id=category_id, artist_id=artist_id, q=q
+        db, limit=limit, offset=offset, sort=sort, category_id=category_id, artist_id=artist_id, q=q, v=v
     )
 
 
 @router.get("/albums/{album_id}", response_model=AlbumDetailOut)
-def get_album(album_id: int, _: CurrentUser, db: DbSession) -> AlbumDetailOut:
-    album = db.get(Album, album_id)
-    if album is None:
-        raise _not_found("Album")
-    return service.album_detail(db, album)
+def get_album(album_id: int, v: Viewer, db: DbSession) -> AlbumDetailOut:
+    return service.album_detail(db, get_album_or_404(db, v, album_id), v=v)
 
 
 @router.get("/tracks", response_model=Page[TrackOut])
 def list_tracks(
-    _: CurrentUser,
+    v: Viewer,
     db: DbSession,
     limit: Limit = 50,
     offset: Offset = 0,
@@ -106,23 +103,23 @@ def list_tracks(
         artist_id=artist_id,
         album_id=album_id,
         q=q,
+        v=v,
     )
 
 
 @router.get("/tracks/{track_id}", response_model=TrackOut)
-def get_track(track_id: int, _: CurrentUser, db: DbSession) -> TrackOut:
-    track = db.get(Track, track_id)
-    if track is None:
-        raise _not_found("Titel")
-    return service.track_out(track)
+def get_track(track_id: int, v: Viewer, db: DbSession) -> TrackOut:
+    return service.track_out(get_track_or_404(db, v, track_id))
 
 
 @router.get("/tracks/{track_id}/lyrics", response_model=LyricsOut)
-def get_lyrics(track_id: int, _: CurrentUser, db: DbSession, settings: AppSettings) -> LyricsOut:
-    """Songtext – zeitsynchron (Karaoke-Ansicht), wenn eine .lrc-Datei vorhanden ist."""
-    track = db.get(Track, track_id)
-    if track is None:
-        raise _not_found("Titel")
+def get_lyrics(track_id: int, user: CurrentUser, v: Viewer, db: DbSession, settings: AppSettings) -> LyricsOut:
+    """Songtext – zeitsynchron (Karaoke-Ansicht), wenn eine .lrc-Datei vorhanden ist.
+    Stellt der Betreiber Songtexte auf „nur Premium“, gibt es ohne passendes Premium 403 – aber erst, nachdem
+    feststeht, dass der Titel für dieses Konto sichtbar ist (sonst 404)."""
+    track = get_track_or_404(db, v, track_id)
+    if not feature_set.access_for(db, user, app_config.get_all(db)).allows("lyrics"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, feature_set.MSG_LYRICS)
     found = read_lyrics(settings.media_dir / track.path)
     if found is None:
         raise _not_found("Songtext")
@@ -161,24 +158,43 @@ def delete_track(
 
 @router.get("/search", response_model=SearchOut)
 def search(
-    _: CurrentUser,
+    v: Viewer,
     db: DbSession,
     q: Annotated[str, Query(min_length=1, max_length=200)],
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
     category_id: int | None = None,
 ) -> SearchOut:
-    return service.search(db, q, limit=limit, category_id=category_id)
+    return service.search(db, q, limit=limit, category_id=category_id, v=v)
+
+
+def _scan_status(request: Request, v: Visibility) -> ScanStatusOut:
+    """Eingeschränkte Konten sehen keine Dateinamen, Fehlertexte und Zähler – die gelten für die ganze Sammlung und
+    könnten Größe und Änderungen verborgener Rubriken verraten. Zeitstempel und „läuft gerade“ bleiben."""
+    out = ScanStatusOut(**asdict(request.app.state.scanner.status))
+    if v.restricted:
+        out = out.model_copy(
+            update={
+                "error_files": [],
+                "last_error": None,
+                "files_seen": 0,
+                "added": 0,
+                "updated": 0,
+                "removed": 0,
+                "errors": 0,
+            }
+        )
+    return out
 
 
 @router.get("/library", response_model=LibraryStatsOut)
-def library_stats(request: Request, _: CurrentUser, db: DbSession) -> LibraryStatsOut:
-    counts = service.library_counts(db)
-    return LibraryStatsOut(**counts, scan=ScanStatusOut(**asdict(request.app.state.scanner.status)))
+def library_stats(request: Request, v: Viewer, db: DbSession) -> LibraryStatsOut:
+    counts = service.library_counts(db, v)
+    return LibraryStatsOut(**counts, scan=_scan_status(request, v))
 
 
 @router.get("/library/scan", response_model=ScanStatusOut)
-def scan_status(request: Request, _: CurrentUser) -> ScanStatusOut:
-    return ScanStatusOut(**asdict(request.app.state.scanner.status))
+def scan_status(request: Request, v: Viewer) -> ScanStatusOut:
+    return _scan_status(request, v)
 
 
 @router.post("/library/scan", response_model=ScanStatusOut, status_code=status.HTTP_202_ACCEPTED)

@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../player/player.dart';
+import '../../player/skip_limit.dart';
 import '../../state/app_config.dart';
 import '../../state/offline_access.dart';
 import '../nav.dart';
+import 'common.dart';
 
 /// Vor jedem „Aufs Gerät laden“: true, wenn geladen werden darf. Sonst erklärt ein Dialog, warum nicht, und führt
 /// zur Premium-Seite („Offline-Hören nur mit Premium“, Dashboard › App-Einstellungen).
@@ -119,7 +121,7 @@ class OfflineAccessBanner extends ConsumerWidget {
 
 /// Zeigt den Hinweis nach dem Löschen der Offline-Musik (Premium abgelaufen oder zu lange nicht geprüft) – einmal,
 /// als Dialog, damit er nicht übersehen wird. Ebenso „Bitte aktualisiere die App.“, wenn der Server das Abspielen
-/// wegen einer zu alten App abweist.
+/// wegen einer zu alten App abweist, und (als SnackBar) den Hinweis zur Überspring-Grenze ohne Premium.
 class OfflineWipeNoticeListener extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -183,9 +185,92 @@ class _OfflineWipeNoticeListenerState extends ConsumerState<OfflineWipeNoticeLis
     ref.listen(updateRequiredNoticeProvider, (_, show) {
       if (show) _showUpdateRequired();
     });
+    // Überspring-Grenze ohne Premium erreicht (nur wenn der Betreiber sie eingeschaltet hat)
+    ref.listen(skipLimitNoticeProvider, (_, text) {
+      if (text == null) return;
+      ref.read(skipLimitNoticeProvider.notifier).clear();
+      showMessage(
+        context,
+        text,
+        action: ref.read(premiumVisibleProvider)
+            ? SnackBarAction(label: 'Premium', textColor: AppColors.accent, onPressed: () => Nav.premium(context))
+            : null,
+      );
+    });
     // Schon vor dem Aufbau gelöscht (beim Start): gleich nach dem ersten Bild zeigen
     final pending = ref.read(offlineWipeNoticeProvider);
     if (pending != null) WidgetsBinding.instance.addPostFrameCallback((_) => _show(pending));
     return widget.child;
+  }
+}
+
+/// Eine Leistung ist gesperrt (nur mit Premium): zur Premium-Seite – oder, wenn der Premium-Bereich abgeschaltet ist,
+/// nur [message] zeigen.
+void openPremiumOrExplain(BuildContext context, WidgetRef ref, String message) {
+  if (ref.read(premiumVisibleProvider)) {
+    Nav.premium(context);
+  } else {
+    showMessage(context, message);
+  }
+}
+
+/// Sperransicht einer Premium-Leistung (Videos, Songtexte): Schloss, Text und „Zu Premium“ (wenn der Premium-Bereich
+/// sichtbar ist), optional eine weitere Aktion (z. B. „Als Ton abspielen“).
+class PremiumLockedView extends ConsumerWidget {
+  final String text;
+  final String? actionLabel;
+  final IconData? actionIcon;
+  final VoidCallback? onAction;
+
+  /// Kompakte Darstellung (Karte im Player) statt Vollbild.
+  final bool compact;
+
+  const PremiumLockedView({
+    super.key,
+    required this.text,
+    this.actionLabel,
+    this.actionIcon,
+    this.onAction,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final premiumVisible = ref.watch(premiumVisibleProvider);
+    return Padding(
+      padding: EdgeInsets.all(compact ? 16 : 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_rounded, size: compact ? 32 : 48, color: AppColors.textSecondary),
+          const SizedBox(height: 12),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              if (actionLabel != null && onAction != null)
+                OutlinedButton.icon(
+                  onPressed: onAction,
+                  icon: Icon(actionIcon ?? Icons.play_arrow_rounded),
+                  label: Text(actionLabel!),
+                ),
+              if (premiumVisible)
+                FilledButton.icon(
+                  onPressed: () => Nav.premium(context),
+                  icon: const Icon(Icons.workspace_premium_rounded),
+                  label: const Text('Zu Premium'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

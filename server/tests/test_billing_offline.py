@@ -245,6 +245,9 @@ def test_valid_purchase_gives_premium_until_the_subscription_ends(
         "state": "active",
         "expires_at": status["until"],
         "auto_renewing": True,
+        # Teil 2: Laufzeit und Angebot laut Google ("" = unbekannt/keins)
+        "base_plan_id": "",
+        "offer_id": "",
     }
     # bei Google bestätigt – sonst erstattet Google nach drei Tagen
     assert shop.acknowledged == [TOKEN]
@@ -280,6 +283,7 @@ def test_the_purchase_token_never_leaves_the_server(
     assert set(item) == {
         "id", "user_id", "username", "display_name", "product_id", "order_id", "state", "expires_at", "auto_renewing",
         "acknowledged", "is_test", "license_id", "license_revoked", "last_checked_at", "last_error", "created_at",
+        "base_plan_id", "offer_id",  # Teil 2: Laufzeit laut Google
     }  # fmt: skip
     assert item["username"] == "lena" and item["state"] == "active" and item["license_revoked"] is False
     texts.append(listing.text)
@@ -1155,7 +1159,9 @@ def test_migration_0007_keeps_existing_data_and_matches_the_models(tmp_path: Pat
         con.execute("DELETE FROM users WHERE id = 2")
         assert con.execute("SELECT count(*) FROM play_purchases").fetchone()[0] == 0
 
-    # Modelle und Datenbank stimmen überein (sonst hätte jemand eine Migration vergessen)
+    # Modelle und Datenbank stimmen überein (sonst hätte jemand eine Migration vergessen). Seit Teil 2 (0008) passen
+    # die Modelle erst zum neuesten Stand – deshalb vorher bis head; den Stand 0008 prüft tests/test_premium_part2.py
+    command.upgrade(config, "head")
     engine = create_engine(url)
     with engine.connect() as connection:
         context = MigrationContext.configure(connection, opts={"compare_type": True, "render_as_batch": True})

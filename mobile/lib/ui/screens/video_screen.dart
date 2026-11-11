@@ -14,14 +14,17 @@ import '../../core/platform.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../player/player.dart';
+import '../../state/app_config.dart';
 import '../../state/auth.dart';
 import '../../state/connectivity.dart';
 import '../../state/library.dart';
 import '../../state/offline.dart';
+import '../../state/premium_access.dart';
 import '../../state/settings.dart';
 import '../desktop/desktop_shortcuts.dart' show volumeProvider;
 import '../nav.dart';
 import '../widgets/common.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/track_menu.dart';
 import '../widgets/video_volume.dart';
 import 'player_widgets.dart';
@@ -36,6 +39,9 @@ final _unsupportedMessage = Platform.isWindows
 
 /// Anzahl offener Videoseiten. Am Computer gehört die Leertaste dann dem Video, nicht der Musik.
 final openVideoPages = ValueNotifier<int>(0);
+
+/// „Videos ansehen nur mit Premium“ (Dashboard › Premium-Leistungen): Ansehen gesperrt, als Ton geht es weiter.
+const videoLockedMessage = 'Videos ansehen gibt es mit Premium.';
 
 const _offlineMessage = 'Du bist offline. Videos kannst du nur mit Verbindung zum Server ansehen.';
 const _offlineModeMessage =
@@ -119,6 +125,10 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
     if (ref.read(settingsProvider).offlineMode) throw const _VideoProblem(_offlineModeMessage, offlineMode: true);
     final api = ref.read(apiProvider);
     if (api == null) throw const _VideoProblem('Bitte melde dich erneut an.');
+    // Ansehen nur mit Premium: gar nicht erst laden (der Server würde mit 403 antworten)
+    if (!ref.read(premiumAccessProvider).allows(PremiumFeature.video)) {
+      throw const _VideoProblem(videoLockedMessage, premiumLocked: true);
+    }
     // Verlangt der Server eine Mindest-Version, gibt sich die App auch hier zu erkennen (sonst HTTP 426)
     return VideoPlayerController.networkUrl(
       Uri.parse(api.streamUrl(trackId)),
@@ -146,13 +156,19 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
       await controller.initialize().timeout(const Duration(seconds: 45));
     } catch (_) {
       controller.dispose().ignore();
-      var message = _unsupportedMessage;
-      // Mit Mindest-Version am Server: Liegt es an einer zu alten App (HTTP 426)? Dann das sagen.
+      var problem = _VideoProblem(_unsupportedMessage);
+      // Mit Mindest-Version am Server: Liegt es an einer zu alten App (HTTP 426)? Dann das sagen. Ist „Videos ansehen
+      // nur mit Premium“ eingeschaltet, kann es auch die Sperre sein (HTTP 403).
       final api = ref.read(apiProvider);
-      if (api != null && ref.read(streamHeadersProvider) != null && controller.dataSourceType == DataSourceType.network) {
-        if (await api.streamStatus(api.streamUrl(_trackId)) == 426) message = updateRequiredMessage;
+      final videoLimited = ref.read(appConfigValueProvider).premiumOnly.contains(PremiumFeature.video);
+      if (api != null &&
+          (ref.read(streamHeadersProvider) != null || videoLimited) &&
+          controller.dataSourceType == DataSourceType.network) {
+        final status = await api.streamStatus(api.streamUrl(_trackId));
+        if (status == 426) problem = const _VideoProblem(updateRequiredMessage);
+        if (status == 403 && videoLimited) problem = const _VideoProblem(videoLockedMessage, premiumLocked: true);
       }
-      if (mounted && generation == _generation) setState(() => _problem = _VideoProblem(message));
+      if (mounted && generation == _generation) setState(() => _problem = problem);
       return;
     }
     // Am Computer gilt dieselbe Lautstärke wie für die Musik (wie bei Spotify)
@@ -286,6 +302,12 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // „Videos ansehen nur mit Premium“: Ändert sich der Stand (Premium geladen, gekauft, abgelaufen), neu aufbauen
+    ref.listen(premiumAccessProvider.select((a) => a.allows(PremiumFeature.video)), (before, allowed) {
+      if (before == allowed || !mounted) return;
+      final locked = _problem?.premiumLocked ?? false;
+      if (allowed ? locked : !locked) _initialize();
+    });
     final loaded = _track == null ? ref.watch(_videoTrackProvider(_trackId)) : null;
     final track = _track ?? loaded?.value;
     final screenHeight = MediaQuery.sizeOf(context).height;
@@ -331,8 +353,33 @@ class _VideoScreenState extends ConsumerState<VideoScreen> {
     );
   }
 
+  /// Gesperrtes Video als Ton abspielen (wie ein Video in der Warteschlange).
+  Future<void> _playAsAudio(Track track) async {
+    try {
+      await ref.read(playerProvider).playOne(track);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   Widget _buildPlayer(Track? track) {
     final problem = _problem;
+    if (problem != null && problem.premiumLocked) {
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: SingleChildScrollView(
+            child: PremiumLockedView(
+              text: problem.message,
+              compact: true,
+              actionLabel: 'Als Ton abspielen',
+              actionIcon: Icons.music_note_rounded,
+              onAction: track == null ? null : () => _playAsAudio(track),
+            ),
+          ),
+        ),
+      );
+    }
     if (problem != null) {
       return _VideoMessage(problem: problem, onRetry: _initialize, onGoOnline: problem.offlineMode ? _goOnline : null);
     }
@@ -384,7 +431,10 @@ class _VideoProblem implements Exception {
   /// Offline-Modus ist an – Ausschalten hilft.
   final bool offlineMode;
 
-  const _VideoProblem(this.message, {this.offlineMode = false});
+  /// Ansehen nur mit Premium – als Ton geht es weiter.
+  final bool premiumLocked;
+
+  const _VideoProblem(this.message, {this.offlineMode = false, this.premiumLocked = false});
 }
 
 /// Freundliche Meldung im Player-Bereich, mit „Erneut versuchen“.

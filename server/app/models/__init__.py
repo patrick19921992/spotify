@@ -15,7 +15,7 @@ from app.models.personal import (
 )
 from app.models.premium import PURCHASE_STATES, PlayPurchase, PremiumCode, PremiumLicense
 from app.models.support import BUG_STATES, REQUEST_STATES, AppSetting, BugReport, SongRequest
-from app.models.user import User, UserSession
+from app.models.user import User, UserSession, user_categories
 
 __all__ = [
     "ACTIVE_STATES",
@@ -47,5 +47,6 @@ __all__ = [
     "TrackLike",
     "User",
     "UserSession",
+    "user_categories",
     "utcnow",
 ]

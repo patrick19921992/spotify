@@ -29,15 +29,29 @@ const coverA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const coverB = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const now = '2026-10-10T11:00:00Z';
 
-Json userJson({int id = 1, bool admin = true}) => {
+/// Ohne [allCategories]/[categoryIds] fehlen die Felder wie bei einem alten Server (gilt als „alle Rubriken“).
+Json userJson({
+  int id = 1,
+  bool admin = true,
+  bool canDownload = true,
+  bool? allCategories,
+  List<int>? categoryIds,
+  bool approvalPending = false,
+  bool selfRegistered = false,
+}) =>
+    {
       'id': id,
       'username': admin ? 'papa' : 'lena',
       'display_name': admin ? 'Papa' : 'Lena',
       'is_admin': admin,
-      'is_active': true,
-      'can_download': true,
+      'is_active': !approvalPending,
+      'can_download': canDownload,
       'created_at': now,
       'last_login_at': now,
+      'all_categories': ?allCategories,
+      'category_ids': ?categoryIds,
+      if (approvalPending) 'approval_pending': true,
+      if (selfRegistered) 'self_registered': true,
     };
 
 Json trackJson(int id, {String title = 'Bohemian Rhapsody', String mediaType = 'audio', int? albumId = 7}) => {
@@ -294,8 +308,19 @@ class FakeApi extends ApiClient {
   List<Track> tracks_(String mediaType) => sampleTracks(3, mediaType: mediaType);
   @override
   Future<Track> track(int id) async => _log('track', Track.fromJson(trackJson(id)));
+  /// Fehler beim Songtext (z. B. 403 „Songtexte gibt es nur mit Premium.“).
+  ApiException? lyricsError;
   @override
-  Future<Lyrics?> lyrics(int trackId) async => _log(
+  Future<Lyrics?> lyrics(int trackId) async {
+    final error = lyricsError;
+    if (error != null) {
+      _log('lyrics', null);
+      throw error;
+    }
+    return _lyrics();
+  }
+
+  Lyrics _lyrics() => _log(
       'lyrics',
       Lyrics.fromJson({'synced': true, 'source': 'lrc', 'lines': [
         {'time_ms': 0, 'text': 'Is this the real life?'},
@@ -424,11 +449,22 @@ class FakeApi extends ApiClient {
     return premiumStatus = PremiumStatus(active: true, until: DateTime.utc(2026, 12, 10));
   }
 
+  /// Antwort von `GET /requests/quota` (null = alter Server ohne Wochengrenze).
+  WishQuota? quota;
+
+  /// Fehler beim Senden eines Wunsches (z. B. 429 Wochengrenze).
+  ApiException? createWishError;
+
+  @override
+  Future<WishQuota?> wishQuota() async => _log('wishQuota', quota);
+
   @override
   Future<List<SongWish>> wishes() async => _log('wishes', List.of(wishList));
   @override
   Future<SongWish> createWish({required String title, String artist = '', String note = ''}) async {
     _log('createWish:$title|$artist|$note', null);
+    final error = createWishError;
+    if (error != null) throw error;
     final wish = SongWish(
         id: wishList.length + 1, title: title, artist: artist, note: note, status: 'open', adminNote: '', createdAt: DateTime.utc(2026, 10, 10));
     wishList.add(wish);
@@ -556,22 +592,89 @@ class FakeOfflineAccess extends OfflineAccessController {
   void recheck() {}
 }
 
+/// Eine Laufzeit im nachgebauten Store (ein Basis-Plan, optional mit Angebot).
+StorePlan storePlan({
+  String id = 'monatlich',
+  String period = 'P1M',
+  int micros = 990000,
+  String price = '0,99 €',
+  String currency = 'EUR',
+  String productId = 'premium',
+  StoreOffer? offer,
+}) =>
+    StorePlan(
+      productId: productId,
+      basePlanId: id,
+      title: 'Selfify Premium',
+      base: StoreOffer(
+        productId: productId,
+        basePlanId: id,
+        phases: [
+          StorePhase(formattedPrice: price, priceMicros: micros, currencyCode: currency, billingPeriod: period, infinite: true),
+        ],
+      ),
+      offer: offer,
+    );
+
+/// Angebot „[period] gratis“ vor dem regulären Preis von [basePlanId].
+StoreOffer freeTrial(
+  String basePlanId, {
+  String period = 'P1M',
+  String productId = 'premium',
+  String regularPeriod = 'P1M',
+  int regularMicros = 990000,
+  String regularPrice = '0,99 €',
+}) =>
+    StoreOffer(
+      productId: productId,
+      basePlanId: basePlanId,
+      offerId: 'gratis',
+      tags: const ['gratis'],
+      phases: [
+        StorePhase(formattedPrice: 'Kostenlos', priceMicros: 0, currencyCode: 'EUR', billingPeriod: period, cycles: 1),
+        StorePhase(
+            formattedPrice: regularPrice, priceMicros: regularMicros, currencyCode: 'EUR', billingPeriod: regularPeriod, infinite: true),
+      ],
+    );
+
+/// Produkt mit [plans] (Preis = regulärer Preis des ersten Plans).
+StoreProduct storeProduct(List<StorePlan> plans, {String id = 'premium'}) => StoreProduct(
+      id: id,
+      title: 'Selfify Premium',
+      description: 'Premium-Abo',
+      price: plans.isEmpty ? '' : plans.first.regular.formattedPrice,
+      plans: plans,
+    );
+
+/// Abo `premium` mit drei Laufzeiten: monatlich 0,99 €, halbjährlich 4,99 €, jährlich 8,99 €.
+List<StoreProduct> threePlanProducts({StoreOffer? monthlyOffer, StoreOffer? yearlyOffer}) => [
+      storeProduct([
+        storePlan(offer: monthlyOffer),
+        storePlan(id: 'halbjaehrlich', period: 'P6M', micros: 4990000, price: '4,99 €'),
+        storePlan(id: 'jaehrlich', period: 'P1Y', micros: 8990000, price: '8,99 €', offer: yearlyOffer),
+      ]),
+    ];
+
 /// Nachgebauter Store (Google Play): liefert Produkte, merkt sich Aufrufe; der Test schickt die Kauf-Meldungen.
+/// Standard (wie vor den Laufzeiten): Abo `premium_monat` mit einer Laufzeit `monatlich` für 0,99 €.
 class FakePurchaseGateway implements PurchaseGateway {
   bool available = true;
-  List<StoreProduct> products = const [
-    StoreProduct(id: 'premium_monat', title: 'Selfify Premium', description: 'Monatsabo', price: '0,99 €'),
+  List<StoreProduct> products = [
+    storeProduct([storePlan(productId: 'premium_monat')], id: 'premium_monat'),
   ];
   final log = <String>[];
   final completed = <StorePurchase>[];
   bool disposed = false;
 
-  /// Was der Store nach „Kaufen“ meldet (null = der Test meldet selbst über [emit]).
-  StorePurchase Function(StoreProduct product)? onBuy;
+  /// Was der Store nach „Kaufen“ oder „Wechseln“ meldet (null = der Test meldet selbst über [emit]).
+  StorePurchase Function(StorePlan plan)? onBuy;
 
   /// Was der Store bei „Wiederherstellen“ meldet (leer = nichts, wie bei Google Play ohne Käufe).
   List<StorePurchase> restorable = [];
   Object? buyError;
+
+  /// Wird beim Wechsel der Laufzeit geworfen (z. B. StateError(BillingText.changeNotOnDevice)).
+  Object? changeError;
 
   final _controller = StreamController<StorePurchase>.broadcast();
 
@@ -593,12 +696,21 @@ class FakePurchaseGateway implements PurchaseGateway {
   Stream<StorePurchase> get purchases => _controller.stream;
 
   @override
-  Future<void> buy(StoreProduct product, {required String accountId}) async {
-    log.add('buy:${product.id}:$accountId');
+  Future<void> buy(StorePlan plan, {required String accountId}) async {
+    log.add('buy:${plan.basePlanId}:$accountId');
     final error = buyError;
     if (error != null) throw error;
     final answer = onBuy;
-    if (answer != null) emit(answer(product));
+    if (answer != null) emit(answer(plan));
+  }
+
+  @override
+  Future<void> change(StorePlan plan, {required String accountId, required String oldProductId}) async {
+    log.add('change:${plan.basePlanId}:$oldProductId:$accountId');
+    final error = changeError;
+    if (error != null) throw error;
+    final answer = onBuy;
+    if (answer != null) emit(answer(plan));
   }
 
   @override
@@ -660,6 +772,11 @@ Future<FakeApi> pumpScreen(
   AppChannel? channel,
   AppConfig? config,
   List<Override> overrides = const [],
+  // Andere Anmeldung als „angemeldet mit FakeApi“ (z. B. abgemeldet oder eingeschränktes Konto)
+  AuthController Function(FakeApi api)? auth,
+  // Weitere echte Routen (z. B. /login und /register) und wo die App startet (Standard: der Bildschirm)
+  List<RouteBase> routes = const [],
+  String initialLocation = '/test',
 }) async {
   final fakeApi = api ?? FakeApi(admin: admin);
   final audioHandler = handler ?? SelfifyAudioHandler();
@@ -681,9 +798,10 @@ Future<FakeApi> pumpScreen(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final router = GoRouter(
-    initialLocation: '/test',
+    initialLocation: initialLocation,
     routes: [
       GoRoute(path: '/test', builder: (_, _) => screen),
+      ...routes,
       GoRoute(path: '/:rest(.*)', builder: (_, s) => Scaffold(body: Text('Navigiert: ${s.uri}'))),
     ],
   );
@@ -692,7 +810,7 @@ Future<FakeApi> pumpScreen(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(preferences),
       audioHandlerProvider.overrideWithValue(audioHandler),
-      authProvider.overrideWith(() => FakeAuth(fakeApi)),
+      authProvider.overrideWith(() => auth == null ? FakeAuth(fakeApi) : auth(fakeApi)),
       connectivityProvider.overrideWith(
         (ref) => Stream.value(offline ? [ConnectivityResult.none] : [ConnectivityResult.wifi]),
       ),

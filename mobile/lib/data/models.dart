@@ -22,6 +22,16 @@ class User {
   final DateTime createdAt;
   final DateTime? lastLoginAt;
 
+  /// Sieht alle Rubriken (auch künftige). Fehlt die Angabe (alter Server), gilt wie bisher: alles.
+  final bool allCategories;
+
+  /// Freigegebene Rubriken, wenn nicht [allCategories] (für Admins ohne Bedeutung).
+  final List<int> categoryIds;
+
+  /// Selbst registriert und noch nicht vom Betreiber freigeschaltet.
+  final bool approvalPending;
+  final bool selfRegistered;
+
   const User({
     required this.id,
     required this.username,
@@ -31,7 +41,23 @@ class User {
     required this.canDownload,
     required this.createdAt,
     this.lastLoginAt,
+    this.allCategories = true,
+    this.categoryIds = const [],
+    this.approvalPending = false,
+    this.selfRegistered = false,
   });
+
+  /// Für dieses Konto ist noch keine Rubrik freigegeben – die Bibliothek ist deshalb leer.
+  bool get nothingUnlocked => !isAdmin && !allCategories && categoryIds.isEmpty;
+
+  /// Sieht nur seine freigegebenen Rubriken (kein Admin, nicht „alle Rubriken“).
+  bool get restricted => !isAdmin && !allCategories;
+
+  /// Darf bei YouTube suchen – Regel des Servers: eingeschränkte Konten nur mit Download-Recht (sonst 403).
+  bool get canSearchYouTube => !restricted || canDownload;
+
+  /// Darf der Titel einer Rubrik auf diesem Konto (noch) gespielt werden? Für Offline-Dateien nach einem Entzug.
+  bool allowsCategory(int categoryId) => !restricted || categoryIds.contains(categoryId);
 
   factory User.fromJson(Json j) => User(
         id: _int(j['id']),
@@ -42,6 +68,12 @@ class User {
         canDownload: j['can_download'] == true,
         createdAt: _date(j['created_at']),
         lastLoginAt: _dateOrNull(j['last_login_at']),
+        allCategories: j['all_categories'] != false,
+        categoryIds: j['category_ids'] is List
+            ? [for (final id in j['category_ids'] as List) if (id is num) id.toInt()]
+            : const [],
+        approvalPending: j['approval_pending'] == true,
+        selfRegistered: j['self_registered'] == true,
       );
 
   Json toJson() => {
@@ -53,6 +85,10 @@ class User {
         'can_download': canDownload,
         'created_at': createdAt.toIso8601String(),
         'last_login_at': lastLoginAt?.toIso8601String(),
+        'all_categories': allCategories,
+        'category_ids': categoryIds,
+        'approval_pending': approvalPending,
+        'self_registered': selfRegistered,
       };
 }
 
@@ -107,15 +143,35 @@ class ServerInfo {
   final int apiVersion;
   final String publicUrl;
 
-  const ServerInfo({required this.name, required this.version, required this.apiVersion, required this.publicUrl});
+  /// Selbst-Registrierung: 'off', 'approval' oder 'open' (alter Server: 'off').
+  final String registrationMode;
+
+  const ServerInfo({
+    required this.name,
+    required this.version,
+    required this.apiVersion,
+    required this.publicUrl,
+    this.registrationMode = 'off',
+  });
+
+  /// Bietet der Server „Konto erstellen“ an?
+  bool get registrationOpen => registrationModeOpen(registrationMode);
 
   factory ServerInfo.fromJson(Json j) => ServerInfo(
         name: j['name'] as String? ?? 'Selfify',
         version: j['version'] as String? ?? '?',
         apiVersion: _int(j['api_version']),
         publicUrl: j['public_url'] as String? ?? '',
+        registrationMode: parseRegistrationMode(j['registration_mode']),
       );
 }
+
+/// Registrierungs-Modus vom Server: Fehlt er (alter Server) oder ist er unbekannt, gilt 'off'.
+String parseRegistrationMode(dynamic value) =>
+    value == 'approval' || value == 'open' ? value as String : 'off';
+
+/// 'approval' (Konto wartet auf Freischaltung) und 'open' (sofort nutzbar) erlauben die Registrierung.
+bool registrationModeOpen(String mode) => mode == 'approval' || mode == 'open';
 
 class DeviceSession {
   final int id;
@@ -1100,6 +1156,33 @@ class AppConfig {
   final String premiumDescription;
   final List<String> premiumBenefits;
 
+  /// Leistungen, die nur mit Premium gehen (Schlüssel aus [PremiumFeature]). Alter Server: keine.
+  final List<String> premiumOnly;
+
+  /// Höchste Tonqualität ohne Premium, wenn „Höhere Tonqualität“ nur mit Premium geht: 'normal' oder 'low'.
+  final String freeAudioQuality;
+
+  /// Song-Wünsche pro Woche ohne Premium (0 = keine), wenn „Mehr Song-Wünsche“ nur mit Premium geht.
+  final int freeRequestsPerWeek;
+
+  /// So oft darf man ohne Premium pro Stunde überspringen, wenn „Unbegrenzt überspringen“ nur mit Premium geht.
+  final int freeSkipsPerHour;
+
+  /// Premium-Abzeichen im Profil zeigen.
+  final bool premiumBadgeEnabled;
+
+  /// Basis-Abos (Laufzeiten) in der Reihenfolge des Dashboards; leer = alle, die der Store liefert.
+  final List<String> billingBasePlans;
+
+  /// Im Dashboard als „empfohlen“ markierte Laufzeit ('' = keine).
+  final String billingRecommendedPlan;
+
+  /// Selbst-Registrierung: 'off', 'approval' oder 'open' (alter Server: 'off').
+  final String registrationMode;
+
+  /// Bietet der Server „Konto erstellen“ an?
+  bool get registrationOpen => registrationModeOpen(registrationMode);
+
   const AppConfig({
     this.adsEnabled = false,
     this.premiumEnabled = true,
@@ -1116,6 +1199,14 @@ class AppConfig {
     this.premiumHeadline = '',
     this.premiumDescription = '',
     this.premiumBenefits = const [],
+    this.premiumOnly = const [],
+    this.freeAudioQuality = 'normal',
+    this.freeRequestsPerWeek = 3,
+    this.freeSkipsPerHour = 6,
+    this.premiumBadgeEnabled = false,
+    this.billingBasePlans = const [],
+    this.billingRecommendedPlan = '',
+    this.registrationMode = 'off',
   });
 
   factory AppConfig.fromJson(Json j) => AppConfig(
@@ -1134,7 +1225,53 @@ class AppConfig {
         premiumHeadline: j['premium_headline'] is String ? j['premium_headline'] as String : '',
         premiumDescription: j['premium_description'] is String ? j['premium_description'] as String : '',
         premiumBenefits: _texts(j['premium_benefits']),
+        premiumOnly: _texts(j['premium_only']),
+        freeAudioQuality: j['free_audio_quality'] == 'low' ? 'low' : 'normal',
+        freeRequestsPerWeek: _atLeast(j['free_requests_per_week'], 0, 3),
+        freeSkipsPerHour: _atLeast(j['free_skips_per_hour'], 1, 6),
+        premiumBadgeEnabled: j['premium_badge_enabled'] == true,
+        billingBasePlans: _texts(j['billing_base_plans']),
+        billingRecommendedPlan: j['billing_recommended_plan'] is String ? j['billing_recommended_plan'] as String : '',
+        registrationMode: parseRegistrationMode(j['registration_mode']),
       );
+}
+
+/// Ganzzahl ≥ [min]; fehlt sie (alter Server) oder ist sie ungültig, gilt [fallback].
+int _atLeast(dynamic value, int min, int fallback) {
+  if (value is! num) return fallback;
+  final number = value.toInt();
+  return number < min ? fallback : number;
+}
+
+/// Feste Schlüssel der Leistungen (wie server/app/services/features.py).
+abstract final class PremiumFeature {
+  static const offline = 'offline',
+      noAds = 'no_ads',
+      hqAudio = 'hq_audio',
+      video = 'video',
+      lyrics = 'lyrics',
+      requests = 'requests',
+      skips = 'skips',
+      badge = 'badge';
+  static const all = [offline, noAds, hqAudio, video, lyrics, requests, skips, badge];
+
+  /// Kurznamen (wie LABELS auf dem Server).
+  static const labels = {
+    offline: 'Offline-Hören',
+    noAds: 'Keine Werbung',
+    hqAudio: 'Höhere Tonqualität',
+    video: 'Videos ansehen',
+    lyrics: 'Songtexte',
+    requests: 'Mehr Song-Wünsche',
+    skips: 'Unbegrenzt überspringen',
+    badge: 'Premium-Abzeichen',
+  };
+
+  /// Kurznamen der [features] in fester Reihenfolge, mit „, “ verbunden.
+  static String names(Iterable<String> features) {
+    final set = features.toSet();
+    return [for (final f in all) if (set.contains(f)) labels[f]!].join(', ');
+  }
 }
 
 /// Gnadenfrist in Tagen; fehlt sie oder ist sie unsinnig (≤ 0), gelten 7 Tage.
@@ -1166,13 +1303,28 @@ class PlaySubscription {
   final DateTime? expiresAt;
   final bool autoRenewing;
 
-  const PlaySubscription({required this.productId, required this.state, this.expiresAt, this.autoRenewing = false});
+  /// Laufzeit (Basis-Abo) laut Google; '' = unbekannt.
+  final String basePlanId;
+
+  /// Angebot laut Google; '' = keins.
+  final String offerId;
+
+  const PlaySubscription({
+    required this.productId,
+    required this.state,
+    this.expiresAt,
+    this.autoRenewing = false,
+    this.basePlanId = '',
+    this.offerId = '',
+  });
 
   factory PlaySubscription.fromJson(Json j) => PlaySubscription(
         productId: j['product_id'] is String ? j['product_id'] as String : '',
         state: j['state'] is String ? j['state'] as String : '',
         expiresAt: _dateOrNull(j['expires_at']),
         autoRenewing: j['auto_renewing'] == true,
+        basePlanId: j['base_plan_id'] is String ? j['base_plan_id'] as String : '',
+        offerId: j['offer_id'] is String ? j['offer_id'] as String : '',
       );
 }
 
@@ -1202,6 +1354,18 @@ class PremiumStatus {
   /// Laufendes Abo über Google Play, falls es eines gibt.
   final PlaySubscription? play;
 
+  /// Umfang des Premiums. null = alter Server (dann gilt: aktiv → alle, sonst keine).
+  final List<String>? features;
+
+  /// Leistungen, die nur mit Premium gehen (wie in der App-Konfiguration).
+  final List<String> premiumOnly;
+
+  /// Was der Server diesem Benutzer gerade sperrt. null = alter Server (siehe premiumAccessProvider).
+  final List<String>? locked;
+
+  /// Premium-Abzeichen im Profil zeigen.
+  final bool badge;
+
   const PremiumStatus({
     this.active = false,
     this.unlimited = false,
@@ -1211,7 +1375,17 @@ class PremiumStatus {
     this.offlineGraceDays = 7,
     this.checkedAt,
     this.play,
+    this.features,
+    this.premiumOnly = const [],
+    this.locked,
+    this.badge = false,
   });
+
+  /// Schaltet das Premium diese Leistung frei?
+  bool has(String feature) => features == null ? active : features!.contains(feature);
+
+  /// Schaltet das Premium alle Leistungen frei?
+  bool get hasAll => PremiumFeature.all.every(has);
 
   factory PremiumStatus.fromJson(Json j) => PremiumStatus(
         active: j['active'] == true,
@@ -1222,6 +1396,32 @@ class PremiumStatus {
         offlineGraceDays: _graceDays(j['offline_grace_days']),
         checkedAt: _dateOrNull(j['checked_at']) ?? DateTime.now(),
         play: j['play'] is Map ? PlaySubscription.fromJson(Map<String, dynamic>.from(j['play'] as Map)) : null,
+        features: j['features'] is List ? _texts(j['features']) : null,
+        premiumOnly: _texts(j['premium_only']),
+        locked: j['locked'] is List ? _texts(j['locked']) : null,
+        badge: j['badge'] == true,
+      );
+}
+
+/// Antwort von `GET /requests/quota`: Song-Wünsche dieser Woche.
+class WishQuota {
+  /// Gilt für diesen Benutzer eine Wochengrenze?
+  final bool limited;
+  final int? limit;
+  final int used;
+  final int? left;
+
+  /// Ab dann ist wieder ein Wunsch frei (nur mit Grenze und mindestens einem gezählten Wunsch).
+  final DateTime? resetsAt;
+
+  const WishQuota({required this.limited, this.limit, this.used = 0, this.left, this.resetsAt});
+
+  factory WishQuota.fromJson(Json j) => WishQuota(
+        limited: j['limited'] == true,
+        limit: j['limit'] is num ? (j['limit'] as num).toInt() : null,
+        used: j['used'] is num ? (j['used'] as num).toInt() : 0,
+        left: j['left'] is num ? (j['left'] as num).toInt() : null,
+        resetsAt: _dateOrNull(j['resets_at']),
       );
 }
 

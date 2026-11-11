@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
+import '../../data/api.dart';
 import '../../data/models.dart';
 import '../../player/player.dart';
 import '../../state/connectivity.dart';
 import '../../state/library.dart';
+import '../../state/premium_access.dart';
 import '../../state/settings.dart';
 import '../widgets/cover.dart';
+import '../widgets/premium_gate.dart';
 import 'player_widgets.dart';
 
 /// Hintergrundfarbe der Songtext-Ansicht: Cover-Farbe, gedämpft, damit weiße Schrift gut lesbar ist.
@@ -16,6 +19,15 @@ Color lyricsColorFor(Track track) {
   if (color == null) return AppColors.surfaceHighest;
   final hsl = HSLColor.fromColor(color);
   return hsl.withLightness(hsl.lightness.clamp(0.2, 0.34)).toColor();
+}
+
+/// „Songtexte nur mit Premium“ (Dashboard › Premium-Leistungen).
+const lyricsLockedMessage = 'Songtexte gibt es mit Premium.';
+
+/// Hat der Server den Songtext gesperrt (HTTP 403)?
+bool _lockedByServer(AsyncValue<Lyrics?>? value) {
+  final error = value?.error;
+  return error is ApiException && error.statusCode == 403;
 }
 
 bool _hasText(Lyrics lyrics) => lyrics.lines.any((line) => line.text.trim().isNotEmpty);
@@ -32,9 +44,20 @@ class PlayerLyricsCard extends ConsumerWidget {
     // Songtexte liegen auf dem Server – ohne Netz bzw. im Offline-Modus gibt es keine
     final offline = ref.watch(isOfflineProvider) || ref.watch(settingsProvider.select((s) => s.offlineMode));
     if (offline) return const SizedBox.shrink();
-    final value = ref.watch(lyricsProvider(track.id));
-    final lyrics = value.value;
     final color = lyricsColorFor(track);
+    // Nur mit Premium: gar nicht erst abrufen
+    final locked = !ref.watch(premiumAccessProvider.select((a) => a.allows(PremiumFeature.lyrics)));
+    final value = locked ? null : ref.watch(lyricsProvider(track.id));
+    if (value == null || _lockedByServer(value)) {
+      return Padding(
+        padding: margin,
+        child: _LyricsFrame(
+          color: color,
+          child: const Center(child: PremiumLockedView(text: lyricsLockedMessage, compact: true)),
+        ),
+      );
+    }
+    final lyrics = value.value;
 
     if (lyrics == null) {
       if (!value.hasError || value.isLoading) return const SizedBox.shrink();
@@ -149,11 +172,14 @@ class _FullLyricsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final track = ref.watch(currentTrackProvider) ?? initial;
     final offline = ref.watch(isOfflineProvider) || ref.watch(settingsProvider.select((s) => s.offlineMode));
-    final value = offline ? null : ref.watch(lyricsProvider(track.id));
+    final locked = !ref.watch(premiumAccessProvider.select((a) => a.allows(PremiumFeature.lyrics)));
+    final value = offline || locked ? null : ref.watch(lyricsProvider(track.id));
     final lyrics = value?.value;
 
     Widget body;
-    if (value == null) {
+    if (!offline && (locked || _lockedByServer(value))) {
+      body = const Center(child: PremiumLockedView(text: lyricsLockedMessage));
+    } else if (value == null) {
       body = const _SheetMessage(text: 'Songtexte gibt es nur mit Verbindung zum Server – nicht im Offline-Modus.');
     } else if (lyrics != null && _hasText(lyrics)) {
       body = PlayerLyricsView(

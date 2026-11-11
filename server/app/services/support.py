@@ -1,15 +1,18 @@
 """Song-Wünsche und Fehlermeldungen: Grenzen gegen Missbrauch und Status-Nachführung."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import BugReport, SongRequest, User, utcnow
+from app.services import features as feature_set
 
 MAX_OPEN_REQUESTS = 20
 MAX_REQUESTS_PER_DAY = 15
 MAX_BUG_REPORTS_PER_HOUR = 10
+# Gratis-Grenze für Wünsche: rollierend über die letzten 7 Tage
+REQUEST_WEEK = timedelta(days=7)
 
 
 class SupportError(Exception):
@@ -23,7 +26,23 @@ def _same(a: str, b: str) -> bool:
     return " ".join(a.lower().split()) == " ".join(b.lower().split())
 
 
-def create_request(db: Session, user: User, *, title: str, artist: str, note: str) -> SongRequest:
+def week_requests(db: Session, user: User, now: datetime | None = None) -> list[datetime]:
+    """Zeitpunkte der eigenen Wünsche der letzten 7 Tage (alle Zustände; zurückgezogene sind gelöscht), älteste
+    zuerst."""
+    now = now or utcnow()
+    return sorted(
+        db.scalars(
+            select(SongRequest.created_at).where(
+                SongRequest.user_id == user.id, SongRequest.created_at > now - REQUEST_WEEK
+            )
+        )
+    )
+
+
+def create_request(
+    db: Session, user: User, *, title: str, artist: str, note: str, weekly_limit: int | None = None
+) -> SongRequest:
+    """weekly_limit: Gratis-Grenze je 7 Tage (None = keine, wie vor Teil 2; 0 = gar keine Wünsche)."""
     now = utcnow()
     mine = db.scalars(select(SongRequest).where(SongRequest.user_id == user.id)).unique().all()
     open_ones = [r for r in mine if r.status in ("open", "accepted")]
@@ -33,6 +52,11 @@ def create_request(db: Session, user: User, *, title: str, artist: str, note: st
         raise SupportError(429, "Du hast heute schon sehr viele Wünsche geschickt. Versuche es morgen wieder.")
     if any(_same(r.title, title) and _same(r.artist, artist) for r in open_ones):
         raise SupportError(409, "Diesen Wunsch hast du schon geschickt.")
+    if weekly_limit is not None:
+        if weekly_limit == 0:
+            raise SupportError(403, feature_set.MSG_REQUESTS_NONE)
+        if len(week_requests(db, user, now)) >= weekly_limit:
+            raise SupportError(429, feature_set.requests_week_message(weekly_limit))
     request = SongRequest(user_id=user.id, title=title, artist=artist, note=note)
     db.add(request)
     db.flush()

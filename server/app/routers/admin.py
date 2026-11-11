@@ -8,6 +8,7 @@ from app.models import DownloadJob, User, UserSession, utcnow
 from app.schemas.premium import BillingStatusOut, BillingTestOut, PremiumStatusOut
 from app.schemas.support import AdminUserOut, AppConfigIn, AppConfigOut, ClientVersionOut, StatsOut
 from app.services import app_config, play_billing, premium, stats
+from app.services import features as feature_set
 
 router = APIRouter(prefix="/admin", tags=["Dashboard"])
 
@@ -62,10 +63,19 @@ def list_users(_: AdminUser, db: DbSession) -> list[AdminUserOut]:
                 created_at=user.created_at,
                 last_login_at=user.last_login_at,
                 last_active_at=last_active.get(user.id),
-                premium=PremiumStatusOut(active=state.active, unlimited=state.unlimited, until=state.until),
+                premium=PremiumStatusOut(
+                    active=state.active,
+                    unlimited=state.unlimited,
+                    until=state.until,
+                    features=feature_set.ordered(state.features),
+                ),
                 downloads=int(downloads.get(user.id, 0)),
                 devices=int(devices.get(user.id, 0)),
                 last_client=_client_text(last),
+                all_categories=user.all_categories,
+                category_ids=user.category_ids,
+                approval_pending=user.approval_pending,
+                self_registered=user.self_registered,
             )
         )
     return out
@@ -102,21 +112,33 @@ def client_versions(_: AdminUser, db: DbSession) -> list[ClientVersionOut]:
     ]
 
 
+def _transcode_available(request: Request) -> bool:
+    return bool(request.app.state.transcoder.available)
+
+
 @router.get("/config", response_model=AppConfigOut)
-def get_config(_: AdminUser, db: DbSession) -> AppConfigOut:
-    return AppConfigOut(**app_config.get_all(db))
+def get_config(request: Request, _: AdminUser, db: DbSession) -> AppConfigOut:
+    return AppConfigOut(**app_config.get_all(db), transcode_available=_transcode_available(request))
 
 
 @router.put("/config", response_model=AppConfigOut)
-def update_config(body: AppConfigIn, _: AdminUser, db: DbSession) -> AppConfigOut:
+def update_config(request: Request, body: AppConfigIn, _: AdminUser, db: DbSession) -> AppConfigOut:
     changes = body.model_dump(exclude_none=True)
+    available = _transcode_available(request)
+    # Tonqualität einschränken heißt umwandeln: ohne ffmpeg bekämen Benutzer ohne Premium gar keinen Ton
+    if (
+        changes.get("hq_audio_requires_premium") is True
+        and not app_config.get_all(db)["hq_audio_requires_premium"]
+        and not available
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, feature_set.MSG_HQ_NEEDS_FFMPEG)
     try:
         values = app_config.update(db, changes)
     except app_config.ConfigError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
     db.commit()
-    return AppConfigOut(**values)
+    return AppConfigOut(**values, transcode_available=available)
 
 
 @router.get("/billing/status", response_model=BillingStatusOut)

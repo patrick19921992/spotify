@@ -66,10 +66,14 @@ iPhone) sowie das Web-Dashboard.</p>
 <h2>Welche Daten verarbeitet werden</h2>
 <ul>
 <li><strong>Konto:</strong> Benutzername, Anzeigename und ein Passwort-Hash (das Passwort selbst wird nicht
-gespeichert). Das Konto wird vom Betreiber angelegt.</li>
+gespeichert). Das Konto legt der Betreiber an. Erlaubt er es, kannst du es auch selbst in der App erstellen; je
+nach Einstellung schaltet der Betreiber selbst erstellte Konten erst frei und legt fest, welche Bereiche der
+Musiksammlung du siehst.</li>
 <li><strong>Angemeldete Geräte:</strong> Gerätename, Browser- bzw. App-Kennung, IP-Adresse, Zeitpunkte der Anmeldung
 und letzten Nutzung sowie die App-Version (Plattform, Kanal, Version).</li>
 <li><strong>Nutzung:</strong> Hörverlauf, Lieblingssongs, Playlists, gespeicherte Alben und Künstler.</li>
+<li><strong>Für andere sichtbar:</strong> Dein Anzeigename erscheint bei anderen Nutzern dieses Servers an Playlists,
+die du teilst, und an Titeln, die du dort hinzufügst.</li>
 <li><strong>Wünsche und Fehlermeldungen:</strong> Was du schickst („Song wünschen“, „Fehler melden“). Bei
 Fehlermeldungen nur, wenn du sie absendest – auf Wunsch mit Geräteinformationen und den letzten Fehlermeldungen
 der App.</li>
@@ -100,6 +104,9 @@ Betreiber; die App spricht nur mit diesem Server.</p>
 Tagen ohne Nutzung ab. Du kannst dein Konto jederzeit selbst löschen – in der App unter „Einstellungen“ → „Konto
 löschen“ oder auf der Seite <a href="/konto-loeschen">Konto löschen</a>. Dabei werden Konto, Playlists,
 Lieblingssongs, Hörverlauf, Wünsche, Fehlermeldungen und Premium-Zuordnung endgültig gelöscht.</p>
+<p>Lehnt der Betreiber ein selbst erstelltes Konto ab, wird es sofort gelöscht. Solange dein Konto auf Freischaltung
+wartet, kannst du die Registrierung auf der Anmeldeseite der App („Registrierung zurückziehen“) oder auf der Seite
+<a href="/konto-loeschen">Konto löschen</a> zurückziehen.</p>
 
 <h2>Deine Rechte</h2>
 <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit
@@ -128,6 +135,7 @@ def deletion_page(settings: Settings) -> str:
 <p>Hier kannst du dein Konto und alle dazugehörigen Daten (Playlists, Lieblingssongs, Hörverlauf, Wünsche,
 Fehlermeldungen, Premium-Zuordnung) <strong>endgültig löschen</strong>. Das lässt sich nicht rückgängig machen.</p>
 <p>In der App geht es auch unter „Einstellungen“ → „Konto löschen“.</p>
+<p>Wartet dein Konto noch auf Freischaltung, wird es hier ebenfalls gelöscht.</p>
 <p class="notice"><strong>Abo über Google Play?</strong> Das Löschen des Kontos kündigt ein laufendes Abo nicht –
 Google bucht sonst weiter ab. Kündige es vorher in Google Play: Play Store → Profilbild → „Zahlungen und Abos“ →
 „Abos“, oder unter

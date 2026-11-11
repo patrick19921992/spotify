@@ -10,8 +10,11 @@ import '../state/app_config.dart';
 import '../state/auth.dart';
 import '../state/connectivity.dart';
 import '../state/offline.dart';
+import '../state/offline_access.dart' show clockProvider;
+import '../state/premium_access.dart';
 import '../state/settings.dart';
 import 'audio_handler.dart';
+import 'skip_limit.dart';
 import 'windows_audio.dart' show windowsAudioError;
 
 export 'audio_handler.dart' show PlayContext, SelfifyAudioHandler;
@@ -27,7 +30,10 @@ final playbackBridgeProvider = Provider<void>((ref) {
   final onWifi = ref.watch(isOnWifiProvider);
   final noNetwork = ref.watch(isOfflineProvider);
   final offline = ref.read(offlineProvider.notifier);
-  final quality = onWifi ? settings.wifiQuality : settings.mobileQuality;
+  final access = ref.watch(premiumAccessProvider);
+  // „Höhere Tonqualität nur mit Premium“: höchstens die Stufe ohne Premium (der Server deckelt ebenso). Die
+  // gespeicherte Einstellung bleibt – mit Premium gilt sie wieder.
+  final quality = access.capQuality(onWifi ? settings.wifiQuality : settings.mobileQuality);
 
   handler.autoplayEnabled = settings.autoplay;
   handler.sourceTokenExpiry = () => api?.tokens.mediaExpiresAt;
@@ -97,6 +103,20 @@ final playbackBridgeProvider = Provider<void>((ref) {
     if (settings.offlineMode || noNetwork) return tracks.where((t) => offline.localPath(t.id) != null).toList();
     return tracks;
   };
+  // Überspring-Grenze ohne Premium – nur wenn der Betreiber sie eingeschaltet hat; sonst exakt wie bisher
+  final serverUrl = ref.watch(authProvider.select((a) => a.value?.serverUrl));
+  final userId = ref.watch(currentUserProvider.select((u) => u?.id));
+  if (access.config.premiumOnly.contains(PremiumFeature.skips) && serverUrl != null && userId != null) {
+    final limiter =
+        SkipLimiter(prefs: ref.read(sharedPreferencesProvider), key: SkipLimiter.keyFor(serverUrl, userId), access: access);
+    final clock = ref.read(clockProvider);
+    final notice = ref.read(skipLimitNoticeProvider.notifier);
+    handler.allowSkip = () => limiter.tryConsume(clock());
+    handler.onSkipBlocked = () => notice.show(skipLimitMessage(access.config.freeSkipsPerHour));
+  } else {
+    handler.allowSkip = null;
+    handler.onSkipBlocked = null;
+  }
   // Zuletzt: neue Qualität (WLAN ↔ mobil) gilt sofort für die kommenden Titel
   handler.streamQuality = quality;
   handler.streamHeaders = streamHeaders;

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import Playlist, PlaylistFollow, PlaylistItem, Track, User, utcnow
 from app.schemas.personal import PlaylistDetailOut, PlaylistItemOut, PlaylistOut, UserRef
 from app.services.library import track_out
+from app.services.visibility import UNRESTRICTED, Visibility, filter_tracks, track_clause
 
 MAX_ITEMS = 10_000
 
@@ -36,12 +37,15 @@ def get_visible(db: Session, user: User, playlist_id: int) -> Playlist:
 
 # --------------------------------------------------------------- Ausgabe
 
-def mosaic_for(db: Session, playlist_id: int) -> list[str]:
-    """Bis zu 4 verschiedene Cover in Playlist-Reihenfolge – für das 2×2-Mosaik."""
+def mosaic_for(db: Session, playlist_id: int, v: Visibility = UNRESTRICTED) -> list[str]:
+    """Bis zu 4 verschiedene Cover in Playlist-Reihenfolge – für das 2×2-Mosaik (nur aus sichtbaren Einträgen)."""
     cover_ids = db.scalars(
-        select(Track.cover_id)
-        .join(PlaylistItem, PlaylistItem.track_id == Track.id)
-        .where(PlaylistItem.playlist_id == playlist_id, Track.cover_id.is_not(None))
+        filter_tracks(
+            select(Track.cover_id)
+            .join(PlaylistItem, PlaylistItem.track_id == Track.id)
+            .where(PlaylistItem.playlist_id == playlist_id, Track.cover_id.is_not(None)),
+            v,
+        )
         .order_by(PlaylistItem.position)
         .limit(60)
     ).all()
@@ -65,10 +69,33 @@ def _cover_color(db: Session, playlist: Playlist, mosaic: list[str]) -> str | No
     return None
 
 
-def playlist_out(db: Session, playlist: Playlist, user: User, following: set[int] | None = None) -> PlaylistOut:
+def _visible_stats(db: Session, playlist_id: int, v: Visibility) -> tuple[int, float]:
+    """Anzahl und Dauer der sichtbaren Einträge (für eingeschränkte Konten; gespeichert bleiben die globalen Werte)."""
+    count, duration = db.execute(
+        filter_tracks(
+            select(func.count(PlaylistItem.id), func.coalesce(func.sum(Track.duration), 0))
+            .select_from(PlaylistItem)
+            .join(Track, Track.id == PlaylistItem.track_id)
+            .where(PlaylistItem.playlist_id == playlist_id),
+            v,
+        )
+    ).one()
+    return int(count), float(duration)
+
+
+def playlist_out(
+    db: Session,
+    playlist: Playlist,
+    user: User,
+    following: set[int] | None = None,
+    v: Visibility = UNRESTRICTED,
+) -> PlaylistOut:
     if following is None:
         following = followed_ids(db, user.id)
-    mosaic = mosaic_for(db, playlist.id)
+    mosaic = mosaic_for(db, playlist.id, v)
+    track_count, duration = (
+        _visible_stats(db, playlist.id, v) if v.restricted else (playlist.track_count, playlist.duration)
+    )
     return PlaylistOut(
         id=playlist.id,
         name=playlist.name,
@@ -76,8 +103,8 @@ def playlist_out(db: Session, playlist: Playlist, user: User, following: set[int
         owner=UserRef(id=playlist.owner.id, display_name=playlist.owner.display_name),
         is_public=playlist.is_public,
         is_collaborative=playlist.is_collaborative,
-        track_count=playlist.track_count,
-        duration=playlist.duration,
+        track_count=track_count,
+        duration=duration,
         cover_id=playlist.cover_id,
         mosaic=mosaic,
         cover_color=_cover_color(db, playlist, mosaic),
@@ -89,23 +116,30 @@ def playlist_out(db: Session, playlist: Playlist, user: User, following: set[int
     )
 
 
-def playlist_detail(db: Session, playlist: Playlist, user: User) -> PlaylistDetailOut:
-    items = db.scalars(
-        select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id).order_by(PlaylistItem.position)
-    ).unique().all()
+def _items_query(playlist_id: int, v: Visibility):  # type: ignore[no-untyped-def]
+    query = select(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id)
+    clause = track_clause(v)
+    if clause is not None:
+        query = query.join(Track, Track.id == PlaylistItem.track_id).where(clause)
+    return query
+
+
+def playlist_detail(db: Session, playlist: Playlist, user: User, v: Visibility = UNRESTRICTED) -> PlaylistDetailOut:
+    """Verborgene Einträge fallen für eingeschränkte Konten heraus; sie sehen die sichtbaren Positionen 0..n-1."""
+    items = db.scalars(_items_query(playlist.id, v).order_by(PlaylistItem.position, PlaylistItem.id)).unique().all()
     return PlaylistDetailOut(
-        **playlist_out(db, playlist, user).model_dump(),
+        **playlist_out(db, playlist, user, v=v).model_dump(),
         items=[
             PlaylistItemOut(
                 item_id=item.id,
-                position=item.position,
+                position=index if v.restricted else item.position,
                 added_at=item.added_at,
                 added_by=UserRef(id=item.added_by.id, display_name=item.added_by.display_name)
                 if item.added_by
                 else None,
                 track=track_out(item.track),
             )
-            for item in items
+            for index, item in enumerate(items)
         ],
     )
 
@@ -114,7 +148,7 @@ def followed_ids(db: Session, user_id: int) -> set[int]:
     return set(db.scalars(select(PlaylistFollow.playlist_id).where(PlaylistFollow.user_id == user_id)))
 
 
-def list_playlists(db: Session, user: User, scope: str) -> list[PlaylistOut]:
+def list_playlists(db: Session, user: User, scope: str, v: Visibility = UNRESTRICTED) -> list[PlaylistOut]:
     """scope: "library" = eigene + gefolgte, "mine" = nur eigene, "family" = öffentliche der anderen."""
     following = followed_ids(db, user.id)
     query = select(Playlist)
@@ -127,7 +161,7 @@ def list_playlists(db: Session, user: User, scope: str) -> list[PlaylistOut]:
             (Playlist.owner_id == user.id) | (Playlist.id.in_(following) & Playlist.is_public.is_(True))
         )
     playlists = db.scalars(query.order_by(Playlist.updated_at.desc())).unique().all()
-    return [playlist_out(db, p, user, following) for p in playlists]
+    return [playlist_out(db, p, user, following, v) for p in playlists]
 
 
 # ------------------------------------------------------------- Ändern
@@ -160,11 +194,41 @@ def _renumber(db: Session, playlist_id: int, ordered_ids: list[int] | None = Non
         db.execute(update(PlaylistItem).where(PlaylistItem.id == item_id).values(position=position))
 
 
-def add_tracks(db: Session, playlist: Playlist, user: User, track_ids: list[int], position: int | None) -> int:
-    existing = set(db.scalars(select(Track.id).where(Track.id.in_(set(track_ids)))))
+def _visible_item_ids(db: Session, playlist_id: int, v: Visibility) -> list[int]:
+    """IDs der sichtbaren Einträge in Playlist-Reihenfolge."""
+    return list(
+        db.scalars(
+            filter_tracks(
+                select(PlaylistItem.id)
+                .join(Track, Track.id == PlaylistItem.track_id)
+                .where(PlaylistItem.playlist_id == playlist_id),
+                v,
+            ).order_by(PlaylistItem.position, PlaylistItem.id)
+        )
+    )
+
+
+def add_tracks(
+    db: Session,
+    playlist: Playlist,
+    user: User,
+    track_ids: list[int],
+    position: int | None,
+    v: Visibility = UNRESTRICTED,
+) -> int:
+    """v = Sichtbarkeit des Aufrufers. Der Download-Worker ruft das als Systemvorgang ohne Einschränkung auf."""
+    existing = set(db.scalars(filter_tracks(select(Track.id).where(Track.id.in_(set(track_ids))), v)))
     missing = [track_id for track_id in track_ids if track_id not in existing]
     if missing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Titel nicht gefunden: {missing[:5]}")
+    if v.restricted and position is not None:
+        # Sichtbarer Index -> globale Position: vor dem i-ten sichtbaren Eintrag, ab n ans Ende der Liste
+        visible = _visible_item_ids(db, playlist.id, v)
+        if position < len(visible):
+            item = db.get(PlaylistItem, visible[position])
+            position = item.position if item is not None else None
+        else:
+            position = None
     count = playlist.track_count
     if count + len(track_ids) > MAX_ITEMS:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Eine Playlist kann höchstens {MAX_ITEMS} Titel haben.")
@@ -192,10 +256,9 @@ def add_tracks(db: Session, playlist: Playlist, user: User, track_ids: list[int]
     return len(track_ids)
 
 
-def remove_items(db: Session, playlist: Playlist, item_ids: list[int]) -> int:
-    items = db.scalars(
-        select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id, PlaylistItem.id.in_(set(item_ids)))
-    ).all()
+def remove_items(db: Session, playlist: Playlist, item_ids: list[int], v: Visibility = UNRESTRICTED) -> int:
+    """Eingeschränkte Konten entfernen nur sichtbare Einträge; verborgene IDs zählen wie unbekannte."""
+    items = db.scalars(_items_query(playlist.id, v).where(PlaylistItem.id.in_(set(item_ids)))).unique().all()
     for item in items:
         db.delete(item)
     db.flush()
@@ -204,7 +267,9 @@ def remove_items(db: Session, playlist: Playlist, item_ids: list[int]) -> int:
     return len(items)
 
 
-def move_item(db: Session, playlist: Playlist, item_id: int, position: int) -> None:
+def move_item(
+    db: Session, playlist: Playlist, item_id: int, position: int, v: Visibility = UNRESTRICTED
+) -> None:
     ordered = list(
         db.scalars(
             select(PlaylistItem.id)
@@ -212,6 +277,21 @@ def move_item(db: Session, playlist: Playlist, item_id: int, position: int) -> N
             .order_by(PlaylistItem.position, PlaylistItem.id)
         )
     )
+    if v.restricted:
+        # Eingeschränkt: Quelle und Ziel sind sichtbare Indizes. Der Eintrag rückt vor den Eintrag, der danach an
+        # diesem sichtbaren Index stünde; ab dem Ende der sichtbaren Einträge ans Ende der Liste
+        visible = _visible_item_ids(db, playlist.id, v)
+        if item_id not in visible:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Eintrag nicht in dieser Playlist.")
+        visible.remove(item_id)
+        ordered.remove(item_id)
+        if position < len(visible):
+            ordered.insert(ordered.index(visible[position]), item_id)
+        else:
+            ordered.append(item_id)
+        _renumber(db, playlist.id, ordered)
+        playlist.updated_at = utcnow()
+        return
     if item_id not in ordered:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Eintrag nicht in dieser Playlist.")
     ordered.remove(item_id)

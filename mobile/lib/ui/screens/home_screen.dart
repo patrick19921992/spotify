@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -135,6 +136,9 @@ class _OnlineHome extends ConsumerWidget {
 
   Future<void> _refresh(BuildContext context, WidgetRef ref) async {
     ref.invalidate(homeProvider);
+    // Neue Rubriken-Freigaben des Betreibers: Konto und Rubriken neu laden
+    ref.invalidate(categoriesProvider);
+    unawaited(ref.read(authProvider.notifier).refreshUser());
     try {
       await ref.read(homeProvider.future);
     } catch (e) {
@@ -188,12 +192,22 @@ class _OnlineHome extends ConsumerWidget {
   }
 }
 
-/// Leere Bibliothek – freundlicher Einstieg.
-class _Welcome extends StatelessWidget {
+/// Leere Bibliothek – freundlicher Einstieg. Ist für das Konto noch keine Rubrik freigeschaltet (selbst
+/// registriert), sagt die Seite das – Suchen hilft dann nicht weiter.
+class _Welcome extends ConsumerWidget {
   const _Welcome();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nothingUnlocked = ref.watch(currentUserProvider.select((u) => u?.nothingUnlocked ?? false));
+    if (nothingUnlocked) {
+      return const EmptyState(
+        icon: Icons.lock_clock_rounded,
+        title: 'Noch nichts freigeschaltet',
+        message: 'Für dein Konto ist noch keine Rubrik freigeschaltet. Sobald der Betreiber dir Rubriken freigibt, '
+            'findest du hier deine Musik.',
+      );
+    }
     return EmptyState(
       icon: Icons.library_music_rounded,
       title: 'Willkommen bei Selfify',

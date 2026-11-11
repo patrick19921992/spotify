@@ -93,6 +93,21 @@
 
   function pill(text, kind) { return h("span", { class: "pill" + (kind ? " " + kind : ""), text: text }); }
 
+  // Premium-Leistungen – Schlüssel und Namen wie server/app/services/features.py (feste Reihenfolge)
+  var FEATURE_KEYS = ["offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "badge"];
+  var FEATURE_LABELS = {
+    offline: "Offline-Hören", no_ads: "Keine Werbung", hq_audio: "Höhere Tonqualität", video: "Videos ansehen",
+    lyrics: "Songtexte", requests: "Mehr Song-Wünsche", skips: "Unbegrenzt überspringen", badge: "Premium-Abzeichen"
+  };
+  // Umfang eines Codes/einer Lizenz: null = alle Leistungen (immer als Text einsetzen, nie als HTML)
+  function scopeText(features) {
+    if (!features) return "Alle Leistungen";
+    return features.map(function (key) { return FEATURE_LABELS[key] || key; }).join(", ");
+  }
+  function fullScope(features) {
+    return !!features && FEATURE_KEYS.every(function (key) { return features.indexOf(key) >= 0; });
+  }
+
   // ------------------------------------------------------------------ Meldungen und Dialoge
 
   var toastBox = null;
@@ -309,7 +324,7 @@
     { id: "uebersicht", label: "Übersicht", render: viewOverview },
     { id: "downloads", label: "Downloads", render: viewDownloads },
     { id: "wuensche", label: "Wünsche", render: viewRequests, badge: "requests_open" },
-    { id: "benutzer", label: "Benutzer", render: viewUsers },
+    { id: "benutzer", label: "Benutzer", render: viewUsers, badge: "users_pending" },
     { id: "premium", label: "Premium-Codes", render: viewPremium },
     { id: "fehler", label: "Fehlermeldungen", render: viewBugs, badge: "bugs_new" },
     { id: "geraete", label: "Geräte & Versionen", render: viewClients },
@@ -407,6 +422,27 @@
     return h("div", { class: "table-wrap" }, h("table", null,
       h("thead", null, h("tr", null, headers.map(function (title) { return h("th", { text: title }); }))),
       h("tbody", null, rows)));
+  }
+
+  // Checkbox-Liste der Rubriken (für Standard-Rubriken neuer Konten und Freigaben je Benutzer).
+  // selected() liefert die angehakten IDs aufsteigend.
+  function categoryChecklist(categories, checkedIds) {
+    var boxes = [];
+    var el = categories.length
+      ? h("div", { class: "check-list" }, categories.map(function (category) {
+        var box = h("input", { type: "checkbox", checked: checkedIds.indexOf(category.id) >= 0 });
+        boxes.push({ id: category.id, box: box });
+        return h("label", { class: "check" }, box, h("span", { text: category.name }),
+          h("span", { class: "small dim", text: fmtNumber(category.item_count) }));
+      }))
+      : h("div", { class: "empty-inline dim", text: "Noch keine Rubriken angelegt." });
+    return {
+      el: el,
+      boxes: boxes,
+      selected: function () {
+        return boxes.filter(function (b) { return b.box.checked; }).map(function (b) { return b.id; }).sort(function (a, b) { return a - b; });
+      }
+    };
   }
 
   function chips(options, active, onPick) {
@@ -724,6 +760,7 @@
             h("td", { class: "mono small nowrap", text: lic.code || "–" }),
             h("td", { class: "small", text: fmtDate(lic.starts_at) + " – " + (lic.expires_at ? fmtDate(lic.expires_at) : "unbegrenzt") }),
             h("td", null, state),
+            h("td", { class: "small", text: scopeText(lic.features) }),
             h("td", { class: "small", text: lic.note }),
             h("td", null, lic.running || (!lic.revoked_at && (!lic.expires_at || new Date(lic.expires_at) > new Date()))
               ? h("button", { class: "danger small", text: "Entziehen", onclick: function () {
@@ -742,7 +779,8 @@
           return api("POST", "/admin/users/" + user.id + "/premium", payload).then(function () { toast("Premium vergeben."); return reload(); });
         }));
         content.appendChild(h("p", null, "Status: ", data.active ? pill(premiumText(data), "green") : pill("kein Premium", "")));
-        content.appendChild(table(["Quelle", "Code", "Zeitraum", "Zustand", "Notiz", ""], rows, "Noch keine Lizenzen."));
+        content.appendChild(table(["Quelle", "Code", "Zeitraum", "Zustand", "Umfang", "Notiz", ""], rows, "Noch keine Lizenzen."));
+        content.appendChild(h("p", { class: "small dim", text: "Vom Admin vergebenes Premium schaltet immer alle Leistungen frei. Einen kleineren Umfang gibt es nur über Codes." }));
         content.appendChild(h("h3", { text: "Premium vergeben" }));
         content.appendChild(h("div", { class: "form-grid" },
           h("label", { class: "field" }, "Laufzeit in Tagen", days),
@@ -798,14 +836,77 @@
       return api("PATCH", "/users/" + user.id, data).then(function () { toast(text); return load(); }).catch(showError);
     }
 
+    var categories = [];
+    var filter = "all";
+
+    function categoriesText(user) {
+      if (user.is_admin) return "Alle (Admin)";
+      if (user.all_categories) return "Alle";
+      var k = (user.category_ids || []).length;
+      return k ? k + " von " + categories.length : "keine";
+    }
+
+    // Rubriken-Freigabe eines Kontos: „Alle“ (auch künftige) oder eine Auswahl. Beim Freischalten wartender Konten
+    // wird zusätzlich is_active gesetzt – das beendet den Wartestatus.
+    function categoriesModal(user, approve) {
+      var all = h("input", { type: "radio", name: "category-scope", checked: user.all_categories });
+      var picked = h("input", { type: "radio", name: "category-scope", checked: !user.all_categories });
+      var picker = categoryChecklist(categories, user.category_ids || []);
+      function sync() { picker.boxes.forEach(function (b) { b.box.disabled = all.checked; }); }
+      all.addEventListener("change", sync);
+      picked.addEventListener("change", sync);
+      sync();
+      var content = h("div", { class: "col" },
+        h("label", { class: "check" }, all, "Alle Rubriken (auch künftige)"),
+        h("label", { class: "check" }, picked, "Nur ausgewählte"),
+        picker.el);
+      var title = approve ? user.display_name + " freischalten" : "Rubriken für " + user.display_name;
+      modal(title, content, [
+        { label: "Abbrechen", kind: "secondary", value: null },
+        { label: approve ? "Freischalten" : "Speichern", run: function (close) {
+          var payload = { all_categories: all.checked, category_ids: picker.selected() };
+          if (approve) payload.is_active = true;
+          return api("PATCH", "/users/" + user.id, payload).then(function () {
+            close(true);
+            toast(approve ? "Freigeschaltet." : "Rubriken gespeichert.");
+            ctx.refreshBadges();
+            return load();
+          });
+        } }
+      ]);
+    }
+
+    function reject(user) {
+      confirmDialog("Konto ablehnen?", "Das Konto „" + user.username + "“ wird endgültig gelöscht.", "Ablehnen", true).then(function (ok) {
+        if (ok) api("DELETE", "/users/" + user.id).then(function () { toast("Abgelehnt und gelöscht."); ctx.refreshBadges(); return load(); }).catch(showError);
+      });
+    }
+
     function draw(users) {
       clear(box);
       var me = session.user.id;
-      var rows = users.map(function (user) {
+      var pending = users.filter(function (user) { return user.approval_pending; });
+      if (!pending.length) filter = "all";
+      var options = [{ id: "all", label: "Alle" }];
+      if (pending.length) options.push({ id: "pending", label: "Wartend (" + pending.length + ")" });
+      box.appendChild(chips(options, filter, function (id) { filter = id; draw(users); }));
+      var shown = filter === "pending" ? pending : users;
+      var rows = shown.map(function (user) {
+        var lockAction = user.approval_pending
+          ? [
+            h("button", { class: "small", text: "Freischalten…", onclick: function () { categoriesModal(user, true); } }),
+            h("button", { class: "danger small", text: "Ablehnen", onclick: function () { reject(user); } })
+          ]
+          : user.id !== me ? h("button", { class: "secondary small", text: user.is_active ? "Sperren" : "Entsperren", onclick: function () { patchUser(user, { is_active: !user.is_active }, user.is_active ? "Gesperrt." : "Entsperrt."); } }) : null;
         return h("tr", null,
           h("td", null, h("div", { text: user.display_name }), h("div", { class: "small muted", text: "@" + user.username })),
-          h("td", null, user.is_admin ? pill("Admin", "blue") : "Benutzer", " ", user.is_active ? null : pill("gesperrt", "red")),
-          h("td", null, user.premium.active ? pill(premiumText(user.premium), "green") : h("span", { class: "dim", text: "–" })),
+          h("td", null, user.is_admin ? pill("Admin", "blue") : "Benutzer", " ",
+            user.approval_pending ? pill("wartet auf Freigabe", "yellow") : (user.is_active ? null : pill("gesperrt", "red")),
+            user.self_registered ? h("div", { class: "small muted", text: "selbst registriert" }) : null),
+          h("td", { class: "small nowrap", text: categoriesText(user) }),
+          h("td", null, user.premium.active
+            ? h("span", null, pill(premiumText(user.premium), "green"), fullScope(user.premium.features) ? null : " ", fullScope(user.premium.features) ? null : pill("Teilumfang", "yellow"))
+            : h("span", { class: "dim", text: "–" })),
           h("td", { class: "right", text: fmtNumber(user.downloads) }),
           h("td", { class: "right", text: fmtNumber(user.devices) }),
           h("td", { class: "small nowrap", text: user.last_client || "–" }),
@@ -818,18 +919,23 @@
                 if (value) patchUser(user, { password: value }, "Passwort gesetzt.");
               });
             } }),
-            user.id !== me ? h("button", { class: "secondary small", text: user.is_active ? "Sperren" : "Entsperren", onclick: function () { patchUser(user, { is_active: !user.is_active }, user.is_active ? "Gesperrt." : "Entsperrt."); } }) : null,
+            user.is_admin ? null : h("button", { class: "secondary small", text: "Rubriken…", onclick: function () { categoriesModal(user, false); } }),
+            lockAction,
             user.id !== me ? h("button", { class: "danger small", text: "Löschen", onclick: function () {
               confirmDialog("Benutzer löschen?", user.display_name + " samt Playlists, Lieblingssongs und Verlauf wird endgültig gelöscht.", "Löschen", true).then(function (ok) {
-                if (ok) api("DELETE", "/users/" + user.id).then(function () { toast("Gelöscht."); return load(); }).catch(showError);
+                if (ok) api("DELETE", "/users/" + user.id).then(function () { toast("Gelöscht."); ctx.refreshBadges(); return load(); }).catch(showError);
               });
             } }) : null)));
       });
-      box.appendChild(table(["Benutzer", "Rolle", "Premium", "Downloads", "Geräte", "App", "Zuletzt", ""], rows, "Keine Benutzer."));
+      box.appendChild(table(["Benutzer", "Rolle", "Rubriken", "Premium", "Downloads", "Geräte", "App", "Zuletzt", ""], rows, "Keine Benutzer."));
     }
 
     function load() {
-      return api("GET", "/admin/users").then(function (users) { if (ctx.alive()) draw(users); });
+      return Promise.all([api("GET", "/admin/users"), api("GET", "/categories")]).then(function (result) {
+        if (!ctx.alive()) return;
+        categories = result[1];
+        draw(result[0]);
+      });
     }
 
     body.appendChild(createForm());
@@ -865,6 +971,18 @@
       var uses = h("input", { type: "number", min: "1", max: "100000", value: "1" });
       var until = h("input", { type: "date", min: "2000-01-01", max: "2100-12-31" });
       var label = h("input", { type: "text", maxlength: "100", placeholder: "z. B. Freunde, Aktion Winter" });
+      // Welche Leistungen die Codes freischalten (Standard: alle)
+      var allFeatures = h("input", { type: "checkbox", checked: true });
+      var featureBoxes = {};
+      FEATURE_KEYS.forEach(function (key) { featureBoxes[key] = h("input", { type: "checkbox", checked: true, disabled: true }); });
+      var featureError = h("div", { class: "small error-text", hidden: true, text: "Bitte mindestens eine Leistung wählen." });
+      allFeatures.addEventListener("change", function () {
+        FEATURE_KEYS.forEach(function (key) {
+          featureBoxes[key].disabled = allFeatures.checked;
+          if (allFeatures.checked) featureBoxes[key].checked = true;
+        });
+        featureError.hidden = true;
+      });
       duration.addEventListener("change", function () {
         custom.hidden = duration.value !== "custom";
         // ausgeblendet UND deaktiviert: Ein versteckter, ungültiger Wert würde sonst still das Absenden verhindern
@@ -877,6 +995,13 @@
         var payload = { count: parseInt(count.value, 10), max_redemptions: parseInt(uses.value, 10), label: label.value.trim() };
         if (duration.value === "unlimited") payload.unlimited = true;
         else payload.duration_days = parseInt(duration.value === "custom" ? custom.value : duration.value, 10);
+        if (!allFeatures.checked) {
+          var picked = FEATURE_KEYS.filter(function (key) { return featureBoxes[key].checked; });
+          if (!picked.length) { featureError.hidden = false; return null; }
+          // alle angehakt = alle Leistungen (Feld weglassen)
+          if (picked.length < FEATURE_KEYS.length) payload.features = picked;
+        }
+        featureError.hidden = true;
         if (until.value) {
           var date = new Date(until.value + "T23:59:59");
           if (isNaN(date.getTime())) { toast("„Einlösbar bis“ ist kein gültiges Datum.", true); return null; }
@@ -886,6 +1011,7 @@
           var text = codes.map(function (c) { return c.code; }).join("\n");
           modal("Neue Codes", h("div", { class: "col" },
             h("p", { class: "muted", text: codes.length + " Code(s) – " + durationText(codes[0]) + ". Gib sie weiter; jeder Code lässt sich in der App unter Einstellungen › Premium einlösen." }),
+            h("p", { class: "small", text: "Schaltet frei: " + scopeText(codes[0].features) }),
             h("div", { class: "codes-out", text: text })), [
             { label: "Schließen", kind: "secondary", value: null },
             { label: "Alle kopieren", run: function () { copyText(text); } }
@@ -899,8 +1025,16 @@
         h("label", { class: "field" }, "Laufzeit ab Einlösen", duration, custom),
         h("label", { class: "field" }, "Wie oft einlösbar", uses),
         h("label", { class: "field" }, "Einlösbar bis (optional)", until),
-        h("label", { class: "field" }, "Bezeichnung (optional)", label),
-        submit));
+        h("label", { class: "field" }, "Bezeichnung (optional)", label)),
+      h("div", { class: "col gap-top" },
+        h("strong", { text: "Schaltet frei" }),
+        h("label", { class: "check" }, allFeatures, "Alle Leistungen"),
+        h("div", { class: "form-grid" }, FEATURE_KEYS.map(function (key) {
+          return h("label", { class: "check" }, featureBoxes[key], FEATURE_LABELS[key]);
+        })),
+        h("div", { class: "small dim", text: "Welche Leistungen nur mit Premium gehen, stellst du unter App-Einstellungen › Premium-Leistungen ein. Ein Abo über Google Play schaltet immer alle frei." }),
+        featureError),
+      h("div", { class: "row gap-top" }, submit));
     }
 
     function drawCodes(codes) {
@@ -917,6 +1051,7 @@
           h("td", { class: "nowrap" }, h("span", { class: "mono", text: code.code }), " ", h("button", { class: "linklike small", text: "kopieren", onclick: function () { copyText(code.code); } })),
           h("td", { class: "small", text: code.label || "–" }),
           h("td", { class: "nowrap", text: durationText(code) }),
+          h("td", { class: "small", text: scopeText(code.features) }),
           h("td", { class: "nowrap", text: code.redeemed_count + " / " + code.max_redemptions }),
           h("td", { class: "small nowrap", text: code.valid_until ? fmtDate(code.valid_until) : "–" }),
           h("td", null, pill(state[0], state[1])),
@@ -929,7 +1064,7 @@
               api("DELETE", "/admin/premium/codes/" + code.id).then(function () { toast("Gelöscht."); return load(); }).catch(showError);
             } }) : null)));
       });
-      codesBox.appendChild(table(["Code", "Bezeichnung", "Laufzeit", "Eingelöst", "Einlösbar bis", "Status", "Eingelöst von", ""], rows, "Keine Codes in dieser Ansicht."));
+      codesBox.appendChild(table(["Code", "Bezeichnung", "Laufzeit", "Umfang", "Eingelöst", "Einlösbar bis", "Status", "Eingelöst von", ""], rows, "Keine Codes in dieser Ansicht."));
     }
 
     function revokeCode(code) {
@@ -956,6 +1091,7 @@
           h("td", { text: sourceText(lic.source) }),
           h("td", { class: "mono small nowrap", text: lic.code || "–" }),
           h("td", { class: "small nowrap", text: lic.expires_at ? "bis " + fmtDate(lic.expires_at) : "unbegrenzt" }),
+          h("td", { class: "small", text: scopeText(lic.features) }),
           h("td", { class: "small", text: lic.note || "" }),
           h("td", null, h("button", { class: "danger small", text: "Entziehen", onclick: function () {
             confirmDialog("Lizenz entziehen?", lic.display_name + " verliert dieses Premium." + (lic.source === "play" ? PLAY_REVOKE_HINT : ""), "Entziehen", true).then(function (ok) {
@@ -963,7 +1099,7 @@
             });
           } })));
       });
-      licensesBox.appendChild(table(["Benutzer", "Quelle", "Code", "Gilt", "Notiz", ""], rows, "Niemand hat gerade Premium."));
+      licensesBox.appendChild(table(["Benutzer", "Quelle", "Code", "Gilt", "Umfang", "Notiz", ""], rows, "Niemand hat gerade Premium."));
     }
 
     function purchaseState(p) {
@@ -984,12 +1120,13 @@
         return h("tr", null,
           h("td", null, h("div", { text: p.display_name }), h("div", { class: "small muted", text: "@" + p.username })),
           h("td", null, h("div", { class: "mono small", text: p.product_id }), p.order_id ? h("div", { class: "small dim", text: p.order_id }) : null),
+          h("td", { class: "mono small nowrap", text: (p.base_plan_id || "–") + (p.offer_id ? " (" + p.offer_id + ")" : "") }),
           h("td", null, purchaseState(p)),
           h("td", { class: "small nowrap", text: p.expires_at ? fmtDateTime(p.expires_at) : "–" }),
           h("td", { class: "small" }, h("div", { class: "nowrap", text: ago(p.last_checked_at) }), p.last_error ? h("div", { class: "muted", text: p.last_error }) : null),
           h("td", null, button));
       });
-      purchasesBox.appendChild(table(["Benutzer", "Produkt", "Stand", "Gilt bis", "Zuletzt geprüft", ""], rows, "Noch keine Käufe."));
+      purchasesBox.appendChild(table(["Benutzer", "Produkt", "Laufzeit", "Stand", "Gilt bis", "Zuletzt geprüft", ""], rows, "Noch keine Käufe."));
     }
 
     function drawFilters() {
@@ -1125,9 +1262,9 @@
   // ------------------------------------------------------------------ Ansicht: App-Einstellungen
 
   function viewSettings(body, ctx) {
-    return Promise.all([api("GET", "/admin/config"), api("GET", "/admin/billing/status")]).then(function (result) {
+    return Promise.all([api("GET", "/admin/config"), api("GET", "/admin/billing/status"), api("GET", "/categories")]).then(function (result) {
       if (!ctx.alive()) return;
-      var config = result[0], billing = result[1];
+      var config = result[0], billing = result[1], categories = result[2];
       var fields = {};
 
       function toggle(key, label, hint) {
@@ -1164,6 +1301,131 @@
           : h("div", { class: "notice grow", text: "Kaufprüfung nicht eingerichtet – Schlüsseldatei fehlt (siehe docs/PLAYSTORE.md)" }),
         testButton);
 
+      // ---- Premium-Leistungen: je Leistung „Für alle“ (wie bisher) oder „Nur Premium“
+      function whoSelect(key, extras) {
+        var select = h("select", null, h("option", { value: "false", text: "Für alle" }), h("option", { value: "true", text: "Nur Premium" }));
+        select.value = config[key] ? "true" : "false";
+        fields[key] = function () { return select.value === "true"; };
+        // Zusatzfelder gelten nur für „Nur Premium“ – der Wert wird trotzdem mitgespeichert
+        function sync() { (extras || []).forEach(function (el) { el.disabled = select.value !== "true" || el.dataset.locked === "1"; }); }
+        select.addEventListener("change", sync);
+        sync();
+        return select;
+      }
+      function smallNumber(key, min, max, unit) {
+        var input = h("input", { type: "number", min: String(min), max: String(max), value: String(config[key]), class: "num-small" });
+        fields[key] = function () { return parseInt(input.value || "0", 10); };
+        return { input: input, el: h("label", { class: "row small" }, input, unit) };
+      }
+      var quality = h("select", null,
+        h("option", { value: "normal", text: "Höchstens Normal (160 kbit/s)" }),
+        h("option", { value: "low", text: "Höchstens Datensparend (96 kbit/s)" }));
+      quality.value = config.free_audio_quality;
+      fields.free_audio_quality = function () { return quality.value; };
+      var noFfmpeg = config.transcode_available === false;
+      if (noFfmpeg) quality.dataset.locked = "1";
+      var requests = smallNumber("free_requests_per_week", 0, 100, "Wünsche pro Woche");
+      var skips = smallNumber("free_skips_per_hour", 1, 100, "Mal pro Stunde");
+      var hqSelect = whoSelect("hq_audio_requires_premium", [quality]);
+      // Ohne ffmpeg lässt sich die Tonqualität nicht einschränken (Ausschalten geht immer)
+      if (noFfmpeg && !config.hq_audio_requires_premium) hqSelect.disabled = true;
+      var badge = h("input", { type: "checkbox", checked: config.premium_badge_enabled });
+      fields.premium_badge_enabled = function () { return badge.checked; };
+      function featureRow(key, who, extra, hint) {
+        return h("tr", null,
+          h("td", { class: "nowrap", text: FEATURE_LABELS[key] }),
+          h("td", null, who),
+          h("td", null, extra || h("span", { class: "dim", text: "–" })),
+          h("td", { class: "small dim" }, hint));
+      }
+      var featureCard = h("div", { class: "card col" },
+        h("h2", { text: "Premium-Leistungen" }),
+        h("p", { class: "muted", text: "Was soll nur mit Premium gehen? Standard: alles für alle – so wie bisher. Admins sind nie eingeschränkt." }),
+        table(["Leistung", "Wer darf", "Einstellung für Benutzer ohne Premium", "Hinweis"], [
+          featureRow("offline", whoSelect("offline_requires_premium"), null,
+            "Durchgesetzt in der App; ältere Apps siehe ‚Sperre durchsetzen ab App-Build‘."),
+          featureRow("no_ads", h("span", { text: "Nur Premium" }), null,
+            "Werbung sehen nur Benutzer ohne Premium – und nur, wenn Werbung oben eingeschaltet ist."),
+          featureRow("hq_audio", hqSelect, quality, h("span", null,
+            "Durchgesetzt auf dem Server (Umwandlung mit ffmpeg).",
+            noFfmpeg ? h("div", { class: "notice gap-top", text: "ffmpeg fehlt auf dem Server – diese Leistung lässt sich nicht einschränken." }) : null)),
+          featureRow("video", whoSelect("video_requires_premium"), null,
+            "Durchgesetzt auf dem Server. Ohne Premium laufen Videos nur als Ton."),
+          featureRow("lyrics", whoSelect("lyrics_requires_premium"), null, "Durchgesetzt auf dem Server."),
+          featureRow("requests", whoSelect("requests_requires_premium", [requests.input]), requests.el,
+            "Durchgesetzt auf dem Server. 0 = ohne Premium keine Wünsche. Premium: ohne Wochengrenze (die allgemeinen Grenzen gegen Missbrauch bleiben)."),
+          featureRow("skips", whoSelect("skips_requires_premium", [skips.input]), skips.el,
+            "Nur in der App durchgesetzt: ältere App-Versionen zählen nicht mit, und wer die App neu installiert, fängt von vorn an."),
+          featureRow("badge", h("label", { class: "check small" }, badge, "Premium-Nutzer bekommen ein Abzeichen im Profil"), null,
+            "Nur in der App sichtbar, nur für den Benutzer selbst.")
+        ], ""));
+
+      // ---- Laufzeiten des Abos (Basis-Abos aus der Play Console): Reihenfolge und Empfehlung
+      var MAX_PLANS = 6;
+      var planRows = [];
+      var planBox = h("div", { class: "col" });
+      var noRecommendation = h("input", { type: "radio", name: "recommended-plan" });
+      function addPlan(value, recommended) {
+        planRows.push({
+          input: h("input", { type: "text", maxlength: "63", value: value, placeholder: "z. B. monatlich", autocapitalize: "none" }),
+          radio: h("input", { type: "radio", name: "recommended-plan", checked: recommended })
+        });
+      }
+      function drawPlans() {
+        clear(planBox);
+        planRows.forEach(function (row, index) {
+          planBox.appendChild(h("div", { class: "row" },
+            h("label", { class: "field grow" }, "Kennung des Basis-Abos", row.input),
+            h("button", { type: "button", class: "secondary small", text: "↑", title: "nach oben", disabled: index === 0, onclick: function () {
+              planRows.splice(index - 1, 0, planRows.splice(index, 1)[0]); drawPlans();
+            } }),
+            h("button", { type: "button", class: "secondary small", text: "↓", title: "nach unten", disabled: index === planRows.length - 1, onclick: function () {
+              planRows.splice(index + 1, 0, planRows.splice(index, 1)[0]); drawPlans();
+            } }),
+            h("label", { class: "check small" }, row.radio, "Empfohlen"),
+            h("button", { type: "button", class: "ghost small", text: "Entfernen", onclick: function () {
+              if (row.radio.checked) noRecommendation.checked = true;
+              planRows.splice(index, 1); drawPlans();
+            } })));
+        });
+        planBox.appendChild(h("label", { class: "check small" }, noRecommendation, "Keine Empfehlung"));
+        planBox.appendChild(h("div", null, h("button", { type: "button", class: "secondary small", text: "Laufzeit hinzufügen", disabled: planRows.length >= MAX_PLANS, onclick: function () {
+          addPlan("", false); drawPlans(); planRows[planRows.length - 1].input.focus();
+        } })));
+      }
+      String(config.billing_base_plans || "").split(",").filter(Boolean).forEach(function (id) { addPlan(id, id === config.billing_recommended_plan); });
+      noRecommendation.checked = !planRows.some(function (row) { return row.radio.checked; });
+      drawPlans();
+      fields.billing_base_plans = function () {
+        return planRows.map(function (row) { return row.input.value.trim(); }).filter(Boolean).join(",");
+      };
+      fields.billing_recommended_plan = function () {
+        var chosen = planRows.filter(function (row) { return row.radio.checked; })[0];
+        return chosen ? chosen.input.value.trim() : "";
+      };
+      var plansSection = h("div", { class: "col" },
+        h("h3", { text: "Laufzeiten" }),
+        planBox,
+        h("div", { class: "small dim", text: "Genau die Kennungen der Basis-Abos aus der Play Console, z. B. monatlich, halbjaehrlich, jaehrlich. Leer = die App zeigt alle Laufzeiten, die Google liefert (kürzeste zuerst). Preise legst du nur in der Play Console fest; die App zeigt den echten Preis und rechnet die Ersparnis gegenüber monatlich aus." }));
+
+      // ---- Selbst-Registrierung: wer Konten anlegen darf und welche Rubriken neue Konten bekommen
+      var registrationMode = h("select", null,
+        h("option", { value: "off", text: "Aus – nur Admins legen Konten an" }),
+        h("option", { value: "approval", text: "Mit Freigabe – neue Konten warten, bis du sie freischaltest" }),
+        h("option", { value: "open", text: "Offen – neue Konten sind sofort nutzbar" }));
+      registrationMode.value = config.registration_mode || "off";
+      fields.registration_mode = function () { return registrationMode.value; };
+      var defaultIds = String(config.registration_default_categories || "").split(",").filter(Boolean).map(Number);
+      var defaultPicker = categoryChecklist(categories, defaultIds);
+      fields.registration_default_categories = function () { return defaultPicker.selected().join(","); };
+      var registrationCard = h("div", { class: "card col" },
+        h("h2", { text: "Registrierung" }),
+        h("label", { class: "field" }, "Wer darf Konten anlegen?", registrationMode),
+        h("div", { class: "small dim", text: "Selbst registrierte Konten dürfen nichts von YouTube laden und sehen keine Admin-Bereiche. Sie sehen nur die Rubriken, die du freigibst." }),
+        h("h3", { text: "Rubriken für neue Konten" }),
+        defaultPicker.el,
+        h("div", { class: "small dim", text: "Ohne Auswahl sehen neue Konten nichts, bis du ihnen Rubriken freigibst." }));
+
       function save() {
         var payload = {};
         Object.keys(fields).forEach(function (key) { payload[key] = fields[key](); });
@@ -1180,16 +1442,23 @@
         var ask = fields.offline_requires_premium() && !config.offline_requires_premium
           ? confirmDialog("Offline-Hören an Premium binden?", "Alle Benutzer ohne Premium verlieren ihre Offline-Musik auf dem Gerät. Gib Familie und Freunden vorher Premium (Benutzer › Premium).", "Einschalten", true)
           : Promise.resolve(true);
-        ask.then(function (ok) { if (ok) return save(); }).catch(showError);
+        // Offene Registrierung: jeder mit der Server-Adresse kann ohne Freigabe ein Konto anlegen – vorher nachfragen
+        ask.then(function (ok) {
+          if (!ok) return false;
+          if (fields.registration_mode() !== "open" || config.registration_mode === "open") return true;
+          return confirmDialog("Registrierung öffnen?", "Dann kann jeder, der die Adresse deines Servers kennt, ohne deine Freigabe ein Konto anlegen und die Rubriken für neue Konten hören.", "Öffnen", true);
+        }).then(function (ok) { if (ok) return save(); }).catch(showError);
       } },
       h("div", { class: "card col" },
         h("h2", { text: "Funktionen in der App" }),
         toggle("ads_enabled", "Werbung in der Play-Version zeigen", "Nur für Benutzer ohne Premium. Erst einschalten, wenn AdMob eingerichtet ist (siehe docs/PLAYSTORE.md)."),
         toggle("premium_enabled", "Premium-Bereich zeigen (Code einlösen)", "Blendet in der App „Premium“ ein oder aus."),
         toggle("wishlist_enabled", "„Song wünschen“ anbieten", "Benutzer können sich Songs wünschen; du siehst sie unter Wünsche.")),
+      registrationCard,
+      featureCard,
       h("div", { class: "card col" },
         h("h2", { text: "Premium und Offline-Hören" }),
-        toggle("offline_requires_premium", "Offline-Hören nur mit Premium", "Ohne Premium lässt sich nichts mehr aufs Gerät laden; vorhandene Offline-Musik wird gelöscht, sobald die App den Stand geprüft hat. Die Sperre sitzt in der App: Ältere App-Versionen kennen sie nicht und laden weiter – dafür gibt es die Mindest-Build-Nummer darunter. Admins sind ausgenommen."),
+        h("div", { class: "small dim", text: "Ob Offline-Hören nur mit Premium geht, stellst du oben unter Premium-Leistungen ein. Steht es auf „Nur Premium“, lässt sich ohne Premium nichts mehr aufs Gerät laden; vorhandene Offline-Musik wird gelöscht, sobald die App den Stand geprüft hat. Die Sperre sitzt in der App: Ältere App-Versionen kennen sie nicht und laden weiter – dafür gibt es die Mindest-Build-Nummer darunter. Admins sind ausgenommen." }),
         h("div", { class: "form-grid" },
           number("offline_min_client_build", "Sperre durchsetzen ab App-Build", "Wirkt nur, solange der Schalter an ist. Benutzer ohne Premium, deren App älter ist (oder keine Build-Nummer meldet), bekommen keine Musik mehr und sehen „Bitte aktualisiere die App.“ – in allen App-Ausgaben (Play, GitHub, Windows, iPhone). Trage die Build-Nummer der ersten App-Version mit Offline-Sperre ein, sobald sie verteilt ist („Geräte & Versionen“ zeigt, wer welche hat). Premium-Nutzer und Admins sind nie betroffen. 0 = aus.", 0, 10000000),
           number("offline_grace_days", "Gnadenfrist ohne Verbindung (Tage)", "So lange bleibt Offline-Musik spielbar, wenn die App den Server nicht erreicht. Danach wird sie gelöscht.", 1, 30)),
@@ -1201,6 +1470,7 @@
         billingStatus,
         toggle("billing_enabled", "Premium in der Play-Version zum Kauf anbieten", "Der Preis wird in der Play Console festgelegt und von der App aus dem Store angezeigt."),
         text("billing_product_ids", "Produkt-ID des Abos", "Genau wie in der Play Console, z. B. premium_monat. Mehrere mit Komma.", 200),
+        plansSection,
         h("div", { class: "small dim", text: "Paket: " + billing.package_name + " · Schlüsseldatei auf dem Server: " + billing.key_file })),
       h("div", { class: "card col" },
         h("h2", { text: "Updates der Play-Version" }),

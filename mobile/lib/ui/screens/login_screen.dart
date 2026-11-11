@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../data/api.dart';
 import '../../data/models.dart';
+import '../../state/app_config.dart';
 import '../../state/auth.dart';
 import '../../state/library.dart';
+import '../../state/registration.dart';
 import '../widgets/app_update.dart';
 import '../widgets/common.dart';
 import 'account_widgets.dart';
@@ -37,6 +40,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// Technische Angaben zur fehlgeschlagenen Prüfung (wer hat geantwortet, mit welchem Inhalt).
   String? _serverDetails;
   String? _loginError;
+
+  /// Die Anmeldung scheiterte, weil das Konto noch auf Freischaltung wartet – dann „Registrierung zurückziehen“.
+  bool _loginPending = false;
+  bool _withdrawing = false;
+
+  /// Hinweis nach erfolgreichem Zurückziehen.
+  String? _withdrawn;
 
   /// Zählt Verbindungsversuche – veraltete Antworten werden ignoriert.
   int _probeRun = 0;
@@ -95,6 +105,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _serverError = null;
       _serverDetails = null;
       _loginError = null;
+      _loginPending = false;
     });
 
     Object? error;
@@ -144,6 +155,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _info = null;
         _connectedUrl = null;
         _loginError = null;
+        _loginPending = false;
       }
       if (_probing) {
         _probeRun++;
@@ -175,6 +187,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _loggingIn = true;
       _loginError = null;
+      _loginPending = false;
+      _withdrawn = null;
     });
     try {
       await ref.read(authProvider.notifier).login(server, username, password);
@@ -185,9 +199,80 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() {
         _loggingIn = false;
         _loginError = errorText(e);
+        _loginPending = e is ApiException && e.accountPending;
       });
       _password.selection = TextSelection(baseOffset: 0, extentOffset: _password.text.length);
       _passwordFocus.requestFocus();
+    }
+  }
+
+  void _clearLoginError() {
+    if (_loginError == null && _withdrawn == null) return;
+    setState(() {
+      _loginError = null;
+      _loginPending = false;
+      _withdrawn = null;
+    });
+  }
+
+  /// Bietet der verbundene Server „Konto erstellen“ an? Play-Version (feste Adresse): laut Einstellungen des
+  /// Servers, die schon abgemeldet geladen werden. Sonst: laut Prüfung der eingegebenen Adresse. Alter Server
+  /// ohne Angabe, Fehler beim Laden oder unbekannter Wert: nein.
+  bool _registrationOpen({required bool fixedServer}) => fixedServer
+      ? ref.watch(appConfigValueProvider.select((c) => c.registrationOpen))
+      : (_info?.registrationOpen ?? false);
+
+  String get _registrationMode =>
+      fixedServerUrl != null ? ref.read(appConfigValueProvider).registrationMode : (_info?.registrationMode ?? 'off');
+
+  Future<void> _openRegister() async {
+    final server = _connectedUrl;
+    if (server == null) return;
+    final query = Uri(queryParameters: {'server': server, 'mode': _registrationMode}).query;
+    final username = await context.push<String>('/register?$query');
+    // Konto wartet auf Freischaltung: Benutzername schon eintragen, der Hinweis kommt über die Anmeldung
+    if (!mounted || username == null) return;
+    _username.text = username;
+    _password.clear();
+    setState(() {
+      _loginError = null;
+      _loginPending = false;
+      _withdrawn = null;
+    });
+  }
+
+  /// Wartendes Konto ohne Anmeldung löschen (Play-Pflicht: „Konto löschen“ in den Einstellungen ist so nicht
+  /// erreichbar).
+  Future<void> _withdraw() async {
+    final server = _connectedUrl;
+    if (server == null || _withdrawing) return;
+    final ok = await confirm(
+      context,
+      title: 'Registrierung zurückziehen?',
+      message: 'Dein noch nicht freigeschaltetes Konto wird endgültig gelöscht.',
+      confirmLabel: 'Löschen',
+      danger: true,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _withdrawing = true);
+    try {
+      await ref.read(registrationGatewayProvider).withdraw(server, _username.text.trim(), _password.text);
+      if (!mounted) return;
+      ref.read(authProvider.notifier).clearMessage();
+      _password.clear();
+      setState(() {
+        _withdrawing = false;
+        _loginError = null;
+        _loginPending = false;
+        _withdrawn = 'Deine Registrierung wurde zurückgezogen.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _withdrawing = false;
+        _loginError = errorText(e);
+        _loginPending = e is ApiException && e.accountPending;
+      });
     }
   }
 
@@ -285,6 +370,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _loginForm({double topGap = 24, bool fixedServer = false}) {
+    final registration = _registrationOpen(fixedServer: fixedServer);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -300,9 +386,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           textCapitalization: TextCapitalization.none,
           autofillHints: const [AutofillHints.username],
           textInputAction: TextInputAction.next,
-          onChanged: (_) {
-            if (_loginError != null) setState(() => _loginError = null);
-          },
+          onChanged: (_) => _clearLoginError(),
           onSubmitted: (_) => _passwordFocus.requestFocus(),
           decoration: const InputDecoration(
             hintText: 'z. B. lena',
@@ -320,9 +404,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           enableSuggestions: false,
           autofillHints: const [AutofillHints.password],
           textInputAction: TextInputAction.done,
-          onChanged: (_) {
-            if (_loginError != null) setState(() => _loginError = null);
-          },
+          onChanged: (_) => _clearLoginError(),
           onSubmitted: (_) => _login(),
           decoration: InputDecoration(
             hintText: 'Dein Passwort',
@@ -340,13 +422,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         if (_loginError != null) ...[
           const SizedBox(height: 16),
           AccountNotice.error(_loginError!),
+          if (_loginPending)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _withdrawing || _loggingIn ? null : _withdraw,
+                style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+                icon: const Icon(Icons.person_remove_outlined),
+                label: const Text('Registrierung zurückziehen'),
+              ),
+            ),
+        ],
+        if (_withdrawn != null) ...[
+          const SizedBox(height: 16),
+          AccountNotice(text: _withdrawn!, icon: Icons.check_circle_outline_rounded),
         ],
         const SizedBox(height: 28),
         AccountButton(label: 'Anmelden', loading: _loggingIn, onPressed: _login),
+        if (registration) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 48,
+            child: OutlinedButton(
+              onPressed: _loggingIn || _withdrawing ? null : _openRegister,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: AppColors.textMuted),
+              ),
+              child: const Text('Konto erstellen', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         Text(
-          // Ein Konto legt der Betreiber an – in der Play-Version gibt es keine Registrierung in der App
-          fixedServer
+          // Ein Konto legt der Betreiber an – selbst erstellen lässt es sich nur, wenn der Server die Registrierung
+          // anbietet (Dashboard). Dann entfällt in der Play-Version der Hinweis „Noch kein Konto“.
+          fixedServer && !registration
               ? 'Noch kein Konto oder Passwort vergessen? Frag die Person, die euren Selfify-Server verwaltet.'
               : 'Passwort vergessen? Frag die Person, die euren Selfify-Server verwaltet.',
           textAlign: TextAlign.center,

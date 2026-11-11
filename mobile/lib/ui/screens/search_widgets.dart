@@ -343,12 +343,20 @@ class CategoryGridSliver extends ConsumerWidget {
       );
     }
     if (list.isEmpty) {
-      return const SliverToBoxAdapter(
-        child: EmptyState(
-          icon: Icons.folder_off_rounded,
-          title: 'Noch keine Rubriken',
-          message: 'Ein Admin kann in den Einstellungen Rubriken anlegen.',
-        ),
+      // Selbst registriert, noch ohne Freigabe: Es gibt Rubriken, nur keine für dieses Konto
+      final nothingUnlocked = ref.watch(currentUserProvider.select((u) => u?.nothingUnlocked ?? false));
+      return SliverToBoxAdapter(
+        child: nothingUnlocked
+            ? const EmptyState(
+                icon: Icons.lock_clock_rounded,
+                title: 'Noch keine Rubrik freigeschaltet',
+                message: 'Der Betreiber kann dir Rubriken freigeben.',
+              )
+            : const EmptyState(
+                icon: Icons.folder_off_rounded,
+                title: 'Noch keine Rubriken',
+                message: 'Ein Admin kann in den Einstellungen Rubriken anlegen.',
+              ),
       );
     }
     return SliverPadding(
