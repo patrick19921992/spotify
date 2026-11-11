@@ -81,7 +81,11 @@ List<Widget> _userBadges(User user, {required bool isMe}) => [
       if (isMe) const AdminBadge(label: 'Du', color: AppColors.accent, icon: Icons.person_rounded),
       if (user.isAdmin)
         const AdminBadge(label: 'Admin', color: Colors.white, icon: Icons.admin_panel_settings_rounded),
-      if (!user.isActive) const AdminBadge(label: 'Deaktiviert', color: AppColors.danger, icon: Icons.block_rounded),
+      // Selbst registriert und noch nicht freigeschaltet – dann nicht zusätzlich „Deaktiviert“
+      if (user.approvalPending)
+        const AdminBadge(label: 'Wartet auf Freigabe', color: adminWarningColor, icon: Icons.hourglass_top_rounded)
+      else if (!user.isActive)
+        const AdminBadge(label: 'Deaktiviert', color: AppColors.danger, icon: Icons.block_rounded),
       if (!user.canDownload)
         const AdminBadge(label: 'Kein Download', color: adminWarningColor, icon: Icons.file_download_off_rounded),
     ];
@@ -542,9 +546,13 @@ class _EditUserSheetState extends ConsumerState<_EditUserSheet> {
       );
       if (!ok || !mounted) return;
     }
+    // Bei einem wartenden Konto schaltet „Konto aktiv“ es frei (der Server beendet dabei das Warten)
+    final pending = _user.approvalPending;
     await _update(
       isActive: value,
-      success: value ? 'Das Konto ist wieder aktiv.' : 'Das Konto ist deaktiviert.',
+      success: value
+          ? (pending ? 'Freigeschaltet.' : 'Das Konto ist wieder aktiv.')
+          : 'Das Konto ist deaktiviert.',
     );
   }
 
@@ -668,10 +676,17 @@ class _EditUserSheetState extends ConsumerState<_EditUserSheet> {
           subtitle: Text(
             isMe
                 ? 'Du kannst dich nicht selbst deaktivieren.'
-                : (user.isActive ? 'Kann sich anmelden und Musik hören' : 'Anmelden ist gesperrt'),
+                : user.approvalPending
+                    ? 'Wartet auf Freigabe – einschalten schaltet das Konto frei'
+                    : (user.isActive ? 'Kann sich anmelden und Musik hören' : 'Anmelden ist gesperrt'),
             style: AppText.caption,
           ),
         ),
+        if (!user.isAdmin)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(56, 0, 0, 8),
+            child: Text('Rubriken-Freigaben stellst du im Dashboard ein.', style: AppText.caption),
+          ),
         if (youtubeFeaturesEnabled)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

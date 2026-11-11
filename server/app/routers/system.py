@@ -20,12 +20,13 @@ def health() -> HealthOut:
 
 
 @router.get("/server", response_model=ServerInfoOut)
-def server_info(settings: AppSettings) -> ServerInfoOut:
+def server_info(settings: AppSettings, db: DbSession) -> ServerInfoOut:
     return ServerInfoOut(
         name=settings.server_name,
         version=__version__,
         api_version=API_VERSION,
         public_url=settings.public_url,
+        registration_mode=app_config.get_all(db)["registration_mode"],
     )
 
 
@@ -78,4 +79,5 @@ def public_config(
         premium_badge_enabled=values["premium_badge_enabled"],
         billing_base_plans=app_config.base_plans(values) if billing else [],
         billing_recommended_plan=values["billing_recommended_plan"] if billing else "",
+        registration_mode=values["registration_mode"],
     )

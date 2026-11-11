@@ -29,15 +29,29 @@ const coverA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const coverB = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const now = '2026-10-10T11:00:00Z';
 
-Json userJson({int id = 1, bool admin = true}) => {
+/// Ohne [allCategories]/[categoryIds] fehlen die Felder wie bei einem alten Server (gilt als „alle Rubriken“).
+Json userJson({
+  int id = 1,
+  bool admin = true,
+  bool canDownload = true,
+  bool? allCategories,
+  List<int>? categoryIds,
+  bool approvalPending = false,
+  bool selfRegistered = false,
+}) =>
+    {
       'id': id,
       'username': admin ? 'papa' : 'lena',
       'display_name': admin ? 'Papa' : 'Lena',
       'is_admin': admin,
-      'is_active': true,
-      'can_download': true,
+      'is_active': !approvalPending,
+      'can_download': canDownload,
       'created_at': now,
       'last_login_at': now,
+      'all_categories': ?allCategories,
+      'category_ids': ?categoryIds,
+      if (approvalPending) 'approval_pending': true,
+      if (selfRegistered) 'self_registered': true,
     };
 
 Json trackJson(int id, {String title = 'Bohemian Rhapsody', String mediaType = 'audio', int? albumId = 7}) => {
@@ -758,6 +772,11 @@ Future<FakeApi> pumpScreen(
   AppChannel? channel,
   AppConfig? config,
   List<Override> overrides = const [],
+  // Andere Anmeldung als „angemeldet mit FakeApi“ (z. B. abgemeldet oder eingeschränktes Konto)
+  AuthController Function(FakeApi api)? auth,
+  // Weitere echte Routen (z. B. /login und /register) und wo die App startet (Standard: der Bildschirm)
+  List<RouteBase> routes = const [],
+  String initialLocation = '/test',
 }) async {
   final fakeApi = api ?? FakeApi(admin: admin);
   final audioHandler = handler ?? SelfifyAudioHandler();
@@ -779,9 +798,10 @@ Future<FakeApi> pumpScreen(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final router = GoRouter(
-    initialLocation: '/test',
+    initialLocation: initialLocation,
     routes: [
       GoRoute(path: '/test', builder: (_, _) => screen),
+      ...routes,
       GoRoute(path: '/:rest(.*)', builder: (_, s) => Scaffold(body: Text('Navigiert: ${s.uri}'))),
     ],
   );
@@ -790,7 +810,7 @@ Future<FakeApi> pumpScreen(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(preferences),
       audioHandlerProvider.overrideWithValue(audioHandler),
-      authProvider.overrideWith(() => FakeAuth(fakeApi)),
+      authProvider.overrideWith(() => auth == null ? FakeAuth(fakeApi) : auth(fakeApi)),
       connectivityProvider.overrideWith(
         (ref) => Stream.value(offline ? [ConnectivityResult.none] : [ConnectivityResult.wifi]),
       ),

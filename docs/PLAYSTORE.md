@@ -18,6 +18,7 @@ iPhone) bleibt unverändert.
 | Offline-Hören | wie im Dashboard eingestellt (frei oder nur mit Premium) | wie im Dashboard eingestellt |
 | Tonqualität, Videos, Songtexte, Wünsche, Überspringen, Abzeichen | wie im Dashboard eingestellt (Standard: für alle, wie bisher – Schritt 10.13) | wie im Dashboard eingestellt |
 | Fehler melden, Konto löschen, Datenschutz | ja | ja |
+| Konto in der App erstellen (wenn im Dashboard eingeschaltet) | ja | ja |
 | Paketname | `de.selfify.selfify` | `de.selfify.selfify.play` |
 | Server-Adresse | wird bei der Anmeldung eingetragen | **fest eingebaut** (Variable `PLAY_SERVER_URL`), kein Eingabefeld – bleibt leer = Feld wie in der GitHub-Version |
 
@@ -112,17 +113,25 @@ der Ziel-API des verwendeten Flutter (derzeit 36) – du musst nichts tun.
 | Formular | Angabe |
 |---|---|
 | **Datenschutzerklärung** | `https://deine-domain/datenschutz` |
-| **Konto löschen** (Datensicherheit › Kontolöschung) | In der App: *Einstellungen › Konto löschen*. Im Web: `https://deine-domain/konto-loeschen` |
+| **Kontoerstellung** (Datensicherheit) | Registrierung im Dashboard an („Mit Freigabe“ oder „Offen“): „Ja, mit Benutzername und Passwort“. Registrierung aus: „Nein, Konten legt der Betreiber an“. **Die Angaben müssen zur strengsten Einstellung passen, die du nutzt** – wer die Registrierung auch nur zeitweise einschaltet, gibt „Ja“ an |
+| **Konto löschen** (Datensicherheit › Kontolöschung) | In der App: *Einstellungen › Konto löschen*. Konten, die noch auf Freischaltung warten: auf der Anmeldeseite der App „Registrierung zurückziehen“. Im Web (für beide): `https://deine-domain/konto-loeschen` |
 | **Werbung** | „Ja, enthält Werbung“ (sobald du sie einschaltest – sicherheitshalber gleich „Ja“) |
 | **Zielgruppe** | Erwachsene bzw. ab 13 – **nicht** „Kinder“ (für Kinder-Apps gelten strengere Werberegeln) |
-| **Inhaltseinstufung** | Fragebogen ehrlich ausfüllen (Musik-/Medien-App ohne eigene nutzergenerierte Inhalte, außer Playlist-Namen/Wünschen) |
+| **Inhaltseinstufung** | Fragebogen ehrlich ausfüllen. Registrierung aus: Musik-/Medien-App ohne eigene nutzergenerierte Inhalte, außer Playlist-Namen/Wünschen. **Registrierung an („Mit Freigabe“ oder „Offen“):** Fremde können Konten anlegen, und ihre frei gewählten Anzeigenamen sowie Namen öffentlicher/gemeinsamer Playlists sehen alle anderen Benutzer – im Fragebogen also „Nutzer können interagieren / Inhalte teilen“ angeben. Google verlangt für nutzergenerierte Inhalte eine Möglichkeit, sie zu entfernen: Das machst du als Admin (Benutzer sperren oder löschen, Playlist löschen – Admins dürfen jede Playlist bearbeiten und löschen); Meldungen kommen über „Fehler melden“ oder die Kontakt-Adresse aus dem Impressum. Am sichersten bleibst du bei „Mit Freigabe“ |
 | **Datensicherheit** | Siehe unten |
 | **Berechtigungen/Foreground-Dienst** | Medienwiedergabe im Hintergrund (`FOREGROUND_SERVICE_MEDIA_PLAYBACK`): „Musik läuft weiter, wenn die App im Hintergrund ist.“ Benachrichtigungen: für die Wiedergabe-Steuerung |
 
 **Datensicherheit – was die App sammelt** (stimmt mit der Datenschutzerklärung überein):
 
 - *Persönliche Daten:* Name/Anzeigename, Benutzername (Konto) – für die Funktion der App; mit dem Server geteilt,
-  den der Betreiber selbst betreibt.
+  den der Betreiber selbst betreibt. Ist die Registrierung eingeschaltet, werden **Benutzername, Anzeigename und
+  Passwort** bei der Registrierung in der App erhoben; der Server speichert das Passwort nur als Hash, nie im
+  Klartext.
+- *Anzeigename für andere sichtbar:* Andere Nutzer desselben Servers sehen den Anzeigenamen an geteilten Playlists
+  und an Titeln, die jemand dort hinzufügt.
+- *IP-Adresse:* wird bei Anmeldung und Registrierung kurzzeitig zum Schutz vor Missbrauch (Ratenbegrenzung)
+  verarbeitet – dafür nur im Speicher des Servers. Bei angemeldeten Geräten speichert der Server sie zusätzlich
+  (siehe Datenschutzerklärung, „Angemeldete Geräte“).
 - *App-Aktivität:* Hörverlauf, Lieblingssongs, Playlists – Funktion der App.
 - *App-Infos und Leistung:* Fehlermeldungen (nur wenn der Benutzer sie absendet), App-Version.
 - *Geräte- oder andere IDs:* **Werbe-ID** (nur wenn Werbung eingeschaltet ist) – für Werbung.
@@ -189,7 +198,9 @@ Google prüft die App und braucht dafür ein **Konto**, mit dem man sich anmelde
 verbindet sich fest mit dem Server aus dieser Variable. Ohne die Variable sieht er zusätzlich das Feld
 „Server-Adresse“.
 
-1. Lege im Dashboard (*Benutzer*) ein Konto an, z. B. `playtest`.
+1. Lege im Dashboard (*Benutzer*) ein Konto an, z. B. `playtest`. Das Prüfer-Konto legst du auch bei
+   eingeschalteter Registrierung selbst an, mit „Alle Rubriken“ (Standard beim Anlegen im Dashboard). Ein selbst
+   registriertes Konto sieht ohne Freigabe nichts und eignet sich deshalb nicht als Prüfer-Zugang.
 2. Trage in der Play Console Benutzername und Passwort ein (ohne feste Adresse auch die Server-Adresse).
 
 **Dringende Empfehlung:** Nimm dafür einen **eigenen Demo-Server mit lizenzfreier Musik** (z. B. Creative-Commons-
@@ -205,14 +216,16 @@ genau diesen Server und nirgends sonst hin. Zwei saubere Wege:
   freigegebene Version mit einem neuen Bundle aktualisieren (der Wechsel lässt sich unter „Hinweise für Prüfer“
   erklären).
 - *Einfacher:* `PLAY_SERVER_URL` bleibt dein echter Server, und das Prüfer-Konto `playtest` bekommt dort nur,
-  was du öffentlich zeigen darfst. Eine Rechteverwaltung pro Benutzer für einzelne Titel gibt es nicht – bei
-  urheberrechtlich geschützter Musik ist das also nicht empfehlenswert.
+  was du öffentlich zeigen darfst. Freigeben lassen sich nur ganze Rubriken (Benutzer › Rubriken…), keine
+  einzelnen Titel – bei urheberrechtlich geschützter Musik auf demselben Server ist das also nicht empfehlenswert.
 
 ## 8. Realistische Hinweise
 
-- **Registrierung:** Benutzer legst **du** an (Dashboard). Es gibt bewusst keine offene Registrierung – sonst
-  könnte jeder deine Musikbibliothek abrufen. Für Familie und Freunde passt das; eine App „für alle“ im Store
-  bräuchte ein anderes Modell.
+- **Registrierung:** Standardmäßig legst **du** die Benutzer an (Dashboard, *App-Einstellungen › Registrierung* =
+  „Aus“). Für Familie und Freunde passt das. Schaltest du „Mit Freigabe“ oder „Offen“ ein, können Fremde Konten
+  erstellen: Sie sehen nur die Rubriken, die du für neue Konten freigibst (ohne Auswahl: nichts), haben kein
+  Download-Recht und sehen keine Admin-Bereiche. Gib deshalb nur Rubriken frei, die du öffentlich zeigen darfst, und
+  denk an Kontoerstellung und Inhaltseinstufung oben.
 - **Wünsche:** Die App holt nichts von selbst von YouTube. Wenn du einen Wunsch erfüllst („Suchen & holen“ im
   Dashboard), nutzt der **Server** den Downloader – das liegt in deiner Verantwortung (Urheberrecht, Nutzungs-
   bedingungen von YouTube). Google beurteilt nur die App, nicht deinen Server – eine rechtliche Freigabe
@@ -803,6 +816,7 @@ auf „Nur Premium“ stellen – sonst merken sie es zuerst.
 - [ ] Demo-Server mit lizenzfreier Musik und Konto `playtest`
 - [ ] Play Console: App angelegt, Bundle im geschlossenen Test, 12 Tester über 14 Tage
 - [ ] Datenschutz-Link, Konto-löschen-Link, Datensicherheit, Zielgruppe, Inhaltseinstufung, App-Zugriff ausgefüllt
+      (Registrierung an: in der Inhaltseinstufung „Nutzer können interagieren / Inhalte teilen“)
 - [ ] AdMob: App-ID und Banner-ID als GitHub-Variablen, Einwilligungsmeldung eingerichtet
 - [ ] Dashboard: Werbung **an**, wenn alles getestet ist
 - [ ] Premium-Codes nur verschenkt
@@ -835,3 +849,4 @@ auf „Nur Premium“ stellen – sonst merken sie es zuerst.
 - [ ] „Käufe wiederherstellen“ auf zweitem Gerät; anderes Selfify-Konto wird abgelehnt
 - [ ] Play-Version **und** GitHub-Version starten auf einem echten Handy
 - [ ] Datensicherheit um „Kaufverlauf“ ergänzt; Gebühren auf Googles Seite nachgelesen
+- [ ] Registrierungsmodus geprüft und Data-Safety-Angaben passend (Kontoerstellung, Konto löschen inkl. „Registrierung zurückziehen“, Anzeigename sichtbar, IP-Adresse)

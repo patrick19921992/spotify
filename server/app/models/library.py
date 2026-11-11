@@ -31,7 +31,10 @@ class Artist(Base):
     name_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     sort_name: Mapped[str] = mapped_column(String(255), index=True)
     search_text: Mapped[str] = mapped_column(String(600), default="")
-    cover_id: Mapped[str | None] = mapped_column(ForeignKey("covers.id", ondelete="SET NULL"), default=None)
+    # Index: die Cover-Prüfung für eingeschränkte Konten sucht bei jedem Cover-Abruf nach cover_id
+    cover_id: Mapped[str | None] = mapped_column(
+        ForeignKey("covers.id", ondelete="SET NULL"), default=None, index=True
+    )
     track_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     album_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
@@ -52,7 +55,10 @@ class Album(Base):
     year: Mapped[int | None] = mapped_column(Integer, default=None)
     genre: Mapped[str | None] = mapped_column(String(100), default=None)
     search_text: Mapped[str] = mapped_column(String(800), default="")
-    cover_id: Mapped[str | None] = mapped_column(ForeignKey("covers.id", ondelete="SET NULL"), default=None)
+    # Index: die Cover-Prüfung für eingeschränkte Konten sucht bei jedem Cover-Abruf nach cover_id
+    cover_id: Mapped[str | None] = mapped_column(
+        ForeignKey("covers.id", ondelete="SET NULL"), default=None, index=True
+    )
     track_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     duration: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
@@ -91,7 +97,10 @@ class Track(Base):
     height: Mapped[int | None] = mapped_column(Integer, default=None)
     file_size: Mapped[int] = mapped_column(BigInteger)
     file_mtime: Mapped[float] = mapped_column(Float)
-    cover_id: Mapped[str | None] = mapped_column(ForeignKey("covers.id", ondelete="SET NULL"), default=None)
+    # Index: die Cover-Prüfung für eingeschränkte Konten sucht bei jedem Cover-Abruf nach cover_id
+    cover_id: Mapped[str | None] = mapped_column(
+        ForeignKey("covers.id", ondelete="SET NULL"), default=None, index=True
+    )
 
     # Herkunft – "local" oder später "youtube" (mit YouTube-ID)
     source: Mapped[str] = mapped_column(String(16), default="local", server_default="local")

@@ -149,12 +149,21 @@ class OfflineController extends Notifier<OfflineState> {
       if (api != null) _applyAccess();
     });
     ref.listen(currentUserProvider.select((u) => u?.id), (_, _) => _applyAccess());
+    // Rubriken entzogen (eingeschränktes Konto, z. B. selbst registriert): Titel daraus vom Gerät löschen
+    ref.listen(currentUserProvider.select(_categoryKey), (_, _) => _dropHiddenCategories().ignore());
     // „Offline-Hören nur mit Premium“: gesperrt -> Offline-Musik löschen; wieder erlaubt -> Warteschlange fortsetzen
     ref.listen(offlineAccessProvider, (_, _) => _applyAccess());
     return const OfflineState();
   }
 
   OfflineAccessState get _access => ref.read(offlineAccessProvider);
+
+  /// Was am Konto für die Rubriken zählt – null bei uneingeschränkten Konten (sehen alles).
+  static String? _categoryKey(User? user) =>
+      user == null || !user.restricted ? null : (List.of(user.categoryIds)..sort()).join(',');
+
+  /// Darf das angemeldete Konto diesen Titel (noch) hören? Ohne Anmeldung entscheidet der Rest wie bisher.
+  bool _allowed(Track track) => ref.read(currentUserProvider)?.allowsCategory(track.categoryId) ?? true;
 
   /// Das angemeldete Konto (Server und Benutzer) – null, wenn niemand angemeldet ist.
   String? get _account {
@@ -190,8 +199,46 @@ class OfflineController extends Notifier<OfflineState> {
     if (access.access == OfflineAccess.locked) {
       _wipeWithNotice(offlineWipeMessage(access));
     } else {
-      _pump();
+      _dropHiddenCategories().whenComplete(_pump).ignore();
     }
+  }
+
+  /// Der Server gibt Titel aus entzogenen Rubriken nicht mehr heraus (404) – auf dem Gerät gilt der Entzug genauso:
+  /// Solche Titel werden gelöscht (auch aus der Warteschlange) und aus den Sammlungen genommen. Sammlungen, die dadurch
+  /// leer werden, verschwinden. Nur für eingeschränkte Konten; alle anderen behalten alles wie bisher.
+  Future<void> _dropHiddenCategories() async {
+    if (!state.loaded || _wiping > 0) return;
+    final user = ref.read(currentUserProvider);
+    if (user == null || !user.restricted) return;
+    final hidden = <int>{
+      for (final item in state.tracks.values)
+        if (!user.allowsCategory(item.track.categoryId)) item.track.id,
+      for (final id in state.pending)
+        if (_queued[id] case final track? when !user.allowsCategory(track.categoryId)) id,
+    };
+    if (hidden.isEmpty) return;
+    final played = hidden.where(state.tracks.containsKey).toSet();
+    final collections = <String, List<int>>{};
+    final names = Map<String, String>.of(state.collectionNames);
+    for (final entry in state.collections.entries) {
+      final kept = entry.value.where((id) => !hidden.contains(id)).toList();
+      if (kept.isEmpty && entry.value.isNotEmpty) {
+        names.remove(entry.key);
+      } else {
+        collections[entry.key] = kept;
+      }
+    }
+    state = state.copyWith(collections: collections, collectionNames: names);
+    // Läuft gerade einer dieser Titel vom Gerät? Erst die Wiedergabe von den Dateien lösen (wie beim Löschen)
+    if (played.isNotEmpty) {
+      try {
+        await releasePlayback?.call(played).timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
+    for (final id in hidden) {
+      await removeTrack(id, save: false);
+    }
+    await _save();
   }
 
   void _wipeWithNotice(String message) {
@@ -302,6 +349,8 @@ class OfflineController extends Notifier<OfflineState> {
     final item = state.tracks[trackId];
     final dir = _dir;
     if (item == null || dir == null) return null;
+    // Rubrik entzogen: nicht mehr vom Gerät spielen, auch wenn die Datei noch nicht gelöscht ist
+    if (!_allowed(item.track)) return null;
     return '${dir.path}/${item.fileName}';
   }
 
@@ -311,6 +360,7 @@ class OfflineController extends Notifier<OfflineState> {
     final pending = [...state.pending];
     for (final track in tracks) {
       if (track.isVideo || state.tracks.containsKey(track.id) || pending.contains(track.id)) continue;
+      if (!_allowed(track)) continue;
       _queued[track.id] = track;
       pending.add(track.id);
     }

@@ -83,6 +83,7 @@ def collect(db: Session, now: datetime | None = None) -> StatsOut:
                 UserSession.revoked_at.is_(None), UserSession.last_used_at >= now - timedelta(days=7)
             )
         ),
+        users_pending=count(select(func.count(User.id)).where(User.approval_pending.is_(True))),
     )
 
 

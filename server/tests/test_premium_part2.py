@@ -232,6 +232,9 @@ def test_migration_0008_keeps_existing_data_and_matches_the_models(tmp_path: Pat
         # keine neuen Schalter in der Datenbank: Es gelten die Standardwerte
         assert con.execute("SELECT count(*) FROM app_settings").fetchone()[0] == 0
 
+    # Seit 0009 (Selbst-Registrierung) passen die Modelle erst zum neuesten Stand – deshalb vorher bis head; den
+    # Stand 0009 prüft tests/test_visibility.py
+    command.upgrade(config, "head")
     engine = create_engine(url)
     with engine.connect() as connection:
         context = MigrationContext.configure(connection, opts={"compare_type": True, "render_as_batch": True})

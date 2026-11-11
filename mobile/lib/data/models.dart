@@ -22,6 +22,16 @@ class User {
   final DateTime createdAt;
   final DateTime? lastLoginAt;
 
+  /// Sieht alle Rubriken (auch künftige). Fehlt die Angabe (alter Server), gilt wie bisher: alles.
+  final bool allCategories;
+
+  /// Freigegebene Rubriken, wenn nicht [allCategories] (für Admins ohne Bedeutung).
+  final List<int> categoryIds;
+
+  /// Selbst registriert und noch nicht vom Betreiber freigeschaltet.
+  final bool approvalPending;
+  final bool selfRegistered;
+
   const User({
     required this.id,
     required this.username,
@@ -31,7 +41,23 @@ class User {
     required this.canDownload,
     required this.createdAt,
     this.lastLoginAt,
+    this.allCategories = true,
+    this.categoryIds = const [],
+    this.approvalPending = false,
+    this.selfRegistered = false,
   });
+
+  /// Für dieses Konto ist noch keine Rubrik freigegeben – die Bibliothek ist deshalb leer.
+  bool get nothingUnlocked => !isAdmin && !allCategories && categoryIds.isEmpty;
+
+  /// Sieht nur seine freigegebenen Rubriken (kein Admin, nicht „alle Rubriken“).
+  bool get restricted => !isAdmin && !allCategories;
+
+  /// Darf bei YouTube suchen – Regel des Servers: eingeschränkte Konten nur mit Download-Recht (sonst 403).
+  bool get canSearchYouTube => !restricted || canDownload;
+
+  /// Darf der Titel einer Rubrik auf diesem Konto (noch) gespielt werden? Für Offline-Dateien nach einem Entzug.
+  bool allowsCategory(int categoryId) => !restricted || categoryIds.contains(categoryId);
 
   factory User.fromJson(Json j) => User(
         id: _int(j['id']),
@@ -42,6 +68,12 @@ class User {
         canDownload: j['can_download'] == true,
         createdAt: _date(j['created_at']),
         lastLoginAt: _dateOrNull(j['last_login_at']),
+        allCategories: j['all_categories'] != false,
+        categoryIds: j['category_ids'] is List
+            ? [for (final id in j['category_ids'] as List) if (id is num) id.toInt()]
+            : const [],
+        approvalPending: j['approval_pending'] == true,
+        selfRegistered: j['self_registered'] == true,
       );
 
   Json toJson() => {
@@ -53,6 +85,10 @@ class User {
         'can_download': canDownload,
         'created_at': createdAt.toIso8601String(),
         'last_login_at': lastLoginAt?.toIso8601String(),
+        'all_categories': allCategories,
+        'category_ids': categoryIds,
+        'approval_pending': approvalPending,
+        'self_registered': selfRegistered,
       };
 }
 
@@ -107,15 +143,35 @@ class ServerInfo {
   final int apiVersion;
   final String publicUrl;
 
-  const ServerInfo({required this.name, required this.version, required this.apiVersion, required this.publicUrl});
+  /// Selbst-Registrierung: 'off', 'approval' oder 'open' (alter Server: 'off').
+  final String registrationMode;
+
+  const ServerInfo({
+    required this.name,
+    required this.version,
+    required this.apiVersion,
+    required this.publicUrl,
+    this.registrationMode = 'off',
+  });
+
+  /// Bietet der Server „Konto erstellen“ an?
+  bool get registrationOpen => registrationModeOpen(registrationMode);
 
   factory ServerInfo.fromJson(Json j) => ServerInfo(
         name: j['name'] as String? ?? 'Selfify',
         version: j['version'] as String? ?? '?',
         apiVersion: _int(j['api_version']),
         publicUrl: j['public_url'] as String? ?? '',
+        registrationMode: parseRegistrationMode(j['registration_mode']),
       );
 }
+
+/// Registrierungs-Modus vom Server: Fehlt er (alter Server) oder ist er unbekannt, gilt 'off'.
+String parseRegistrationMode(dynamic value) =>
+    value == 'approval' || value == 'open' ? value as String : 'off';
+
+/// 'approval' (Konto wartet auf Freischaltung) und 'open' (sofort nutzbar) erlauben die Registrierung.
+bool registrationModeOpen(String mode) => mode == 'approval' || mode == 'open';
 
 class DeviceSession {
   final int id;
@@ -1121,6 +1177,12 @@ class AppConfig {
   /// Im Dashboard als „empfohlen“ markierte Laufzeit ('' = keine).
   final String billingRecommendedPlan;
 
+  /// Selbst-Registrierung: 'off', 'approval' oder 'open' (alter Server: 'off').
+  final String registrationMode;
+
+  /// Bietet der Server „Konto erstellen“ an?
+  bool get registrationOpen => registrationModeOpen(registrationMode);
+
   const AppConfig({
     this.adsEnabled = false,
     this.premiumEnabled = true,
@@ -1144,6 +1206,7 @@ class AppConfig {
     this.premiumBadgeEnabled = false,
     this.billingBasePlans = const [],
     this.billingRecommendedPlan = '',
+    this.registrationMode = 'off',
   });
 
   factory AppConfig.fromJson(Json j) => AppConfig(
@@ -1169,6 +1232,7 @@ class AppConfig {
         premiumBadgeEnabled: j['premium_badge_enabled'] == true,
         billingBasePlans: _texts(j['billing_base_plans']),
         billingRecommendedPlan: j['billing_recommended_plan'] is String ? j['billing_recommended_plan'] as String : '',
+        registrationMode: parseRegistrationMode(j['registration_mode']),
       );
 }
 

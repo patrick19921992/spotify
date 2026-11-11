@@ -91,10 +91,35 @@ class AuthController extends AsyncNotifier<AuthState> {
     // Mit fester Adresse (Play-Version) zählt nur sie, egal was übergeben wird
     final serverUrl = fixedServerUrl ?? normalizeBaseUrl(serverInput);
     final result = await ApiClient.login(serverUrl, username.trim(), password);
+    await _adopt(serverUrl, username, result);
+  }
+
+  /// Sitzung aus „Konto erstellen“ (Registrierung ohne Freigabe) übernehmen – derselbe Weg wie nach [login].
+  Future<void> adoptLogin(String serverInput, LoginResult result) =>
+      _adopt(fixedServerUrl ?? normalizeBaseUrl(serverInput), result.user.username, result);
+
+  Future<void> _adopt(String serverUrl, String username, LoginResult result) async {
     await _persist(serverUrl, result.tokens, result.user);
     await _prefs.setString(_lastServerKey, serverUrl);
     await _prefs.setString(_lastUserKey, username.trim());
     state = AsyncData(AuthState(serverUrl: serverUrl, user: result.user, api: _client(serverUrl, result.tokens, result.user)));
+  }
+
+  /// Nach „Konto erstellen“, wenn das Konto noch auf Freischaltung wartet: Server und Benutzernamen für die
+  /// Anmeldung merken und den Hinweis des Servers auf der Anmeldeseite zeigen.
+  Future<void> registrationPending(String serverInput, String username, String message) async {
+    final serverUrl = fixedServerUrl ?? normalizeBaseUrl(serverInput);
+    await _prefs.setString(_lastServerKey, serverUrl);
+    await _prefs.setString(_lastUserKey, username.trim());
+    if (state.value?.isLoggedIn ?? false) return;
+    state = AsyncData(AuthState(serverUrl: serverUrl, message: message));
+  }
+
+  /// Hinweis auf der Anmeldeseite ausblenden (z. B. nach „Registrierung zurückziehen“).
+  void clearMessage() {
+    final current = state.value;
+    if (current == null || current.message == null) return;
+    state = AsyncData(AuthState(serverUrl: current.serverUrl, user: current.user, api: current.api));
   }
 
   /// Abmelden – meldet das Gerät auch beim Server ab (wenn erreichbar).

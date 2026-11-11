@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocke
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select, update
 
-from app.deps import AdminUser, CurrentUser, DbSession, auth_from_payload
+from app.deps import AdminUser, CurrentUser, DbSession, Viewer, auth_from_payload
 from app.downloads import ytdlp
 from app.downloads.youtube import YouTubeError, YouTubeItem, is_youtube_url
 from app.models import ACTIVE_STATES, Category, DownloadJob, Playlist, Track, User, utcnow
@@ -27,6 +27,7 @@ from app.schemas.downloads import (
 )
 from app.security import decode_access_token
 from app.services.playlists import can_edit_items
+from app.services.visibility import UNRESTRICTED, Visibility, filter_tracks
 
 router = APIRouter(tags=["YouTube & Downloads"])
 _update_running = threading.Lock()
@@ -36,16 +37,19 @@ def _manager(request: Request):  # type: ignore[no-untyped-def]
     return request.app.state.downloads
 
 
-def _item_out(db: DbSession, item: YouTubeItem, user_id: int) -> YouTubeItemOut:
+def _item_out(db: DbSession, item: YouTubeItem, user_id: int, v: Visibility = UNRESTRICTED) -> YouTubeItemOut:
     out = YouTubeItemOut(**item.__dict__)
     if item.video_id:
         media_type = "video" if item.type == "video" else "audio"
+        # Titel in verborgenen Rubriken gelten als „nicht in der Bibliothek“
         out.in_library_track_id = db.scalar(
-            select(Track.id).where(Track.source_id == item.video_id, Track.media_type == media_type).limit(1)
+            filter_tracks(select(Track.id).where(Track.source_id == item.video_id, Track.media_type == media_type), v)
+            .limit(1)
         )
         if item.type == "video":
             out.in_library_audio_track_id = db.scalar(
-                select(Track.id).where(Track.source_id == item.video_id, Track.media_type == "audio").limit(1)
+                filter_tracks(select(Track.id).where(Track.source_id == item.video_id, Track.media_type == "audio"), v)
+                .limit(1)
             )
         out.active_job_id = db.scalar(
             select(DownloadJob.id)
@@ -69,23 +73,37 @@ def _youtube_call(func, *args):  # type: ignore[no-untyped-def]
 
 # ------------------------------------------------------------------ Suche
 
+MSG_SEARCH_NOT_ALLOWED = "Downloads sind für dein Konto nicht freigeschaltet."
+
+
+def _require_search_right(user: User, v: Visibility) -> None:
+    """Eingeschränkte Konten ohne Download-Recht (z. B. alle selbst registrierten) suchen nicht bei YouTube.
+    Uneingeschränkte Konten dürfen wie bisher suchen, auch ohne Download-Recht."""
+    if v.restricted and not user.can_download:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, MSG_SEARCH_NOT_ALLOWED)
+
 
 @router.get("/youtube/search", response_model=YouTubeSearchOut)
 def youtube_search(
     request: Request,
     user: CurrentUser,
+    v: Viewer,
     db: DbSession,
     q: Annotated[str, Query(min_length=1, max_length=200)],
     type: Literal["songs", "videos", "albums"] = "songs",  # noqa: A002
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> YouTubeSearchOut:
     """Sucht bei YouTube Music. Treffer, die es schon gibt, haben `in_library_track_id`."""
+    _require_search_right(user, v)
     items = _youtube_call(request.app.state.youtube.search, q, type, limit)
-    return YouTubeSearchOut(query=q, type=type, results=[_item_out(db, item, user.id) for item in items])
+    return YouTubeSearchOut(query=q, type=type, results=[_item_out(db, item, user.id, v) for item in items])
 
 
 @router.get("/youtube/albums/{browse_id}", response_model=YouTubeAlbumOut)
-def youtube_album(browse_id: BrowseId, request: Request, user: CurrentUser, db: DbSession) -> YouTubeAlbumOut:
+def youtube_album(
+    browse_id: BrowseId, request: Request, user: CurrentUser, v: Viewer, db: DbSession
+) -> YouTubeAlbumOut:
+    _require_search_right(user, v)
     album = _youtube_call(request.app.state.youtube.album, browse_id)
     return YouTubeAlbumOut(
         browse_id=album.browse_id,
@@ -93,7 +111,7 @@ def youtube_album(browse_id: BrowseId, request: Request, user: CurrentUser, db: 
         artists=album.artists,
         year=album.year,
         thumbnail_url=album.thumbnail_url,
-        tracks=[_item_out(db, t, user.id) for t in album.tracks],
+        tracks=[_item_out(db, t, user.id, v) for t in album.tracks],
     )
 
 
@@ -105,14 +123,30 @@ def _require_download_right(user: User) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Du darfst keine Downloads starten – frag einen Admin.")
 
 
-def _target_category(db: DbSession, category_id: int | None, media_type: str) -> Category:
+MSG_NO_VISIBLE_CATEGORY = "Für dein Konto ist keine Rubrik freigegeben, in die geladen werden kann."
+
+
+def _target_category(
+    db: DbSession, category_id: int | None, media_type: str, v: Visibility = UNRESTRICTED
+) -> Category:
+    """Ziel-Rubrik eines Downloads. Eingeschränkte Konten laden nur in freigegebene Rubriken: eine verborgene gilt
+    als nicht vorhanden, ohne Angabe die Standard-Rubrik (falls sichtbar), sonst die erste sichtbare."""
     if category_id is not None:
         category = db.get(Category, category_id)
-        if category is None:
+        if category is None or not v.allows_category(category.id):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Rubrik nicht gefunden.")
         if category.media_type != media_type:
             kind = "Audio" if media_type == "audio" else "Video"
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Die Rubrik \"{category.name}\" ist keine {kind}-Rubrik.")
+        return category
+    if v.category_ids is not None:
+        category = db.scalar(
+            select(Category)
+            .where(Category.media_type == media_type, Category.id.in_(sorted(v.category_ids)))
+            .order_by(Category.is_default.desc(), Category.sort_order, Category.id)
+        )
+        if category is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, MSG_NO_VISIBLE_CATEGORY)
         return category
     category = db.scalar(
         select(Category).where(Category.media_type == media_type).order_by(
@@ -140,10 +174,10 @@ def _visible_job(db: DbSession, user: User, job_id: int) -> DownloadJob:
 
 
 @router.post("/downloads", response_model=JobOut, status_code=status.HTTP_201_CREATED)
-def create_download(body: DownloadIn, request: Request, user: CurrentUser, db: DbSession) -> JobOut:
+def create_download(body: DownloadIn, request: Request, user: CurrentUser, v: Viewer, db: DbSession) -> JobOut:
     """Song oder Video holen. Gibt es den Titel schon, ist der Auftrag sofort fertig (`track_id`)."""
     _require_download_right(user)
-    category = _target_category(db, body.category_id, body.media_type)
+    category = _target_category(db, body.category_id, body.media_type, v)
     _check_playlist(db, user, body.playlist_id)
     manager = _manager(request)
     job = manager.enqueue(
@@ -164,10 +198,12 @@ def create_download(body: DownloadIn, request: Request, user: CurrentUser, db: D
 
 
 @router.post("/downloads/album", response_model=list[JobOut], status_code=status.HTTP_201_CREATED)
-def download_album(body: AlbumDownloadIn, request: Request, user: CurrentUser, db: DbSession) -> list[JobOut]:
+def download_album(
+    body: AlbumDownloadIn, request: Request, user: CurrentUser, v: Viewer, db: DbSession
+) -> list[JobOut]:
     """Ganzes Album von YouTube Music holen – mit Tracknummern und Album-Cover."""
     _require_download_right(user)
-    category = _target_category(db, body.category_id, "audio")
+    category = _target_category(db, body.category_id, "audio", v)
     _check_playlist(db, user, body.playlist_id)
     album = _youtube_call(request.app.state.youtube.album, body.browse_id)
     if not album.tracks:
@@ -197,12 +233,14 @@ def download_album(body: AlbumDownloadIn, request: Request, user: CurrentUser, d
 
 
 @router.post("/downloads/url", response_model=list[JobOut], status_code=status.HTTP_201_CREATED)
-async def download_url(body: UrlDownloadIn, request: Request, user: CurrentUser, db: DbSession) -> list[JobOut]:
+async def download_url(
+    body: UrlDownloadIn, request: Request, user: CurrentUser, v: Viewer, db: DbSession
+) -> list[JobOut]:
     """YouTube-Link einfügen (Video oder ganze Playlist)."""
     _require_download_right(user)
     if not is_youtube_url(body.url):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bitte einen Link von youtube.com oder music.youtube.com.")
-    category = _target_category(db, body.category_id, body.media_type)
+    category = _target_category(db, body.category_id, body.media_type, v)
     _check_playlist(db, user, body.playlist_id)
     settings = request.app.state.settings
     try:

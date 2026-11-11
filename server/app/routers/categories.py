@@ -3,9 +3,10 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 
-from app.deps import AdminUser, AppSettings, CurrentUser, DbSession
+from app.deps import AdminUser, AppSettings, DbSession, Viewer
 from app.models import Category
 from app.schemas.category import CategoryCreateIn, CategoryOut, CategoryUpdateIn
+from app.services import app_config
 from app.services.categories import (
     CategoryConflictError,
     CategoryError,
@@ -31,9 +32,13 @@ def _category_out(category: Category, count: int = 0) -> CategoryOut:
 
 
 @router.get("", response_model=list[CategoryOut])
-def list_categories(_: CurrentUser, db: DbSession) -> list[CategoryOut]:
+def list_categories(v: Viewer, db: DbSession) -> list[CategoryOut]:
     counts = category_counts(db)
-    categories = db.scalars(select(Category).order_by(Category.sort_order, Category.name))
+    query = select(Category).order_by(Category.sort_order, Category.name)
+    if v.category_ids is not None:
+        # Eingeschränkt: nur freigegebene Rubriken (die sind ganz sichtbar, der Zähler bleibt deshalb global)
+        query = query.where(Category.id.in_(sorted(v.category_ids)))
+    categories = db.scalars(query)
     return [_category_out(c, counts.get(c.id, 0)) for c in categories]
 
 
@@ -90,6 +95,8 @@ def remove_category(category_id: int, request: Request, _: AdminUser, db: DbSess
     Der Ordner und alle Dateien bleiben auf dem Unraid.
     """
     delete_category(db, _get_category(db, category_id))
+    # Im selben Commit: Die ID darf nicht als Standard-Rubrik für neue Konten stehen bleiben (sie wird neu vergeben)
+    app_config.forget_default_category(db, category_id)
     db.commit()
     # Titel der Rubrik sind mit gelöscht -> leere Alben/Künstler/Cover aufräumen
     request.app.state.scanner.finalize_now(db)

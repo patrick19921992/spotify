@@ -10,10 +10,11 @@ from fastapi.responses import FileResponse
 from app.deps import AppSettings, AuthContext, DbSession, MediaAuth
 from app.library.covers import COVER_SIZES
 from app.library.transcode import QUALITY_BITRATES, TranscodeUnavailableError, needs_transcode
-from app.models import Cover, Track, utcnow
+from app.models import Cover, utcnow
 from app.services import app_config, play_billing, premium
 from app.services import features as feature_set
 from app.services.clients import CLIENT_HEADER, parse_client
+from app.services.visibility import cover_visible, get_track_or_404, visibility_for
 
 router = APIRouter(tags=["Streaming"])
 
@@ -89,9 +90,9 @@ def stream_track(
     Video nur als Ton (sonst 403), ohne „Höhere Tonqualität“ wird die Qualität still auf die Gratis-Stufe gesenkt."""
     config = app_config.get_all(db)
     _require_current_app(request, auth, db, config)
-    track = db.get(Track, track_id)
-    if track is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Titel nicht gefunden.")
+    # Unsichtbar (verborgene Rubrik) wie nicht vorhanden – und zwar vor den 403 für Video und Premium. Das gilt auch
+    # für Offline-Downloads, denn sie laufen über diesen Endpunkt
+    track = get_track_or_404(db, visibility_for(db, auth.user), track_id)
     access = feature_set.access_for(db, auth.user, config)
     if track.media_type == "video" and not audio_only and not access.allows("video"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, feature_set.MSG_VIDEO)
@@ -130,7 +131,7 @@ def stream_track(
 def get_cover(
     cover_id: str,
     request: Request,
-    _: MediaAuth,
+    auth: MediaAuth,
     db: DbSession,
     size: Annotated[int, Query(description=f"0 = Original, sonst eine von {COVER_SIZES}")] = 300,
 ) -> FileResponse:
@@ -139,6 +140,9 @@ def get_cover(
     if size and size not in COVER_SIZES:
         size = min(COVER_SIZES, key=lambda s: abs(s - size))
     if db.get(Cover, cover_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cover nicht gefunden.")
+    # Eingeschränkte Konten: nur Cover von sichtbaren Titeln, Alben, Künstlern und erlaubten Playlists
+    if not cover_visible(db, visibility_for(db, auth.user), cover_id, auth.user):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cover nicht gefunden.")
     db.close()  # Verbindung nicht bis zum Ende der Übertragung belegen
     path = request.app.state.covers.path_for(cover_id, size or None)

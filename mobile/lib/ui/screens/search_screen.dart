@@ -266,6 +266,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
+  /// YouTube-Suche nur, wenn der Server sie diesem Konto erlaubt: Eingeschränkte Konten (z. B. selbst registriert)
+  /// ohne Download-Recht bekommen 403 – dann gar keinen YouTube-Bereich statt einer Fehlerkarte bei jeder Suche.
+  bool get _youtubeSearchAllowed =>
+      youtubeFeaturesEnabled && (ref.watch(currentUserProvider)?.canSearchYouTube ?? true);
+
   /// Leeres Suchfeld: zuletzt gesucht, YouTube-Link, Rubriken.
   List<Widget> _browseSlivers(bool offline) {
     final recent = ref.watch(recentSearchesProvider);
@@ -401,14 +406,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       ),
       ..._resultSlivers(result, shownQuery),
       if (shownQuery.length >= 2)
-        if (youtubeFeaturesEnabled)
+        if (_youtubeSearchAllowed)
           YouTubeSearchSection(
             query: shownQuery,
             type: _youtubeType,
             onTypeChanged: (type) => setState(() => _youtubeType = type),
             onOpen: _remember,
           )
-        else
+        else if (!youtubeFeaturesEnabled)
           SliverToBoxAdapter(child: WishSuggestionTile(query: shownQuery)),
     ];
   }
@@ -420,7 +425,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         SliverToBoxAdapter(
           child: _NoLibraryHits(
             query: query,
-            youtubeFollows: youtubeFeaturesEnabled && query.length >= 2,
+            youtubeFollows: _youtubeSearchAllowed && query.length >= 2,
             wishFollows: !youtubeFeaturesEnabled && query.length >= 2 && ref.watch(wishlistVisibleProvider),
           ),
         ),

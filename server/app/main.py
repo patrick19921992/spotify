@@ -42,6 +42,11 @@ from app.services.play_billing import PurchaseVerifier, build_verifier
 
 logger = logging.getLogger("app")
 
+# Selbst-Registrierung: höchstens so viele Versuche je IP-Adresse und Zeitraum (jeder Versuch zählt, auch ein
+# erfolgreicher). Liegt nur im Speicher – nach einem Neustart beginnt die Zählung neu, wie beim Login
+REGISTER_MAX_PER_IP = 5
+REGISTER_WINDOW_SECONDS = 60 * 60
+
 
 def configure_logging(level: str) -> None:
     logging.basicConfig(
@@ -114,6 +119,7 @@ def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVeri
     # erfundene Kauf-Token nur je Benutzer, wie beim Einlösen
     app.state.purchase_verifier = purchase_verifier or build_verifier(settings)
     app.state.billing_limiter = LoginRateLimiter(20, 10**9, 15 * 60)
+    app.state.register_limiter = LoginRateLimiter(10**9, REGISTER_MAX_PER_IP, REGISTER_WINDOW_SECONDS)
     # Nach einer Störung bei Google nicht bei jeder Premium-Abfrage erneut anfragen (Kauf-Nummer -> Zeitpunkt)
     app.state.billing_backoff = {}
 

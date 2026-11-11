@@ -72,6 +72,10 @@ def list_users(_: AdminUser, db: DbSession) -> list[AdminUserOut]:
                 downloads=int(downloads.get(user.id, 0)),
                 devices=int(devices.get(user.id, 0)),
                 last_client=_client_text(last),
+                all_categories=user.all_categories,
+                category_ids=user.category_ids,
+                approval_pending=user.approval_pending,
+                self_registered=user.self_registered,
             )
         )
     return out

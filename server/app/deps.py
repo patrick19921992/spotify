@@ -13,6 +13,7 @@ from app.models import User, UserSession, utcnow
 from app.security import decode_access_token, decode_media_token
 from app.services.auth import active_session
 from app.services.clients import CLIENT_HEADER, ClientInfo, apply_client, parse_client
+from app.services.visibility import Visibility, visibility_for
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -133,3 +134,11 @@ def get_admin_user(user: CurrentUser) -> User:
 
 
 AdminUser = Annotated[User, Depends(get_admin_user)]
+
+
+def get_visibility(user: CurrentUser, db: DbSession) -> Visibility:
+    """Welche Rubriken der angemeldete Benutzer sieht – bei jeder Anfrage neu bestimmt."""
+    return visibility_for(db, user)
+
+
+Viewer = Annotated[Visibility, Depends(get_visibility)]

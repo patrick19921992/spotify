@@ -112,6 +112,9 @@ class AppConfigOut(BaseModel):
     # Laufzeiten des Abos (Kennungen der Basis-Abos, Komma) und die empfohlene
     billing_base_plans: str
     billing_recommended_plan: str
+    # Selbst-Registrierung: aus, mit Freigabe oder offen; Rubriken für neue Konten (IDs mit Komma)
+    registration_mode: Literal["off", "approval", "open"]
+    registration_default_categories: str
     # Nur lesbar: ffmpeg ist da (sonst lässt sich die Tonqualität nicht einschränken)
     transcode_available: bool = True
 
@@ -146,6 +149,8 @@ class AppConfigIn(BaseModel):
     premium_badge_enabled: bool | None = None
     billing_base_plans: str | None = None
     billing_recommended_plan: str | None = None
+    registration_mode: str | None = None
+    registration_default_categories: str | None = None
 
 
 class UpdateInfoOut(BaseModel):
@@ -190,6 +195,8 @@ class PublicConfigOut(BaseModel):
     # Laufzeiten des Abos in Anzeigereihenfolge (leer = alle, die der Store liefert) – nur bei wirksamem Kauf
     billing_base_plans: list[str] = []
     billing_recommended_plan: str = ""
+    # Selbst-Registrierung in der App: aus (Standard), mit Freigabe oder offen
+    registration_mode: Literal["off", "approval", "open"] = "off"
 
 
 class RequestQuotaOut(BaseModel):
@@ -247,6 +254,8 @@ class StatsOut(BaseModel):
     requests_open: int
     bugs_new: int
     devices_active_7d: int
+    # Selbst registrierte Konten, die auf Freischaltung warten
+    users_pending: int = 0
 
 
 class AdminUserOut(BaseModel):
@@ -265,3 +274,8 @@ class AdminUserOut(BaseModel):
     devices: int
     # Zuletzt gemeldete App dieses Benutzers (z. B. „play 1.0.0 (54)“), falls bekannt
     last_client: str
+    # Sichtbarkeit je Rubrik und Selbst-Registrierung
+    all_categories: bool = True
+    category_ids: list[int] = []
+    approval_pending: bool = False
+    self_registered: bool = False

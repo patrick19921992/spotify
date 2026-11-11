@@ -750,6 +750,84 @@ dass sich nichts ändert (alles „Für alle“, kein Abzeichen, Laufzeiten leer
   abgefedert durch den gemerkten Kauf in der App, sonst bis zum nächsten Start.
 - iPhone/Windows: weiter kein Kauf; die Leistungsschalter gelten dort trotzdem (Server entscheidet), Premium per Code.
 
+### Selbst-Registrierung und Rubriken-Freigabe
+
+Stand: Server mit automatischen Tests (`tests/test_registration.py`, `tests/test_visibility.py`, `tests/test_web.py`),
+Dashboard und Löschseite mit Playwright/Chromium gegen einen lokal gestarteten Server durchgeklickt (Registrieren per
+API, Freischalten, Ablehnen, Rubriken je Benutzer, Einstellungen, Zurückziehen auf `/konto-loeschen`). **Nicht** gegen
+den echten Unraid-Server, **nicht** mit einer echten App auf einem Gerät.
+
+**Server**
+
+- [x] Modus „aus“: `POST /api/auth/register` 404 mit Text, sonst alles wie bisher (Bestandstests unverändert grün)
+- [x] approval: 202, Login 403 mit Wartemeldung und Header `X-Selfify-Account-State: pending`, Freischalten per
+      `PATCH is_active` leert den Wartestatus, Ablehnen (`DELETE`) = gelöscht
+- [x] open: 201 mit Tokens; `/me` ohne Download-Recht, ohne Admin, `all_categories=false`
+- [x] Standard-Rubriken werden übernommen, gelöschte Rubriken ignoriert
+- [x] Ratenbegrenzung 429 nach 5 Versuchen je IP und Stunde (Konflikte und 422 zählen mit); IPv6 je /64-Netz
+- [x] Obergrenze 20 selbst registrierte Konten je Stunde, auch im Modus „open“ (503)
+- [x] Gelöschte Rubrik verschwindet aus den Standard-Rubriken (gleiche ID bei neuer Rubrik wird nicht vergeben)
+- [x] Filter `category_id` auf eine verborgene Rubrik: `/albums`, `/artists`, `/search` leer (wie `/tracks`)
+- [x] Scan-Zähler (`/library`, `/library/scan`) für eingeschränkte Konten 0
+- [x] `DELETE /me/likes|albums|artists`: eingeschränkt immer 204 (kein Existenz-Orakel), Bestandskonten 404 wie bisher
+- [x] Index auf `cover_id` (Titel, Alben, Künstler); Cover-Prüfung über direkten Join
+- [x] 409 ohne Namen in der Meldung, auch für reservierte Namen
+- [x] 422 bei ungültigen Namen bzw. Passwörtern (auch kaputtes JSON)
+- [x] 503 ab 50 wartenden Konten
+- [x] Zurückziehen über `POST /auth/withdraw`: 204 / 401 / 409 / 429
+- [x] Bestandskonten sehen alles (Migration 0009: `all_categories=true`, CASCADE, Upgrade/Downgrade auf SQLite)
+- [x] Eingeschränkte: Listen, Suche, Zähler, Startseite, Mixe, Verlauf, Favoriten, Playlists (Länge und Positionen,
+      move/add/remove), Stream, Cover, Songtexte, Kategorien, YouTube-Suche (403 ohne Download-Recht), Download-Ziel
+- [x] 404 vor 403 (Songtexte, Video)
+- [x] Admin und per `POST /users` angelegtes Konto bekommen identische Antworten
+- [ ] Rücksprung `alembic downgrade 0008` im echten Unraid-Container
+- [ ] Ratenbegrenzung hinter dem echten Reverse Proxy (zählt die echte Client-IP oder die des Proxys?)
+
+**Dashboard und Web**
+
+- [x] Karte „Registrierung“ (Modus, Rubriken für neue Konten, Hinweis), Nachfrage „Registrierung öffnen?“ nur beim
+      Wechsel auf „Offen“, Abbrechen speichert nicht
+- [x] Benutzer: Badge am Menüpunkt, Filter „Alle“ / „Wartend (n)“ (verschwindet bei 0), „wartet auf Freigabe“ statt
+      „gesperrt“, „selbst registriert“, Spalte „Rubriken“ („Alle (Admin)“, „Alle“, „k von m“)
+- [x] Dialoge „… freischalten“ (vorbelegt), „Konto ablehnen?“, „Rubriken für …“ (Alle / Nur ausgewählte) – Ergebnis
+      per API nachgeprüft
+- [x] Keine Inline-Styles, keine CSP-Verletzungen in der Konsole (Chromium); kein `innerHTML` (Test)
+- [x] `/konto-loeschen`: wartendes Konto wird über `/auth/withdraw` gelöscht („Dein Konto wurde gelöscht.“), falsches
+      Passwort zeigt „Benutzername oder Passwort falsch.“
+- [ ] Dashboard in Firefox/Safari und auf einem echten Handy angesehen (nur Chromium, auch schmale Ansicht 390 px)
+
+**App** (Bereich B, hier nicht selbst geprüft)
+
+- [ ] Knopf „Konto erstellen“ nur bei angebotener Registrierung; alter Server ohne Feld → kein Knopf; Play und GitHub
+- [ ] Registrieren (wartend und offen), „Registrierung zurückziehen“ auf der Anmeldeseite
+- [ ] Leertexte „Noch nichts freigeschaltet“ auf Startseite und im Rubriken-Raster
+- [x] Rubrik entzogen: Offline-Titel daraus werden gelöscht (auch aus Sammlungen und Warteschlange), leere
+      Sammlungen fallen weg, `localPath` spielt sie sofort nicht mehr ab; 404 beim Abgleich entfernt die Sammlung
+      (`test/offline_categories_test.dart`)
+- [x] Suche (GitHub-Version): eingeschränkte Konten ohne Download-Recht sehen keinen YouTube-Bereich (kein 403)
+- [x] Registrieren: Link zur Datenschutzerklärung auch ohne PUBLIC_URL (`<Server>/datenschutz`); Passwortlänge zählt
+      Zeichen wie der Server (Emoji)
+- [ ] Alles davon auf einem echten Gerät
+
+**Datenschutz und Play Store**
+
+- [x] Datenschutzerklärung angepasst (Konto selbst erstellen, Anzeigename für andere sichtbar, Ablehnen und
+      Zurückziehen), Löschseite ergänzt
+- [x] `docs/PLAYSTORE.md`: Tabelle, Kontoerstellung, Konto löschen, Datensicherheit, Prüfer-Zugang, Checkliste
+- [ ] Data-Safety-Formular in der Play Console tatsächlich angepasst (macht der Betreiber)
+- [ ] Rechtliche Prüfung der Texte (Vorlage, keine Rechtsberatung)
+
+**Bewusst offen / bekannte Grenzen** (siehe README › Selbst-Registrierung)
+
+- Album-/Künstler-Cover und die Sortierung nach Beliebtheit können aus der ganzen Sammlung stammen.
+- „Erledigt“ bei Wünschen, deren Titel in einer verborgenen Rubrik liegt.
+- Verborgene Likes und Verlauf bleiben gespeichert und kommen bei späterer Freigabe zurück.
+- Anzeigenamen in geteilten Playlists sind für andere sichtbar.
+- Offline-Speichern hängt an Premium bzw. der Offline-Regel, nicht am Download-Recht.
+- Die Ratenbegrenzung liegt nur im Speicher und ist nach einem Neustart zurückgesetzt.
+- Offline-Titel einer entzogenen Rubrik verschwinden erst, wenn die App das Konto neu geladen hat (ohne Netz gilt
+  der zuletzt bekannte Stand).
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

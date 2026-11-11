@@ -21,6 +21,7 @@ import 'screens/player_screen.dart';
 import 'screens/playlist_screen.dart';
 import 'screens/premium_screen.dart';
 import 'screens/queue_screen.dart';
+import 'screens/register_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/video_screen.dart';
@@ -70,13 +71,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Solange die gespeicherte Anmeldung geladen wird: Startbildschirm
       if (auth.isLoading && !auth.hasValue) return location == '/start' ? null : '/start';
       final loggedIn = auth.value?.isLoggedIn ?? false;
-      if (!loggedIn) return location == '/login' ? null : '/login';
-      if (location == '/login' || location == '/start') return '/home';
+      // „Konto erstellen“ ist wie die Anmeldung ohne Konto erreichbar
+      if (!loggedIn) return location == '/login' || location == '/register' ? null : '/login';
+      if (location == '/login' || location == '/register' || location == '/start') return '/home';
       return null;
     },
     routes: [
       GoRoute(path: '/start', builder: (_, _) => const _SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(
+        path: '/register',
+        // Server-Adresse und Modus kommen von der Anmeldeseite (Play-Version: immer die feste Adresse)
+        builder: (_, s) => RegisterScreen(
+          serverUrl: fixedServerUrl ?? s.uri.queryParameters['server'] ?? '',
+          mode: s.uri.queryParameters['mode'] == 'open' ? 'open' : 'approval',
+        ),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => AppShell(shell: shell),
         branches: [

@@ -169,3 +169,10 @@ input.num-small { width: 90px; }
   .menu-btn { display: inline-block; }
   .main { padding: 16px 14px 60px; }
 }
+
+/* ----------------------------------------------------------------- Rubriken-Auswahl (Registrierung, Freigaben) */
+.check-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px;
+  max-height: 280px; overflow-y: auto; padding: 4px 2px; }
+.check-list label.check { font-size: 14px; }
+.check-list label.check .dim { margin-left: auto; }
+.empty-inline { padding: 6px 0; font-size: 14px; }

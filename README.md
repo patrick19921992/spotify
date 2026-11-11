@@ -107,7 +107,10 @@ Port 443 auf den Proxy weiterleiten.
 
 **Sicherheit, weil der Server aus dem Internet erreichbar ist:**
 
-- Es gibt **keine offene Registrierung**. Nur Admins legen Konten an.
+- Standardmäßig gibt es **keine offene Registrierung** (*App-Einstellungen › Registrierung* = „Aus“), nur Admins
+  legen Konten an. Schaltest du sie ein, siehe [Selbst-Registrierung](#selbst-registrierung-und-rubriken-freigeben):
+  5 Versuche je Anschluss und Stunde, höchstens 20 neue Konten je Stunde, auf Wunsch mit Freigabe durch dich, und
+  neue Konten sehen nur die Rubriken, die du freigibst.
 - Passwörter werden mit Argon2 gespeichert, Logins nach zu vielen Fehlversuchen kurz gesperrt.
 - Jedes Handy ist eine eigene „Sitzung“ und kann einzeln abgemeldet werden, z. B. wenn ein Handy verloren geht.
 - Port `8080` **nicht** direkt im Router freigeben, immer nur über den Proxy mit HTTPS.
@@ -388,11 +391,11 @@ Zusatzsoftware im Browser (Handy und PC).
 | Übersicht | Zahlen (Benutzer, Songs, Downloads, Premium, offene Wünsche …), Diagramme der letzten 14 Tage, wer am meisten holt, welche App-Versionen im Umlauf sind |
 | Downloads | Alle Downloads aller Benutzer live, abbrechen / nochmal / entfernen, yt-dlp aktualisieren |
 | Wünsche | Songs, die sich Benutzer wünschen: „Suchen & holen“ startet den Download auf deinem Server, „Ablehnen“ (mit Nachricht), „Erledigt“ |
-| Benutzer | Anlegen, sperren, Passwort setzen, Downloads erlauben, löschen – und **Premium vergeben oder entziehen** |
+| Benutzer | Anlegen, sperren, Passwort setzen, Downloads erlauben, löschen, **Premium vergeben oder entziehen**, **Rubriken freigeben** und selbst registrierte Konten **freischalten oder ablehnen** (Filter „Wartend“, Zahl am Menüpunkt) |
 | Premium-Codes | Codes erzeugen (beliebig viele, **Laufzeit frei in Tagen oder unbegrenzt**, mehrfach einlösbar, optional „einlösbar bis“, **welche Leistungen der Code freischaltet** – Standard alle), kopieren, sperren (auf Wunsch samt schon vergebenem Premium), Liste aller aktuellen Premium-Nutzer mit Umfang, **Käufe über Google Play** (Laufzeit, Stand, gilt bis, „Neu prüfen“) |
 | Fehlermeldungen | „Fehler melden“ aus der App, mit Geräteinfo und Fehlerprotokoll; als gesehen/erledigt markieren |
 | Geräte & Versionen | Welche App-Version (Play oder GitHub) auf wie vielen Geräten läuft, wer ein Update braucht |
-| App-Einstellungen | Werbung an/aus, Premium-Bereich an/aus, „Song wünschen“ an/aus, **Premium-Leistungen** (je Leistung „Für alle“ oder „Nur Premium“), Gnadenfrist und Texte der Premium-Seite, **Kauf in der App** (Play-Version, Laufzeiten), Update-Hinweis und Pflicht-Update der Play-Version, Wartungshinweis |
+| App-Einstellungen | **Registrierung** (wer Konten anlegen darf, Rubriken für neue Konten), Werbung an/aus, Premium-Bereich an/aus, „Song wünschen“ an/aus, **Premium-Leistungen** (je Leistung „Für alle“ oder „Nur Premium“), Gnadenfrist und Texte der Premium-Seite, **Kauf in der App** (Play-Version, Laufzeiten), Update-Hinweis und Pflicht-Update der Play-Version, Wartungshinweis |
 
 **Premium-Regeln**
 
@@ -499,6 +502,73 @@ sein Konto auch ohne App löschen). Trage dafür `OPERATOR_NAME`, `OPERATOR_ADDR
 die Texte sind eine Vorlage und ersetzen keine Rechtsberatung. Alle diese Seiten laden nur eigene Dateien
 (strenge Content-Security-Policy, kein Inline-Code); Texte von Benutzern werden nur als Text angezeigt.
 
+### Selbst-Registrierung und Rubriken freigeben
+
+Standardmäßig legst nur du (bzw. ein Admin) Konten an – daran ändert sich nichts, solange du nichts einstellst.
+Unter *App-Einstellungen › Registrierung* wählst du, **wer Konten anlegen darf**:
+
+| Modus | Was passiert |
+|-------|--------------|
+| **Aus** (Standard) | Nur Admins legen Konten an. Die App zeigt keinen Knopf „Konto erstellen“, `POST /api/auth/register` antwortet mit 404. |
+| **Mit Freigabe** | Jeder, der die Adresse deines Servers kennt, kann in der App ein Konto erstellen. Es **wartet**, bis du es freischaltest; vorher ist keine Anmeldung möglich (die App zeigt „Dein Konto wartet noch auf Freischaltung durch den Betreiber.“). |
+| **Offen** | Neue Konten sind sofort nutzbar. Das Dashboard fragt vor dem Umschalten nach – jeder mit der Adresse kann dann ohne dich ein Konto anlegen und die Rubriken für neue Konten hören. |
+
+- **Rubriken für neue Konten:** Häkchen-Liste derselben Karte. Diese Rubriken bekommt jedes selbst erstellte Konto
+  automatisch. Ohne Auswahl sieht ein neues Konto **nichts**, bis du ihm Rubriken freigibst (die App zeigt dann
+  „Noch nichts freigeschaltet“).
+- **Freischalten und Ablehnen** (*Benutzer*, Filter „Wartend (n)“, die Zahl steht auch am Menüpunkt):
+  „Freischalten…“ öffnet die Rubriken-Auswahl (vorbelegt mit den Rubriken des Kontos) und schaltet das Konto damit
+  frei. „Ablehnen“ **löscht** das Konto sofort und endgültig – einen Zustand „abgelehnt“ gibt es nicht. Wer noch
+  wartet, kann seine Registrierung in der App („Registrierung zurückziehen“) oder unter `/konto-loeschen` selbst
+  zurückziehen.
+- **Rubriken je Benutzer:** „Rubriken…“ bei jedem Nicht-Admin: „Alle Rubriken (auch künftige)“ oder „Nur
+  ausgewählte“. Die Änderung wirkt beim Server sofort, auch für angemeldete Geräte (die App zeigt neue Rubriken nach
+  dem Aktualisieren). Spalte „Rubriken“: „Alle (Admin)“, „Alle“, „keine“ oder „k von m“.
+- **Bestandskonten sehen weiter alles:** Beim Update bekommen alle vorhandenen Konten „Alle Rubriken“. Konten, die
+  du unter *Benutzer anlegen* erstellst, ebenfalls. **Admins sehen immer alles**, egal was eingestellt ist.
+- **Eingeschränkte Konten** sehen nur Titel aus ihren Rubriken – in Listen, Suche, Zählern, Startseite, Mixen,
+  Verlauf, Favoriten, Playlists, Stream, Cover und Songtexten. Alles andere antwortet so, als gäbe es es nicht (404).
+  Ein Album oder Künstler erscheint, sobald mindestens ein Titel davon sichtbar ist. Ein Filter auf eine verborgene
+  Rubrik (`category_id`) ergibt überall leere Ergebnisse, wie bei einer Rubrik, die es nicht gibt. Die Zähler des
+  Scans (`/library`, `/library/scan`: gesehene, neue, geänderte, entfernte und fehlerhafte Dateien) stehen für sie auf
+  0, weil sie für die ganze Sammlung gelten; „Entfernen“ von Likes, gespeicherten Alben und gefolgten Künstlern
+  antwortet immer mit 204, auch für IDs, die es nicht gibt.
+- **Gelöschte Rubriken** verschwinden automatisch aus den „Rubriken für neue Konten“ – eine später angelegte Rubrik
+  mit derselben Nummer wird also nicht ungewollt an neue Konten freigegeben.
+- **Offline auf dem Gerät:** Entziehst du einem eingeschränkten Konto eine Rubrik, löscht die App deren Titel vom
+  Gerät, sobald sie das Konto neu geladen hat (beim Start, beim Aktualisieren). Sie verschwinden aus gespeicherten
+  Alben und Playlists; Sammlungen, die dadurch leer werden, fallen ganz weg. Bis dahin spielt die App sie schon nicht
+  mehr vom Gerät ab. Liefert der Server beim Abgleich einer gespeicherten Sammlung 404 (gelöscht oder nicht mehr
+  sichtbar), entfernt die App die Sammlung vom Gerät.
+- **Selbst registrierte Konten** dürfen nichts von YouTube laden (kein Download-Recht, auch die YouTube-Suche ist
+  gesperrt – die App zeigt ihnen deshalb in der Suche keinen YouTube-Bereich) und sehen keine Admin-Bereiche. Das Download-Recht kannst du ihnen wie jedem Benutzer geben; sie laden
+  dann nur in Rubriken, die sie sehen.
+- **Schutz vor Missbrauch:** höchstens **5 Registrierungsversuche je Anschluss und Stunde** (IPv4: je Adresse,
+  IPv6: je /64-Netz, weil ein Anschluss dort meist ein ganzes /64 hat; auch fehlgeschlagene Versuche zählen; die
+  Zählung liegt nur im Speicher und beginnt nach einem Neustart von vorn), höchstens **20 neue selbst registrierte
+  Konten je Stunde** insgesamt – auch im Modus „Offen“ (danach 503 „Gerade werden sehr viele neue Konten
+  angelegt …“) – und höchstens **50 wartende Konten** gleichzeitig (danach 503, bis du freischaltest oder ablehnst). Reservierte Namen wie `admin`, `root`
+  oder `support` sind gesperrt; die Meldung bei einem vergebenen Namen nennt den Namen nicht.
+
+**Grenzfälle, die du kennen solltest:**
+
+- Cover von Alben und Künstlern sowie die Sortierung nach Beliebtheit können aus der ganzen Sammlung stammen, also
+  Titel aus verborgenen Rubriken mitzählen.
+- Ein Wunsch, den du als „erledigt“ markierst, zeigt beim Benutzer „erledigt“, auch wenn der geholte Titel in einer
+  Rubrik liegt, die er nicht sieht. Hol Wünsche eingeschränkter Benutzer in eine Rubrik, die sie sehen.
+- Verborgene Likes, Verlaufseinträge und gespeicherte Alben werden nicht gelöscht, nur ausgeblendet. Gibst du die
+  Rubrik später frei, sind sie wieder da.
+- In geteilten Playlists sehen andere Benutzer deinen Anzeigenamen (steht so auch in der Datenschutzerklärung).
+  Eine fremde Playlist zeigt eingeschränkten Konten nur die sichtbaren Titel (Länge und Dauer passend dazu).
+- Offline-Speichern aufs Gerät hängt an Premium bzw. der Offline-Regel, **nicht** am Download-Recht. Steht
+  Offline-Hören auf „Für alle“, kann also auch ein selbst registriertes Konto ohne Premium speichern – aber nur
+  sichtbare Titel.
+- **Ältere Apps** kennen die Registrierung nicht (kein Knopf). Wartende Konten sehen dort beim Anmelden trotzdem
+  die Server-Meldung; eingeschränkte Konten sehen leere Listen mit den alten Leertexten.
+- **Zurück auf die vorherige Server-Version:** erst Registrierung „Aus“, wartende Konten ablehnen, dann
+  `docker exec -u 99:100 selfify alembic downgrade 0008` und das alte Image. Rubriken-Freigaben gehen dabei
+  verloren (danach sieht jedes Konto wieder alles); noch wartende Konten blieben als gesperrte Konten stehen.
+
 ---
 
 ## Einstellungen (Umgebungsvariablen)
@@ -564,11 +634,12 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 
 | Bereich | Endpunkte |
 |---------|-----------|
-| System | `GET /health`, `GET /server` |
-| Anmeldung | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` |
+| System | `GET /health`, `GET /server` (mit `registration_mode`: `off`/`approval`/`open`) |
+| Anmeldung | `POST /auth/login` (wartendes Konto: **403** mit Header `X-Selfify-Account-State: pending`), `POST /auth/refresh`, `POST /auth/logout` |
+| Registrierung | `POST /auth/register` {username, password, display_name?, device_name?} (ohne Login): **201** mit Tokens (Modus offen), **202** (wartet auf Freigabe), 404 (Modus aus), 409, 422, 429, 503; `POST /auth/withdraw` {username, password}: wartende Registrierung zurückziehen (**204**, 401, 409, 429) |
 | Mein Konto | `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/{id}` |
-| Benutzer (Admin) | `GET/POST /users`, `GET/PATCH/DELETE /users/{id}` |
-| Rubriken | `GET /categories` (alle, inkl. Anzahl Titel), `POST /categories`, `PATCH/DELETE /categories/{id}` (Admin) |
+| Benutzer (Admin) | `GET/POST /users`, `GET/PATCH/DELETE /users/{id}` (Felder `all_categories`, `category_ids`; `PATCH {is_active: true}` schaltet ein wartendes Konto frei, `DELETE` lehnt ab) |
+| Rubriken | `GET /categories` (alle bzw. bei eingeschränkten Konten nur die freigegebenen, inkl. Anzahl Titel), `POST /categories`, `PATCH/DELETE /categories/{id}` (Admin) |
 | Bibliothek | `GET /artists`, `GET /artists/{id}`, `GET /albums`, `GET /albums/{id}`, `GET /tracks`, `GET /tracks/{id}` |
 | Suche | `GET /search?q=…` – Top-Treffer, Songs, Künstler, Alben, Videos (findet „Ärzte“ auch als „aerzte“) |
 | Scan | `GET /library` (Statistik), `GET /library/scan` (Status), `POST /library/scan` (Admin) |
@@ -582,11 +653,11 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | Downloads | `POST /downloads`, `POST /downloads/album`, `POST /downloads/url`, `GET /downloads`, `POST /downloads/{id}/cancel\|retry`, `DELETE /downloads/{id}` |
 | Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse (eigene Downloads; Admins mit `&scope=all` alle) |
 | Admin | `DELETE /tracks/{id}?delete_file=true`, `GET /downloads-system`, `POST /downloads-system/update` |
-| App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links, Offline-Regel (`offline_requires_premium`, `offline_grace_days`, `offline_min_client_build`), Premium-Leistungen (`premium_only`, `free_audio_quality`, `free_requests_per_week`, `free_skips_per_hour`, `premium_badge_enabled`), Kauf (`billing_enabled`, `billing_product_ids`, `billing_base_plans`, `billing_recommended_plan`), Premium-Texte |
+| App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links, Offline-Regel (`offline_requires_premium`, `offline_grace_days`, `offline_min_client_build`), Premium-Leistungen (`premium_only`, `free_audio_quality`, `free_requests_per_week`, `free_skips_per_hour`, `premium_badge_enabled`), Kauf (`billing_enabled`, `billing_product_ids`, `billing_base_plans`, `billing_recommended_plan`), Premium-Texte, `registration_mode` |
 | Premium | `GET /premium` (Stand samt `features` = freigeschaltete Leistungen, `premium_only`, `locked` = was dieser Benutzer gerade nicht darf, `badge`, `offline_allowed`, `checked_at`, Abo `play` mit `base_plan_id`/`offer_id`; 503 = gerade nicht prüfbar), `POST /premium/redeem` {code}, `POST /premium/play/verify` {product_id, purchase_token} (Kauf oder Wiederherstellung melden) |
 | Wünsche & Fehler melden | `POST/GET /requests` (mit Wochengrenze ohne Premium: **429** „Du hast diese Woche schon … Wünsche geschickt. …“, bei Grenze 0 **403**), `GET /requests/quota` (`limited`, `limit`, `used`, `left`, `resets_at`), `DELETE /requests/{id}`, `POST /bugreports` |
 | Konto löschen | `POST /me/delete` {password} |
-| Dashboard (Admin) | `GET /admin/stats`, `/admin/users`, `/admin/clients`, `GET/PUT /admin/config`, `/admin/premium/codes` (Feld `features`: Liste der Leistungen oder `null` = alle), `/admin/premium/licenses` (mit `features`), `GET /admin/premium/purchases`, `POST /admin/premium/purchases/{id}/recheck`, `GET /admin/billing/status`, `POST /admin/billing/test`, `/admin/users/{id}/premium`, `/admin/requests`, `/admin/bugreports` |
+| Dashboard (Admin) | `GET /admin/stats` (mit `users_pending`), `/admin/users` (mit `all_categories`, `category_ids`, `approval_pending`, `self_registered`), `/admin/clients`, `GET/PUT /admin/config` (mit `registration_mode`, `registration_default_categories` = Rubrik-IDs mit Komma), `/admin/premium/codes` (Feld `features`: Liste der Leistungen oder `null` = alle), `/admin/premium/licenses` (mit `features`), `GET /admin/premium/purchases`, `POST /admin/premium/purchases/{id}/recheck`, `GET /admin/billing/status`, `POST /admin/billing/test`, `/admin/users/{id}/premium`, `/admin/requests`, `/admin/bugreports` |
 
 Listen sind seitenweise (`limit`, `offset`) und sortierbar (`sort=title|recent|…`). Streams und Cover
 akzeptieren statt des `Authorization`-Headers auch den **Medien-Token** aus dem Login als `?t=…`. So

@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AppSetting, utcnow
+from app.models import AppSetting, Category, utcnow
 
 
 @dataclass(frozen=True)
@@ -74,6 +74,11 @@ SPECS: dict[str, Spec] = {
     # der Store liefert) und die empfohlene Laufzeit (leer = keine)
     "billing_base_plans": Spec("", 400),
     "billing_recommended_plan": Spec("", 63),
+    # Selbst-Registrierung: "off" (Standard, nur Admins legen Konten an), "approval" (Konto wartet auf Freischaltung),
+    # "open" (sofort nutzbar)
+    "registration_mode": Spec("off", 10),
+    # Rubriken, die selbst registrierte Konten automatisch bekommen (IDs, durch Komma getrennt; leer = keine)
+    "registration_default_categories": Spec("", 400),
 }
 
 STORE_URL_PREFIXES = ("https://play.google.com/", "market://")
@@ -84,6 +89,8 @@ MAX_BASE_PLANS = 6
 FREE_AUDIO_QUALITIES = ("normal", "low")
 MAX_BENEFITS = 8
 MAX_BENEFIT_LENGTH = 100
+REGISTRATION_MODES = ("off", "approval", "open")
+MAX_DEFAULT_CATEGORIES = 100
 
 
 class ConfigError(ValueError):
@@ -134,6 +141,10 @@ def validate(key: str, value: Any) -> Any:
         raise ConfigError("free_audio_quality: „normal“ oder „low“ erwartet.")
     if key == "billing_base_plans":
         return _normalize_base_plans(value)
+    if key == "registration_mode" and value not in REGISTRATION_MODES:
+        raise ConfigError("registration_mode: „off“, „approval“ oder „open“ erwartet.")
+    if key == "registration_default_categories":
+        return _normalize_category_ids(value)
     return value
 
 
@@ -157,6 +168,43 @@ def _normalize_base_plans(value: str) -> str:
             "(höchstens 6, durch Komma getrennt)."
         )
     return ",".join(ids)
+
+
+def _normalize_category_ids(value: str) -> str:
+    """„ 3, 1,3 “ -> „1,3“: eindeutig, aufsteigend, nur positive Ganzzahlen, höchstens 100 Einträge."""
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if not all(part.isascii() and part.isdigit() and int(part) > 0 for part in parts):
+        raise ConfigError("registration_default_categories: Rubrik-Nummern durch Komma getrennt erwartet.")
+    ids = sorted({int(part) for part in parts})
+    if len(ids) > MAX_DEFAULT_CATEGORIES:
+        raise ConfigError("registration_default_categories: Rubrik-Nummern durch Komma getrennt erwartet.")
+    return ",".join(str(i) for i in ids)
+
+
+def category_id_list(config: dict[str, Any]) -> list[int]:
+    """Die eingestellten Rubriken für neue Konten als Liste (ungeprüft, ob es sie noch gibt)."""
+    return [int(part) for part in str(config["registration_default_categories"]).split(",") if part.isdigit()]
+
+
+def default_category_ids(db: Session, values: dict[str, Any]) -> list[int]:
+    """Rubriken für neue, selbst registrierte Konten – nur die, die es noch gibt."""
+    wanted = category_id_list(values)
+    if not wanted:
+        return []
+    return sorted(db.scalars(select(Category.id).where(Category.id.in_(wanted))))
+
+
+def forget_default_category(db: Session, category_id: int) -> None:
+    """Gelöschte Rubrik aus den Rubriken für neue Konten nehmen. SQLite vergibt die höchste freie ID neu – sonst bekäme
+    eine später angelegte Rubrik mit derselben ID jedes neue Konto, ohne dass der Admin sie ausgewählt hat."""
+    row = db.get(AppSetting, "registration_default_categories")
+    if row is None:
+        return
+    kept = [i for i in category_id_list({"registration_default_categories": row.value}) if i != category_id]
+    value = ",".join(str(i) for i in kept)
+    if value != row.value:
+        row.value = value
+        row.updated_at = utcnow()
 
 
 def _normalize_benefits(value: str) -> str:
@@ -206,6 +254,11 @@ def update(db: Session, changes: dict[str, Any]) -> dict[str, Any]:
         raise ConfigError("billing_product_ids: Für den Kauf in der App fehlt die Produkt-ID des Abos.")
     if merged["billing_recommended_plan"] and merged["billing_recommended_plan"] not in base_plans(merged):
         raise ConfigError("billing_recommended_plan: Die empfohlene Laufzeit muss in der Liste der Laufzeiten stehen.")
+    if "registration_default_categories" in checked:
+        existing = set(default_category_ids(db, checked))
+        for category_id in category_id_list(checked):
+            if category_id not in existing:
+                raise ConfigError(f"registration_default_categories: Rubrik {category_id} gibt es nicht.")
     for key, value in checked.items():
         row = db.get(AppSetting, key)
         if row is None:

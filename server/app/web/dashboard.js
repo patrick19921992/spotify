@@ -324,7 +324,7 @@
     { id: "uebersicht", label: "Übersicht", render: viewOverview },
     { id: "downloads", label: "Downloads", render: viewDownloads },
     { id: "wuensche", label: "Wünsche", render: viewRequests, badge: "requests_open" },
-    { id: "benutzer", label: "Benutzer", render: viewUsers },
+    { id: "benutzer", label: "Benutzer", render: viewUsers, badge: "users_pending" },
     { id: "premium", label: "Premium-Codes", render: viewPremium },
     { id: "fehler", label: "Fehlermeldungen", render: viewBugs, badge: "bugs_new" },
     { id: "geraete", label: "Geräte & Versionen", render: viewClients },
@@ -422,6 +422,27 @@
     return h("div", { class: "table-wrap" }, h("table", null,
       h("thead", null, h("tr", null, headers.map(function (title) { return h("th", { text: title }); }))),
       h("tbody", null, rows)));
+  }
+
+  // Checkbox-Liste der Rubriken (für Standard-Rubriken neuer Konten und Freigaben je Benutzer).
+  // selected() liefert die angehakten IDs aufsteigend.
+  function categoryChecklist(categories, checkedIds) {
+    var boxes = [];
+    var el = categories.length
+      ? h("div", { class: "check-list" }, categories.map(function (category) {
+        var box = h("input", { type: "checkbox", checked: checkedIds.indexOf(category.id) >= 0 });
+        boxes.push({ id: category.id, box: box });
+        return h("label", { class: "check" }, box, h("span", { text: category.name }),
+          h("span", { class: "small dim", text: fmtNumber(category.item_count) }));
+      }))
+      : h("div", { class: "empty-inline dim", text: "Noch keine Rubriken angelegt." });
+    return {
+      el: el,
+      boxes: boxes,
+      selected: function () {
+        return boxes.filter(function (b) { return b.box.checked; }).map(function (b) { return b.id; }).sort(function (a, b) { return a - b; });
+      }
+    };
   }
 
   function chips(options, active, onPick) {
@@ -815,13 +836,74 @@
       return api("PATCH", "/users/" + user.id, data).then(function () { toast(text); return load(); }).catch(showError);
     }
 
+    var categories = [];
+    var filter = "all";
+
+    function categoriesText(user) {
+      if (user.is_admin) return "Alle (Admin)";
+      if (user.all_categories) return "Alle";
+      var k = (user.category_ids || []).length;
+      return k ? k + " von " + categories.length : "keine";
+    }
+
+    // Rubriken-Freigabe eines Kontos: „Alle“ (auch künftige) oder eine Auswahl. Beim Freischalten wartender Konten
+    // wird zusätzlich is_active gesetzt – das beendet den Wartestatus.
+    function categoriesModal(user, approve) {
+      var all = h("input", { type: "radio", name: "category-scope", checked: user.all_categories });
+      var picked = h("input", { type: "radio", name: "category-scope", checked: !user.all_categories });
+      var picker = categoryChecklist(categories, user.category_ids || []);
+      function sync() { picker.boxes.forEach(function (b) { b.box.disabled = all.checked; }); }
+      all.addEventListener("change", sync);
+      picked.addEventListener("change", sync);
+      sync();
+      var content = h("div", { class: "col" },
+        h("label", { class: "check" }, all, "Alle Rubriken (auch künftige)"),
+        h("label", { class: "check" }, picked, "Nur ausgewählte"),
+        picker.el);
+      var title = approve ? user.display_name + " freischalten" : "Rubriken für " + user.display_name;
+      modal(title, content, [
+        { label: "Abbrechen", kind: "secondary", value: null },
+        { label: approve ? "Freischalten" : "Speichern", run: function (close) {
+          var payload = { all_categories: all.checked, category_ids: picker.selected() };
+          if (approve) payload.is_active = true;
+          return api("PATCH", "/users/" + user.id, payload).then(function () {
+            close(true);
+            toast(approve ? "Freigeschaltet." : "Rubriken gespeichert.");
+            ctx.refreshBadges();
+            return load();
+          });
+        } }
+      ]);
+    }
+
+    function reject(user) {
+      confirmDialog("Konto ablehnen?", "Das Konto „" + user.username + "“ wird endgültig gelöscht.", "Ablehnen", true).then(function (ok) {
+        if (ok) api("DELETE", "/users/" + user.id).then(function () { toast("Abgelehnt und gelöscht."); ctx.refreshBadges(); return load(); }).catch(showError);
+      });
+    }
+
     function draw(users) {
       clear(box);
       var me = session.user.id;
-      var rows = users.map(function (user) {
+      var pending = users.filter(function (user) { return user.approval_pending; });
+      if (!pending.length) filter = "all";
+      var options = [{ id: "all", label: "Alle" }];
+      if (pending.length) options.push({ id: "pending", label: "Wartend (" + pending.length + ")" });
+      box.appendChild(chips(options, filter, function (id) { filter = id; draw(users); }));
+      var shown = filter === "pending" ? pending : users;
+      var rows = shown.map(function (user) {
+        var lockAction = user.approval_pending
+          ? [
+            h("button", { class: "small", text: "Freischalten…", onclick: function () { categoriesModal(user, true); } }),
+            h("button", { class: "danger small", text: "Ablehnen", onclick: function () { reject(user); } })
+          ]
+          : user.id !== me ? h("button", { class: "secondary small", text: user.is_active ? "Sperren" : "Entsperren", onclick: function () { patchUser(user, { is_active: !user.is_active }, user.is_active ? "Gesperrt." : "Entsperrt."); } }) : null;
         return h("tr", null,
           h("td", null, h("div", { text: user.display_name }), h("div", { class: "small muted", text: "@" + user.username })),
-          h("td", null, user.is_admin ? pill("Admin", "blue") : "Benutzer", " ", user.is_active ? null : pill("gesperrt", "red")),
+          h("td", null, user.is_admin ? pill("Admin", "blue") : "Benutzer", " ",
+            user.approval_pending ? pill("wartet auf Freigabe", "yellow") : (user.is_active ? null : pill("gesperrt", "red")),
+            user.self_registered ? h("div", { class: "small muted", text: "selbst registriert" }) : null),
+          h("td", { class: "small nowrap", text: categoriesText(user) }),
           h("td", null, user.premium.active
             ? h("span", null, pill(premiumText(user.premium), "green"), fullScope(user.premium.features) ? null : " ", fullScope(user.premium.features) ? null : pill("Teilumfang", "yellow"))
             : h("span", { class: "dim", text: "–" })),
@@ -837,18 +919,23 @@
                 if (value) patchUser(user, { password: value }, "Passwort gesetzt.");
               });
             } }),
-            user.id !== me ? h("button", { class: "secondary small", text: user.is_active ? "Sperren" : "Entsperren", onclick: function () { patchUser(user, { is_active: !user.is_active }, user.is_active ? "Gesperrt." : "Entsperrt."); } }) : null,
+            user.is_admin ? null : h("button", { class: "secondary small", text: "Rubriken…", onclick: function () { categoriesModal(user, false); } }),
+            lockAction,
             user.id !== me ? h("button", { class: "danger small", text: "Löschen", onclick: function () {
               confirmDialog("Benutzer löschen?", user.display_name + " samt Playlists, Lieblingssongs und Verlauf wird endgültig gelöscht.", "Löschen", true).then(function (ok) {
-                if (ok) api("DELETE", "/users/" + user.id).then(function () { toast("Gelöscht."); return load(); }).catch(showError);
+                if (ok) api("DELETE", "/users/" + user.id).then(function () { toast("Gelöscht."); ctx.refreshBadges(); return load(); }).catch(showError);
               });
             } }) : null)));
       });
-      box.appendChild(table(["Benutzer", "Rolle", "Premium", "Downloads", "Geräte", "App", "Zuletzt", ""], rows, "Keine Benutzer."));
+      box.appendChild(table(["Benutzer", "Rolle", "Rubriken", "Premium", "Downloads", "Geräte", "App", "Zuletzt", ""], rows, "Keine Benutzer."));
     }
 
     function load() {
-      return api("GET", "/admin/users").then(function (users) { if (ctx.alive()) draw(users); });
+      return Promise.all([api("GET", "/admin/users"), api("GET", "/categories")]).then(function (result) {
+        if (!ctx.alive()) return;
+        categories = result[1];
+        draw(result[0]);
+      });
     }
 
     body.appendChild(createForm());
@@ -1175,9 +1262,9 @@
   // ------------------------------------------------------------------ Ansicht: App-Einstellungen
 
   function viewSettings(body, ctx) {
-    return Promise.all([api("GET", "/admin/config"), api("GET", "/admin/billing/status")]).then(function (result) {
+    return Promise.all([api("GET", "/admin/config"), api("GET", "/admin/billing/status"), api("GET", "/categories")]).then(function (result) {
       if (!ctx.alive()) return;
-      var config = result[0], billing = result[1];
+      var config = result[0], billing = result[1], categories = result[2];
       var fields = {};
 
       function toggle(key, label, hint) {
@@ -1321,6 +1408,24 @@
         planBox,
         h("div", { class: "small dim", text: "Genau die Kennungen der Basis-Abos aus der Play Console, z. B. monatlich, halbjaehrlich, jaehrlich. Leer = die App zeigt alle Laufzeiten, die Google liefert (kürzeste zuerst). Preise legst du nur in der Play Console fest; die App zeigt den echten Preis und rechnet die Ersparnis gegenüber monatlich aus." }));
 
+      // ---- Selbst-Registrierung: wer Konten anlegen darf und welche Rubriken neue Konten bekommen
+      var registrationMode = h("select", null,
+        h("option", { value: "off", text: "Aus – nur Admins legen Konten an" }),
+        h("option", { value: "approval", text: "Mit Freigabe – neue Konten warten, bis du sie freischaltest" }),
+        h("option", { value: "open", text: "Offen – neue Konten sind sofort nutzbar" }));
+      registrationMode.value = config.registration_mode || "off";
+      fields.registration_mode = function () { return registrationMode.value; };
+      var defaultIds = String(config.registration_default_categories || "").split(",").filter(Boolean).map(Number);
+      var defaultPicker = categoryChecklist(categories, defaultIds);
+      fields.registration_default_categories = function () { return defaultPicker.selected().join(","); };
+      var registrationCard = h("div", { class: "card col" },
+        h("h2", { text: "Registrierung" }),
+        h("label", { class: "field" }, "Wer darf Konten anlegen?", registrationMode),
+        h("div", { class: "small dim", text: "Selbst registrierte Konten dürfen nichts von YouTube laden und sehen keine Admin-Bereiche. Sie sehen nur die Rubriken, die du freigibst." }),
+        h("h3", { text: "Rubriken für neue Konten" }),
+        defaultPicker.el,
+        h("div", { class: "small dim", text: "Ohne Auswahl sehen neue Konten nichts, bis du ihnen Rubriken freigibst." }));
+
       function save() {
         var payload = {};
         Object.keys(fields).forEach(function (key) { payload[key] = fields[key](); });
@@ -1337,13 +1442,19 @@
         var ask = fields.offline_requires_premium() && !config.offline_requires_premium
           ? confirmDialog("Offline-Hören an Premium binden?", "Alle Benutzer ohne Premium verlieren ihre Offline-Musik auf dem Gerät. Gib Familie und Freunden vorher Premium (Benutzer › Premium).", "Einschalten", true)
           : Promise.resolve(true);
-        ask.then(function (ok) { if (ok) return save(); }).catch(showError);
+        // Offene Registrierung: jeder mit der Server-Adresse kann ohne Freigabe ein Konto anlegen – vorher nachfragen
+        ask.then(function (ok) {
+          if (!ok) return false;
+          if (fields.registration_mode() !== "open" || config.registration_mode === "open") return true;
+          return confirmDialog("Registrierung öffnen?", "Dann kann jeder, der die Adresse deines Servers kennt, ohne deine Freigabe ein Konto anlegen und die Rubriken für neue Konten hören.", "Öffnen", true);
+        }).then(function (ok) { if (ok) return save(); }).catch(showError);
       } },
       h("div", { class: "card col" },
         h("h2", { text: "Funktionen in der App" }),
         toggle("ads_enabled", "Werbung in der Play-Version zeigen", "Nur für Benutzer ohne Premium. Erst einschalten, wenn AdMob eingerichtet ist (siehe docs/PLAYSTORE.md)."),
         toggle("premium_enabled", "Premium-Bereich zeigen (Code einlösen)", "Blendet in der App „Premium“ ein oder aus."),
         toggle("wishlist_enabled", "„Song wünschen“ anbieten", "Benutzer können sich Songs wünschen; du siehst sie unter Wünsche.")),
+      registrationCard,
       featureCard,
       h("div", { class: "card col" },
         h("h2", { text: "Premium und Offline-Hören" }),

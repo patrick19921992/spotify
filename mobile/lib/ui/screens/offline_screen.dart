@@ -89,7 +89,16 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
     if (api == null || _syncing.contains(key)) return;
     setState(() => _syncing.add(key));
     try {
-      final (name, tracks) = await _fetchCollection(api, key);
+      final (String?, List<Track>) fetched;
+      try {
+        fetched = await _fetchCollection(api, key);
+      } on ApiException catch (e) {
+        // Album/Playlist gibt es nicht mehr – oder nicht mehr für dieses Konto (Rubrik entzogen, Playlist privat):
+        // dann darf sie auch nicht auf dem Handy bleiben
+        if (e.isNotFound) await ref.read(offlineProvider.notifier).releaseCollection(key);
+        rethrow;
+      }
+      final (name, tracks) = fetched;
       final notifier = ref.read(offlineProvider.notifier);
       await notifier.syncCollection(key, tracks);
       final current = ref.read(offlineProvider);
@@ -148,7 +157,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
 
   Object _describeSyncError(Object error, String name) {
     if (error is ApiException && error.statusCode == 404) {
-      return ApiException('„$name“ gibt es auf dem Server nicht mehr. Du kannst die Sammlung vom Handy entfernen.');
+      return ApiException('„$name“ gibt es für dich auf dem Server nicht mehr. Die Sammlung wurde vom Handy entfernt.');
     }
     return error;
   }

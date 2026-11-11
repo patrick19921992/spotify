@@ -141,3 +141,39 @@ def test_operator_email_cannot_break_out_of_the_mailto_attribute(settings: Setti
             text = test_client.get(path).text
             assert 'onmouseover="alert' not in text, path
             assert "&quot;onmouseover=" in text or "onmouseover" not in text, path
+
+
+def test_registration_paths_are_public(client: TestClient) -> None:
+    """Registrieren und Zurückziehen brauchen keine Anmeldung (und schon gar keinen Admin)."""
+    off = client.post("/api/auth/register", json={"username": "neu", "password": "passwort-123"})
+    assert off.status_code == 404  # Modus „aus“ – aber kein 401/403
+    withdraw = client.post("/api/auth/withdraw", json={"username": "neu", "password": "passwort-123"})
+    assert withdraw.status_code == 401
+    assert withdraw.json()["detail"] == "Benutzername oder Passwort falsch."
+    assert "www-authenticate" not in withdraw.headers
+
+
+def test_dashboard_and_legal_cover_self_registration(client: TestClient) -> None:
+    """Selbst-Registrierung: Dashboard (Registrierung, Freischalten, Rubriken), Datenschutz und „Konto löschen“."""
+    script = client.get("/web/dashboard.js").text
+    for text in (
+        "Wer darf Konten anlegen?", "Aus – nur Admins legen Konten an",
+        "Mit Freigabe – neue Konten warten, bis du sie freischaltest", "Offen – neue Konten sind sofort nutzbar",
+        "Rubriken für neue Konten", "registration_default_categories", "Noch keine Rubriken angelegt.",
+        "Ohne Auswahl sehen neue Konten nichts, bis du ihnen Rubriken freigibst.", "Registrierung öffnen?",
+        "wartet auf Freigabe", "selbst registriert", "Alle (Admin)", "Freischalten…", "Freigeschaltet.",
+        "Konto ablehnen?", "Abgelehnt und gelöscht.", "Rubriken…", "Alle Rubriken (auch künftige)", "Nur ausgewählte",
+        "Rubriken gespeichert.", "users_pending",
+    ):
+        assert text in script, text
+    assert ".innerHTML" not in script and "style:" not in script
+    assert ".check-list" in client.get("/web/dashboard.css").text
+    # Die Löschseite zieht wartende Konten über /auth/withdraw zurück
+    legal_script = client.get("/web/legal.js").text
+    assert "/api/auth/withdraw" in legal_script and "X-Selfify-Account-State" in legal_script
+    privacy = client.get("/datenschutz").text
+    assert "Das Konto wird vom Betreiber angelegt." not in privacy
+    for text in ("Das Konto legt der Betreiber an.", "Für andere sichtbar:", "Registrierung zurückziehen"):
+        assert text in privacy, text
+    deletion = client.get("/konto-loeschen").text
+    assert "Wartet dein Konto noch auf Freischaltung, wird es hier ebenfalls gelöscht." in deletion
