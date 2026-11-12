@@ -6,7 +6,10 @@ import '../../data/models.dart';
 import '../../player/player.dart';
 import '../nav.dart';
 import '../screens/player_widgets.dart';
+import '../widgets/connect_bar.dart';
+import '../widgets/connect_sheet.dart';
 import '../widgets/cover.dart';
+import '../widgets/remote_volume.dart';
 import 'desktop_layout.dart';
 import 'desktop_shell.dart';
 import 'desktop_shortcuts.dart';
@@ -20,7 +23,7 @@ class DesktopPlayerBar extends ConsumerWidget {
     final track = ref.watch(currentTrackProvider);
     // Größere Schrift (Windows: Einstellungen → Barrierefreiheit → Textgröße) macht die Zeitangaben höher
     final textExtra = (MediaQuery.textScalerOf(context).scale(17) - 17).clamp(0.0, 40.0);
-    return Material(
+    final bar = Material(
       color: Colors.black,
       child: SizedBox(
         height: kPlayerBarHeight + textExtra,
@@ -44,6 +47,9 @@ class DesktopPlayerBar extends ConsumerWidget {
         ),
       ),
     );
+    // Im Remote-Modus darüber eine Zeile „Spielt auf …“
+    if (!ref.watch(isRemoteProvider)) return bar;
+    return Column(mainAxisSize: MainAxisSize.min, children: [const ConnectBar(), bar]);
   }
 }
 
@@ -172,6 +178,7 @@ class _Extras extends ConsumerWidget {
               onPressed: () => panels.toggle(DesktopPanel.queue),
             ),
           ],
+          const ConnectButton(),
           _Volume(showSlider: constraints.maxWidth >= 290),
           IconButton(
             tooltip: 'Vollbild',
@@ -195,7 +202,11 @@ class _Volume extends ConsumerStatefulWidget {
 class _VolumeState extends ConsumerState<_Volume> {
   @override
   Widget build(BuildContext context) {
-    final volume = ref.watch(volumeProvider).value ?? ref.read(audioHandlerProvider).player.volume;
+    // Im Remote-Modus die Lautstärke des anderen Geräts – nur, wenn es sie fernsteuern lässt
+    if (ref.watch(isRemoteProvider) && !(ref.watch(remoteDeviceProvider)?.canVolume ?? false)) {
+      return const SizedBox.shrink();
+    }
+    final volume = ref.watch(shownVolumeProvider);
     final icon = volume == 0
         ? Icons.volume_off_rounded
         : volume < 0.5
@@ -207,16 +218,19 @@ class _VolumeState extends ConsumerState<_Volume> {
         IconButton(
           tooltip: volume == 0 ? 'Ton an' : 'Stummschalten',
           icon: Icon(icon),
-          onPressed: () => toggleDesktopMute(ref),
+          onPressed: () => runPlayerAction(context, () => toggleShownMute(ref)),
         ),
         if (widget.showSlider)
           SizedBox(
             width: 110,
-            child: Slider(
-              value: volume.clamp(0.0, 1.0),
-              semanticFormatterCallback: (v) => 'Lautstärke ${(v * 100).round()} %',
-              onChanged: (v) => setDesktopVolume(ref, v),
-            ),
+            // Ferngesteuert: Befehle gedrosselt, Wert beim Ziehen lokal gehalten
+            child: ref.watch(isRemoteProvider)
+                ? const RemoteVolumeSlider()
+                : Slider(
+                    value: volume.clamp(0.0, 1.0),
+                    semanticFormatterCallback: (v) => 'Lautstärke ${(v * 100).round()} %',
+                    onChanged: (v) => runPlayerAction(context, () => setShownVolume(ref, v)),
+                  ),
           ),
       ],
     );

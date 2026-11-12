@@ -4,6 +4,7 @@ Start: uvicorn app.main:create_app --factory
 """
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.config import Settings, get_settings
+from app.connect.hub import ConnectHub
 from app.database import create_db_engine, create_session_factory, run_migrations
 from app.downloads.events import EventHub
 from app.downloads.manager import DownloadManager
@@ -24,6 +26,7 @@ from app.routers import (
     admin,
     auth,
     categories,
+    connect,
     downloads,
     library,
     me,
@@ -48,6 +51,27 @@ REGISTER_MAX_PER_IP = 5
 REGISTER_WINDOW_SECONDS = 60 * 60
 
 
+_TOKEN_IN_URL = re.compile(r"((?:^|[?&\s])(?:access_)?token=)[^&\s\"']+", re.IGNORECASE)
+
+
+class RedactTokens(logging.Filter):
+    """Entfernt Tokens aus Links im Log (`?token=…` bei WebSockets und Downloads-Ereignissen).
+
+    uvicorn schreibt jede WebSocket-Verbindung mit vollem Query-String ins Log („WebSocket /api/connect/ws?token=…“).
+    Wer das Container-Log lesen kann, könnte sich sonst bis zum Ablauf des Tokens als dieses Gerät anmelden."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            text = record.getMessage()
+        except Exception:  # noqa: BLE001 – kaputte Log-Argumente nicht hier scheitern lassen
+            return True
+        if "token=" not in text.lower():
+            return True
+        record.msg = _TOKEN_IN_URL.sub(r"\1***", text)
+        record.args = ()
+        return True
+
+
 def configure_logging(level: str) -> None:
     logging.basicConfig(
         level=level.upper(),
@@ -55,6 +79,11 @@ def configure_logging(level: str) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     logging.getLogger("app").setLevel(level.upper())
+    # Filter am Logger (nicht am Handler): greift auch, wenn uvicorn seine Handler selbst einrichtet
+    for name in ("uvicorn.error", "uvicorn.access", "uvicorn"):
+        target = logging.getLogger(name)
+        if not any(isinstance(f, RedactTokens) for f in target.filters):
+            target.addFilter(RedactTokens())
 
 
 def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVerifier | None = None) -> FastAPI:
@@ -75,6 +104,8 @@ def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVeri
         app.state.scanner.start()
         app.state.downloads.start()
         yield
+        # Geräte-Verbindungen sauber beenden: die Apps verbinden sich nach dem Neustart wieder
+        app.state.connect_hub.close_all(1001)
         app.state.downloads.stop()
         app.state.scanner.stop()
         app.state.engine.dispose()
@@ -101,6 +132,8 @@ def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVeri
     app.state.scanner = LibraryScanner(settings, app.state.session_factory, app.state.covers)
     app.state.youtube = YouTubeMusic(settings.ytmusic_language, settings.ytmusic_location)
     app.state.download_events = EventHub()
+    # Wiedergabe auf anderen Geräten: nur im Speicher dieses einen Prozesses (kein --workers)
+    app.state.connect_hub = ConnectHub(app.state.session_factory)
     app.state.downloads = DownloadManager(
         settings, app.state.session_factory, app.state.scanner, app.state.youtube, app.state.download_events
     )
@@ -142,6 +175,7 @@ def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVeri
         playlists.router,
         personal.router,
         downloads.router,
+        connect.router,
         premium.router,
         premium.admin_router,
         support.router,

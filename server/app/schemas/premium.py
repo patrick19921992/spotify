@@ -12,7 +12,7 @@ CodeText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=4,
 Label = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
 # Schlüssel der Premium-Leistungen (siehe services/features.py)
-FeatureKey = Literal["offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "badge"]
+FeatureKey = Literal["offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "remote", "badge"]
 assert tuple(FeatureKey.__args__) == FEATURES  # type: ignore[attr-defined]
 
 
@@ -131,7 +131,7 @@ class CodeCreateIn(_Duration):
     # Bis wann der Code eingelöst werden kann (leer = beliebig lange)
     valid_until: datetime | None = None
     label: Label = ""
-    # Welche Leistungen die Codes freischalten (None = alle). Doppelte werden zusammengefasst, alle 8 = None
+    # Welche Leistungen die Codes freischalten (None = alle). Doppelte werden zusammengefasst, alle = None
     features: list[FeatureKey] | None = None
 
     @field_validator("features")

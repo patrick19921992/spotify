@@ -68,6 +68,8 @@ SPECS: dict[str, Spec] = {
     # Überspringen begrenzen (nur in der App durchsetzbar): ohne Premium höchstens so oft je Stunde
     "skips_requires_premium": Spec(False),
     "free_skips_per_hour": Spec(6, 100, 1),
+    # Auf anderen Geräten abspielen (Übertragen und Fernsteuern, „Selfify Connect“) nur mit Premium
+    "remote_requires_premium": Spec(False),
     # Premium-Abzeichen im Profil zeigen
     "premium_badge_enabled": Spec(False),
     # Laufzeiten des Abos: Kennungen der Basis-Abos aus der Play Console in Anzeigereihenfolge (leer = alle, die

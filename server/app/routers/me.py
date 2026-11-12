@@ -3,11 +3,20 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
+from app.connect.hub import hub_of
 from app.deps import AppSettings, Auth, DbSession
 from app.locks import write_lock
 from app.models import UserSession, utcnow
 from app.routers.auth import token_out
-from app.schemas.user import AccountDeleteIn, MeUpdateIn, PasswordChangeIn, SessionOut, TokenOut, UserOut
+from app.schemas.user import (
+    AccountDeleteIn,
+    MeUpdateIn,
+    PasswordChangeIn,
+    SessionOut,
+    SessionRenameIn,
+    TokenOut,
+    UserOut,
+)
 from app.security import hash_password, verify_password
 from app.services.auth import other_active_admins, reissue_for_session, revoke_all_sessions, revoke_session
 
@@ -37,6 +46,8 @@ def change_password(
     revoke_all_sessions(db, auth.user.id, except_session_id=auth.session.id)
     issued = reissue_for_session(db, settings, request.app.state.secret_key, auth.session, auth.user)
     db.commit()
+    if hub := hub_of(request.app):
+        hub.drop_user(auth.user.id, except_session_id=auth.session.id)
     return token_out(issued)
 
 
@@ -51,28 +62,50 @@ def list_sessions(auth: Auth, db: DbSession) -> list[SessionOut]:
         )
         .order_by(UserSession.last_used_at.desc())
     )
-    return [
-        SessionOut(
-            id=s.id,
-            device_name=s.device_name,
-            user_agent=s.user_agent,
-            ip_address=s.ip_address,
-            created_at=s.created_at,
-            last_used_at=s.last_used_at,
-            expires_at=s.expires_at,
-            current=s.id == auth.session.id,
-        )
-        for s in sessions
-    ]
+    return [_session_out(s, auth.session.id) for s in sessions]
+
+
+def _session_out(s: UserSession, current_id: int) -> SessionOut:
+    return SessionOut(
+        id=s.id,
+        device_name=s.device_name,
+        user_agent=s.user_agent,
+        ip_address=s.ip_address,
+        created_at=s.created_at,
+        last_used_at=s.last_used_at,
+        expires_at=s.expires_at,
+        current=s.id == current_id,
+    )
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionOut)
+def rename_session(session_id: int, body: SessionRenameIn, request: Request, auth: Auth, db: DbSession) -> SessionOut:
+    """Gerät umbenennen (Name in der Geräteliste und bei „Auf anderen Geräten abspielen“)."""
+    session = db.get(UserSession, session_id)
+    if (
+        session is None
+        or session.user_id != auth.user.id
+        or session.revoked_at is not None
+        or session.expires_at <= utcnow()
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gerät nicht gefunden.")
+    session.device_name = body.device_name
+    db.commit()
+    if hub := hub_of(request.app):
+        hub.rename(auth.user.id, session.id, session.device_name)
+    return _session_out(session, auth.session.id)
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_session(session_id: int, auth: Auth, db: DbSession) -> Response:
+def delete_session(session_id: int, request: Request, auth: Auth, db: DbSession) -> Response:
     session = db.get(UserSession, session_id)
     if session is None or session.user_id != auth.user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Gerät nicht gefunden.")
     revoke_session(db, session)
     db.commit()
+    # Verbindung zur Geräte-Steuerung sofort trennen (nicht erst bei der nächsten Neuprüfung)
+    if hub := hub_of(request.app):
+        hub.drop_session(session.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -100,6 +133,9 @@ def delete_account(body: AccountDeleteIn, request: Request, auth: Auth, db: DbSe
         if auth.user.is_admin and other_active_admins(db, auth.user.id) == 0:
             raise HTTPException(status.HTTP_409_CONFLICT, "Du bist der letzte Admin – lege zuerst einen weiteren an.")
         limiter.reset_user(auth.user.username, ip)
+        user_id = auth.user.id
         db.delete(auth.user)
         db.commit()
+    if hub := hub_of(request.app):
+        hub.forget_user(user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.models import User
 
 # Feste Reihenfolge – überall (JSON, Speicherung, Dashboard) in genau dieser Reihenfolge
-FEATURES: tuple[str, ...] = ("offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "badge")
+FEATURES: tuple[str, ...] = ("offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "remote", "badge")
 ALL: frozenset[str] = frozenset(FEATURES)
 
 LABELS = {
@@ -29,6 +29,7 @@ LABELS = {
     "lyrics": "Songtexte",
     "requests": "Mehr Song-Wünsche",
     "skips": "Unbegrenzt überspringen",
+    "remote": "Auf anderen Geräten abspielen",
     "badge": "Premium-Abzeichen",
 }
 
@@ -40,6 +41,7 @@ SWITCHES = {
     "lyrics": "lyrics_requires_premium",
     "requests": "requests_requires_premium",
     "skips": "skips_requires_premium",
+    "remote": "remote_requires_premium",
 }
 
 MSG_VIDEO = "Videos ansehen gibt es nur mit Premium. Als Ton kannst du sie weiter abspielen."
@@ -66,7 +68,7 @@ def ordered(features: Iterable[str]) -> list[str]:
 
 
 def encode(features: Iterable[str] | None) -> str | None:
-    """None oder alle 8 -> None (= alle). Sonst kommagetrennt in FEATURES-Reihenfolge, ohne Doppelte.
+    """None oder alle -> None (= alle). Sonst kommagetrennt in FEATURES-Reihenfolge, ohne Doppelte.
     Leere Menge -> ValueError (eine Lizenz/ein Code schaltet mindestens eine Leistung frei)."""
     if features is None:
         return None

@@ -45,8 +45,7 @@ void openVideo(BuildContext context, WidgetRef ref, Track track) {
 /// Beobachtet Titel, Warteschlange und Wiedergabe, damit sich die Anzeige aktualisiert.
 bool watchIsPlayingContext(WidgetRef ref, bool Function(PlayContext context) matches, List<Track> tracks) {
   final current = ref.watch(currentTrackProvider);
-  ref.watch(queueProvider);
-  final playContext = ref.watch(audioHandlerProvider).playContext;
+  final playContext = ref.watch(playContextProvider);
   if (current == null || playContext == null) return false;
   return matches(playContext) && tracks.contains(current);
 }

@@ -5,8 +5,10 @@ import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../state/auth.dart';
+import '../../state/connect.dart';
 import '../../state/library.dart';
 import '../widgets/common.dart';
+import '../widgets/connect_sheet.dart' show showRenameDeviceDialog;
 import 'account_widgets.dart';
 
 /// Angemeldete Geräte des eigenen Kontos – dieses Gerät zuerst, dann nach letzter Nutzung.
@@ -75,6 +77,20 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
         setState(() => _busy.remove(session.id));
         ref.invalidate(deviceSessionsProvider);
       }
+    }
+  }
+
+  /// Gerät umbenennen (nur Server mit Geräte-Funktion – ältere kennen den Aufruf nicht).
+  Future<void> _rename(DeviceSession session) async {
+    final name = await showRenameDeviceDialog(context, _deviceName(session));
+    if (name == null || !mounted) return;
+    final api = ref.read(apiProvider);
+    if (api == null) return;
+    try {
+      await api.renameSession(session.id, name);
+      if (mounted) ref.invalidate(deviceSessionsProvider);
+    } catch (e) {
+      if (mounted) showError(context, e);
     }
   }
 
@@ -154,6 +170,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   }
 
   Widget _list(List<DeviceSession> sessions) {
+    final canRename = ref.watch(connectProvider.select((s) => s.supported));
     final current = sessions.where((s) => s.current).toList();
     final others = sessions.where((s) => !s.current).toList();
     final bottom = MediaQuery.paddingOf(context).bottom;
@@ -164,7 +181,8 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
         const _Intro(),
         if (current.isNotEmpty) ...[
           const SizedBox(height: 8),
-          for (final session in current) _DeviceCard(session: session),
+          for (final session in current)
+            _DeviceCard(session: session, onRename: canRename ? () => _rename(session) : null),
         ],
         _GroupTitle(others.isEmpty ? 'Andere Geräte' : 'Andere Geräte (${others.length})'),
         if (others.isEmpty)
@@ -189,6 +207,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
               session: session,
               busy: _busy.contains(session.id),
               onLogout: _loggingOutAll ? null : () => _logout(session),
+              onRename: canRename ? () => _rename(session) : null,
             ),
         if (others.length >= 2)
           Padding(
@@ -283,8 +302,9 @@ class _DeviceCard extends StatelessWidget {
   final DeviceSession session;
   final bool busy;
   final VoidCallback? onLogout;
+  final VoidCallback? onRename;
 
-  const _DeviceCard({required this.session, this.busy = false, this.onLogout});
+  const _DeviceCard({required this.session, this.busy = false, this.onLogout, this.onRename});
 
   @override
   Widget build(BuildContext context) {
@@ -360,6 +380,13 @@ class _DeviceCard extends StatelessWidget {
               ],
             ),
           ),
+          if (onRename != null)
+            PopupMenuButton<String>(
+              tooltip: 'Mehr',
+              icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
+              onSelected: (_) => onRename!(),
+              itemBuilder: (_) => const [PopupMenuItem(value: 'rename', child: Text('Umbenennen'))],
+            ),
         ],
       ),
     );

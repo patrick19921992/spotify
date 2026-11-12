@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../core/theme.dart';
+import '../../data/connect_models.dart';
 import '../../data/models.dart';
 import '../../player/player.dart';
 import '../../state/settings.dart';
@@ -36,7 +37,25 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
   /// an eine gleiche Kopie desselben Songs vererbt (die wäre sonst unsichtbar, spielt aber trotzdem).
   int _removals = 0;
 
-  SelfifyAudioHandler get _handler => ref.read(audioHandlerProvider);
+  PlayerController get _player => ref.read(playerProvider);
+
+  /// Im Remote-Modus schon entfernte Einträge (Index in der Warteschlange des anderen Geräts) – bis dessen neuer Stand
+  /// kommt, sonst stünde eine weggewischte Zeile noch einmal im Baum.
+  final _removedRemote = <int>{};
+  int? _remoteRev;
+
+  /// Kommende Titel des ferngesteuerten Geräts (höchstens 50, wie der Server sie schickt).
+  List<_Entry> _remoteUpcoming(RemoteState remote) {
+    if (_remoteRev != remote.queueRev) {
+      _remoteRev = remote.queueRev;
+      _removedRemote.clear();
+    }
+    return [
+      for (final entry in remote.upcomingEntries)
+        if (!_removedRemote.contains(entry.index))
+          _Entry(entry.index, entry.track, ValueKey('remote-${remote.queueRev}-${entry.index}')),
+    ];
+  }
 
   /// Kommende Titel in Abspiel-Reihenfolge (berücksichtigt die Zufallswiedergabe).
   List<_Entry> _upcoming(SelfifyAudioHandler handler) {
@@ -71,18 +90,22 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
 
   void _remove(_Entry entry) {
     _removals++;
-    _apply(_handler.removeQueueItemAt(entry.index));
+    if (ref.read(isRemoteProvider)) _removedRemote.add(entry.index);
+    _apply(_player.removeFromQueue(entry.index).catchError((Object e) {
+      _removedRemote.remove(entry.index);
+      throw e;
+    }));
   }
 
   void _move(List<_Entry> upcoming, int from, int to) {
     if (from == to || from < 0 || to < 0 || from >= upcoming.length || to >= upcoming.length) return;
-    _apply(_handler.moveQueueItem(upcoming[from].index, upcoming[to].index));
+    _apply(_player.moveInQueue(upcoming[from].index, upcoming[to].index));
   }
 
   Future<void> _clear() async {
     try {
       // Berücksichtigt auch die Zufallswiedergabe (kommende Titel vor dem aktuellen)
-      await _handler.clearUpcoming();
+      await _player.clearUpcoming();
       if (mounted) showMessage(context, 'Warteschlange geleert');
     } catch (e) {
       if (mounted) showError(context, e);
@@ -97,13 +120,28 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
     ref.watch(mediaItemProvider);
     ref.watch(playbackStateProvider);
     final autoplay = ref.watch(settingsProvider.select((s) => s.autoplay));
+    final remote = ref.watch(remoteStateProvider);
+    final isRemote = ref.watch(isRemoteProvider);
 
-    final tracks = handler.tracks;
-    final live = handler.currentTrack;
-    if (live != null) _lastCurrent = live;
-    final current = live ?? (tracks.isNotEmpty ? _lastCurrent : null);
-    final shuffle = handler.player.shuffleModeEnabled;
-    final upcoming = _upcoming(handler);
+    final Track? current;
+    final bool shuffle;
+    final List<_Entry> upcoming;
+    final PlayContext? source;
+    if (isRemote) {
+      // Ein anderes Gerät spielt: dessen Warteschlange
+      current = remote?.track;
+      shuffle = remote?.shuffle ?? false;
+      upcoming = remote == null ? const [] : _remoteUpcoming(remote);
+      source = remote?.context;
+    } else {
+      final tracks = handler.tracks;
+      final live = handler.currentTrack;
+      if (live != null) _lastCurrent = live;
+      current = live ?? (tracks.isNotEmpty ? _lastCurrent : null);
+      shuffle = handler.player.shuffleModeEnabled;
+      upcoming = _upcoming(handler);
+      source = handler.playContext;
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -131,7 +169,7 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
                       SliverToBoxAdapter(child: _NowPlayingRow(track: current)),
                       SliverToBoxAdapter(
                         child: _UpcomingHeader(
-                          source: playContextLabel(handler.playContext),
+                          source: playContextLabel(source),
                           upcoming: upcoming,
                           shuffle: shuffle,
                           onClear: upcoming.isEmpty ? null : _clear,
@@ -191,7 +229,7 @@ class _QueueScreenState extends ConsumerState<QueueScreen> {
         child: ListTile(
           contentPadding: EdgeInsets.only(left: 16, right: reorderable ? 0 : 8),
           minLeadingWidth: 0,
-          onTap: () => _apply(_handler.skipToQueueItem(entry.index)),
+          onTap: () => _apply(_player.skipToQueueItem(entry.index)),
           leading: CoverImage(coverId: track.coverId, size: 48),
           title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.tileTitle),
           subtitle: Text(track.artistDisplay, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.tileSubtitle),

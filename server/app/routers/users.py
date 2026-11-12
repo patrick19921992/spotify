@@ -1,8 +1,9 @@
 """Benutzerverwaltung – nur für Admins (z. B. Konten für die Kinder anlegen)."""
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
+from app.connect.hub import hub_of
 from app.deps import AdminUser, DbSession
 from app.locks import write_lock
 from app.models import Category, User
@@ -60,7 +61,7 @@ def get_user(user_id: int, _: AdminUser, db: DbSession) -> UserOut:
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-def update_user(user_id: int, body: UserUpdateIn, admin: AdminUser, db: DbSession) -> UserOut:
+def update_user(user_id: int, body: UserUpdateIn, request: Request, admin: AdminUser, db: DbSession) -> UserOut:
     # Prüfung „bleibt ein Admin übrig?“ und Änderung am Stück – zwei Admins, die sich gleichzeitig herabstufen, würden
     # sonst beide durchgehen und niemanden übrig lassen
     with write_lock:
@@ -95,11 +96,19 @@ def update_user(user_id: int, body: UserUpdateIn, admin: AdminUser, db: DbSessio
             user.password_hash = hash_password(body.password)
             revoke_all_sessions(db, user.id)
         db.commit()
+    hub = hub_of(request.app)
+    if hub is not None:
+        if body.is_active is False or body.password is not None:
+            # Konto deaktiviert oder Passwort zurückgesetzt: alle Geräte-Verbindungen sofort trennen
+            hub.drop_user(user.id)
+        elif body.is_admin is not None or body.all_categories is not None or body.category_ids is not None:
+            # Sichtbarkeit geändert: Titelangaben der anderen Geräte neu laden (verborgene Rubriken fallen weg)
+            hub.refresh_visibility(user.id)
     return UserOut.model_validate(user)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, admin: AdminUser, db: DbSession) -> Response:
+def delete_user(user_id: int, request: Request, admin: AdminUser, db: DbSession) -> Response:
     with write_lock:
         user = _get_user(db, user_id)
         if user.id == admin.id:
@@ -108,4 +117,6 @@ def delete_user(user_id: int, admin: AdminUser, db: DbSession) -> Response:
             raise HTTPException(status.HTTP_409_CONFLICT, "Es muss mindestens ein aktiver Admin bleiben.")
         db.delete(user)
         db.commit()
+    if hub := hub_of(request.app):
+        hub.forget_user(user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

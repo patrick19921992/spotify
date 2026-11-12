@@ -23,6 +23,7 @@ import '../widgets/common.dart';
 import '../widgets/cover.dart';
 import '../widgets/track_tile.dart';
 import 'home_widgets.dart';
+import 'player_widgets.dart' show runPlayerAction;
 
 /// Startseite ("Start") wie bei Spotify: Begrüßung, Schnellzugriff und Abschnitte vom Server.
 /// Ohne Netz bzw. im Offline-Modus: alles, was aufs Handy geladen wurde.
@@ -238,7 +239,7 @@ class _HomeSectionView extends ConsumerWidget {
     }
     // Läuft der Titel schon: nur pausieren/fortsetzen
     if (ref.read(isCurrentTrackProvider(track.id))) {
-      await ref.read(playerProvider).togglePlay();
+      await runPlayerAction(context, ref.read(playerProvider).togglePlay);
       return;
     }
     await playWithFeedback(
@@ -614,7 +615,7 @@ class _DownloadedHeader extends ConsumerWidget {
             onPressed: tracks.isEmpty
                 ? null
                 : () => active
-                    ? ref.read(playerProvider).togglePlay()
+                    ? runPlayerAction(context, ref.read(playerProvider).togglePlay)
                     : playWithFeedback(context, ref, tracks, playContext: _downloadedContext),
           ),
         ],
@@ -823,7 +824,7 @@ class _OfflineCollectionSheet extends ConsumerWidget {
                   onPressed: tracks.isEmpty
                       ? null
                       : () => active
-                          ? ref.read(playerProvider).togglePlay()
+                          ? runPlayerAction(context, ref.read(playerProvider).togglePlay)
                           : playWithFeedback(context, ref, tracks, playContext: playContext),
                 ),
               ],

@@ -6,6 +6,7 @@ import 'billing/billing.dart';
 import 'core/theme.dart';
 import 'player/player.dart';
 import 'state/auth.dart';
+import 'state/connect.dart';
 import 'ui/desktop/desktop_layout.dart';
 import 'ui/desktop/desktop_shortcuts.dart';
 import 'ui/router.dart';
@@ -25,6 +26,8 @@ class SelfifyApp extends ConsumerWidget {
     // Kauf-Strom und fragt den Store selbst nach Käufen, die beim letzten Mal nicht fertig wurden (von sich aus
     // meldet Google Play sie nicht). In allen anderen Fällen wird das Kauf-Paket nie angefasst.
     if (ref.watch(billingVisibleProvider)) ref.listen(billingProvider, (_, _) {});
+    // Wiedergabe auf anderen Geräten: Verbindung halten, sobald der Server es kann (sonst passiert nichts)
+    ref.listen(connectProvider, (_, _) {});
     // Beim Abmelden Wiedergabe beenden
     ref.listen(authProvider, (previous, next) {
       final wasLoggedIn = previous?.value?.isLoggedIn ?? false;

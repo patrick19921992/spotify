@@ -1,9 +1,10 @@
 """Schemas für Login, Benutzer und Geräte."""
 
+import unicodedata
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.schemas.common import DisplayName, LoginUsername, Password, Username
 
@@ -56,6 +57,22 @@ class MeUpdateIn(BaseModel):
 class PasswordChangeIn(BaseModel):
     current_password: Annotated[str, StringConstraints(max_length=128)]
     new_password: Password
+
+
+class SessionRenameIn(BaseModel):
+    """Gerät umbenennen: getrimmt, ohne Steuerzeichen, 1–100 Zeichen."""
+
+    device_name: str
+
+    @field_validator("device_name")
+    @classmethod
+    def _clean_name(cls, value: str) -> str:
+        cleaned = "".join(ch for ch in value if unicodedata.category(ch) != "Cc").strip()
+        if not cleaned:
+            raise ValueError("Bitte gib einen Namen ein.")
+        if len(cleaned) > 100:
+            raise ValueError("Der Name darf höchstens 100 Zeichen lang sein.")
+        return cleaned
 
 
 class SessionOut(BaseModel):

@@ -1,4 +1,3 @@
-import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +15,7 @@ import '../widgets/common.dart';
 import '../widgets/premium_gate.dart';
 import '../widgets/track_menu.dart';
 import '../widgets/track_tile.dart';
+import 'player_widgets.dart' show runPlayerAction;
 
 // Gemeinsame Bausteine für die Album- und Künstlerseite.
 
@@ -111,8 +111,7 @@ void detailOpenVideo(BuildContext context, WidgetRef ref, Track track) {
 /// Beobachtet Titel und Warteschlange, damit sich die Anzeige aktualisiert.
 bool watchDetailContextActive(WidgetRef ref, String type, int id) {
   final current = ref.watch(currentTrackProvider);
-  ref.watch(queueProvider);
-  final playContext = ref.watch(audioHandlerProvider).playContext;
+  final playContext = ref.watch(playContextProvider);
   if (current == null || playContext == null) return false;
   return playContext.type == type && playContext.id == id;
 }
@@ -276,7 +275,7 @@ class DetailPlayControls extends ConsumerWidget {
     final id = playContext.id;
     final active = id != null && watchDetailContextActive(ref, playContext.type, id);
     final playing = active && ref.watch(isPlayingProvider);
-    final shuffleOn = active && ref.watch(playbackStateProvider).value?.shuffleMode == AudioServiceShuffleMode.all;
+    final shuffleOn = active && ref.watch(shuffleEnabledProvider);
     final player = ref.read(playerProvider);
     // Videos laufen beim Abspielen als Ton mit
     final playable = tracks.isNotEmpty;
@@ -290,7 +289,7 @@ class DetailPlayControls extends ConsumerWidget {
           onPressed: !playable
               ? null
               : () => active
-                    ? player.toggleShuffle()
+                    ? runPlayerAction(context, player.toggleShuffle)
                     : detailPlay(context, ref, tracks, playContext: playContext, shuffle: true),
         ),
         const SizedBox(width: 8),
@@ -298,7 +297,7 @@ class DetailPlayControls extends ConsumerWidget {
           playing: playing,
           onPressed: !playable
               ? null
-              : () => active ? player.togglePlay() : detailPlay(context, ref, tracks, playContext: playContext),
+              : () => active ? runPlayerAction(context, player.togglePlay) : detailPlay(context, ref, tracks, playContext: playContext),
         ),
       ],
     );

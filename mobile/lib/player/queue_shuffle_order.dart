@@ -14,6 +14,23 @@ class QueueShuffleOrder extends DefaultShuffleOrder {
   /// Reihenfolge, die nach dem nächsten Einfügen wiederhergestellt wird (beim Neuaufbau der Stream-Links).
   List<int>? restore;
 
+  /// Reihenfolge, die beim nächsten Mischen statt einer zufälligen gilt. just_audio mischt bei jedem Laden
+  /// (`setAudioSources`) neu – so bleibt z. B. die von einem anderen Gerät übernommene Reihenfolge erhalten.
+  List<int>? keepOnShuffle;
+
+  @override
+  void shuffle({int? initialIndex}) {
+    final keep = keepOnShuffle;
+    keepOnShuffle = null;
+    if (keep != null && keep.length == indices.length && keep.toSet().containsAll(indices)) {
+      indices
+        ..clear()
+        ..addAll(keep);
+      return;
+    }
+    super.shuffle(initialIndex: initialIndex);
+  }
+
   @override
   void insert(int index, int count) {
     for (var i = 0; i < indices.length; i++) {

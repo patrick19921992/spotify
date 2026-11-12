@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../core/client_info.dart';
 import 'models.dart';
@@ -170,6 +171,18 @@ class ApiClient {
   /// erneuter Fehler hinter dem noch laufenden Fehler-Handler warten, und alles bliebe für immer hängen.
   late final Dio _retryDio;
   Completer<Tokens>? _refreshing;
+  final _tokenChanges = StreamController<Tokens>.broadcast();
+
+  /// Meldet jede Token-Erneuerung (z. B. für die Geräte-Verbindung, die den neuen Token in-band schickt).
+  Stream<Tokens> get tokenChanges => _tokenChanges.stream;
+
+  /// Neue Token übernehmen (speichern und melden). Nur für [refresh]/Passwortwechsel – und Tests.
+  @visibleForTesting
+  void adoptTokens(Tokens tokens) {
+    _tokens = tokens;
+    onTokens(tokens);
+    _tokenChanges.add(tokens);
+  }
 
   ApiClient({
     required this.baseUrl,
@@ -361,8 +374,7 @@ class ApiClient {
     completer.future.ignore();
     try {
       final response = await _refreshDio.post('/auth/refresh', data: {'refresh_token': _tokens.refreshToken});
-      _tokens = Tokens.fromResponse(response.data as Json);
-      onTokens(_tokens);
+      adoptTokens(Tokens.fromResponse(response.data as Json));
       completer.complete(_tokens);
       return _tokens;
     } catch (e) {
@@ -433,6 +445,13 @@ class ApiClient {
     );
   }
 
+  /// Geräte-Verbindung („Wiedergabe auf anderen Geräten“). Der Token geht im Header `Authorization` mit – nicht im
+  /// Link, damit er in keinem Zugriffsprotokoll landet.
+  Uri connectWebSocketUri() {
+    final base = Uri.parse(baseUrl);
+    return base.replace(scheme: base.scheme == 'https' ? 'wss' : 'ws', path: '${base.path}/api/connect/ws');
+  }
+
   /// Datei (Stream) direkt herunterladen – für den Offline-Modus.
   Future<Response<dynamic>> downloadFile(String url, String savePath,
       {void Function(int received, int total)? onProgress, CancelToken? cancelToken}) async {
@@ -481,13 +500,16 @@ class ApiClient {
   Future<Tokens> changePassword(String current, String newPassword) async {
     final tokens = await _send('POST', '/me/password', (d) => Tokens.fromResponse(d as Json),
         body: {'current_password': current, 'new_password': newPassword});
-    _tokens = tokens;
-    onTokens(tokens);
+    adoptTokens(tokens);
     return tokens;
   }
 
   Future<List<DeviceSession>> sessions() => _get('/me/sessions', (d) => _listOf(d, DeviceSession.fromJson));
   Future<void> deleteSession(int id) => _noContent('DELETE', '/me/sessions/$id');
+
+  /// Gerät umbenennen (nur Server mit „connect“, ältere kennen den Aufruf nicht).
+  Future<DeviceSession> renameSession(int id, String name) =>
+      _send('PATCH', '/me/sessions/$id', (d) => DeviceSession.fromJson(d as Json), body: {'device_name': name});
   Future<void> logout() => _noContent('POST', '/auth/logout');
 
   /// Konto samt Playlists, Lieblingssongs und Verlauf endgültig löschen (Passwort zur Bestätigung).

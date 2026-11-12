@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
+from app.connect.hub import hub_of
 from app.deps import AdminUser, AppSettings, CurrentUser, DbSession
 from app.locks import write_lock
 from app.models import PlayPurchase, PremiumCode, PremiumLicense, User, utcnow
@@ -221,6 +222,8 @@ def redeem_code(body: RedeemIn, request: Request, user: CurrentUser, db: DbSessi
             raise HTTPException(exc.status_code, exc.message) from None
         limiter.reset_user(key, ip)
         db.commit()
+    if hub := hub_of(request.app):
+        hub.refresh_access(user.id)
     return _my_premium_out(db, user, app_config.get_all(db), utcnow())
 
 
@@ -365,7 +368,7 @@ def get_user_premium(user_id: int, _: AdminUser, db: DbSession) -> UserPremiumOu
 
 
 @admin_router.post("/users/{user_id}/premium", response_model=UserPremiumOut, status_code=status.HTTP_201_CREATED)
-def grant_user_premium(user_id: int, body: GrantIn, _: AdminUser, db: DbSession) -> UserPremiumOut:
+def grant_user_premium(user_id: int, body: GrantIn, request: Request, _: AdminUser, db: DbSession) -> UserPremiumOut:
     """Premium direkt vergeben (ohne Code). Zeitlich begrenztes Premium verlängert ein laufendes."""
     user = _get_user(db, user_id)
     with write_lock:
@@ -375,15 +378,19 @@ def grant_user_premium(user_id: int, body: GrantIn, _: AdminUser, db: DbSession)
             db.rollback()
             raise HTTPException(exc.status_code, exc.message) from None
         db.commit()
+    if hub := hub_of(request.app):
+        hub.refresh_access(user.id)
     return _user_premium_out(db, user)
 
 
 @admin_router.delete("/users/{user_id}/premium", response_model=RevokedOut)
-def revoke_user_premium(user_id: int, _: AdminUser, db: DbSession) -> RevokedOut:
+def revoke_user_premium(user_id: int, request: Request, _: AdminUser, db: DbSession) -> RevokedOut:
     """Entzieht dem Benutzer jedes Premium (alle Lizenzen)."""
     user = _get_user(db, user_id)
     revoked = service.revoke_user(db, user.id)
     db.commit()
+    if hub := hub_of(request.app):
+        hub.refresh_access(user.id)
     return RevokedOut(revoked=revoked)
 
 

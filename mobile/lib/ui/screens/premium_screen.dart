@@ -59,6 +59,7 @@ List<String> premiumBenefitsFor(AppConfig config, {bool wishlistVisible = false}
           : 'Unbegrenzt Songs wünschen – ohne Premium ${config.freeRequestsPerWeek} pro Woche',
     if (only.contains(PremiumFeature.skips))
       'Unbegrenzt überspringen – ohne Premium ${config.freeSkipsPerHour}-mal pro Stunde',
+    if (only.contains(PremiumFeature.remote)) 'Auf anderen Geräten abspielen und fernsteuern',
     if (config.premiumBadgeEnabled) 'Premium-Abzeichen im Profil',
   ];
 }

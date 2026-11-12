@@ -828,6 +828,165 @@ den echten Unraid-Server, **nicht** mit einer echten App auf einem Gerät.
 - Offline-Titel einer entzogenen Rubrik verschwinden erst, wenn die App das Konto neu geladen hat (ohne Netz gilt
   der zuletzt bekannte Stand).
 
+### Wiedergabe auf anderen Geräten
+
+Stand: Server mit automatischen Tests (`tests/test_connect.py`, 40 Tests, TestClient + `websocket_connect`; alle 390
+Server-Tests grün, `ruff` sauber), App mit automatischen Tests gegen eine **Fake-Verbindung** und den Fake-Player
+(`test/connect_state_test.dart` 29, `test/connect_exec_test.dart` 11, `test/connect_ui_test.dart` 14,
+`test/connect_fixes_test.dart` 14; alle 764 App-Tests grün, `flutter analyze` ohne Befund). Zusätzlich wurden die Nachrichten, die die App erzeugt (`hello`,
+`state` mit und ohne Zufall, `release`-Stand, alle `cmd`-Argumente), gegen die Prüfung des Servers
+(`app/connect/protocol.py`) laufen gelassen – sie gehen durch. **Nicht** geprüft: App und Server zusammen über eine
+echte Verbindung, irgendein echtes Gerät, der echte Unraid-Server, Reverse Proxy oder Cloudflare-Tunnel.
+
+**Server**
+
+- [x] Ohne bzw. mit ungültigem Token und mit Medien-Token → Close 4401 (nach `accept()`, damit die App 4401 statt
+      HTTP 403 sieht) (`test_requires_valid_login`)
+- [x] `hello` → `welcome` mit `device_id` = Sitzung, eigenes Gerät mit `is_self` und Name aus `device_name`;
+      `hello` nicht innerhalb von 10 s, falsche Version, kein JSON, zu groß, Binärdaten → 4400
+      (`test_hello_welcome_and_own_device`, `test_hello_must_come_first_and_in_time`)
+- [x] Nur Geräte desselben Kontos, auch für Admins; fremde Geräte-ID → `unknown_device`
+      (`test_devices_of_the_same_account_only`)
+- [x] Fernbefehl mit `exec`/`ack`/`result`, ohne `ack` → `timeout`; doppelte Befehls-ID → nur ein `exec`, gleiches
+      `result` (`test_remote_command_ack_and_timeout`, `test_duplicate_command_id_runs_once`)
+- [x] `set_volume` an Gerät ohne Lautstärke und Befehle an Gerät ohne Wiedergabe → `unsupported`
+      (`test_unsupported_volume_and_device_without_playback`)
+- [x] Sichtbarkeit: `play` und der Zustand für andere Geräte enthalten nur sichtbare Titel, nur unsichtbare →
+      `not_found` (`test_play_filters_tracks_by_visibility`, `test_remote_state_lists_only_visible_tracks`)
+- [x] Aktives Gerät: „wer zuletzt Play meldet, gewinnt“, das andere bekommt `pause`; `hello.playing` macht aktiv
+      (`test_state_makes_device_active_and_newest_play_wins`, `test_hello_playing_takes_over`)
+- [x] Übertragen mit Stand der Quelle, mit echten Titeln, Rückfall (`resume`), `busy`, ohne Quelle aus dem letzten
+      Stand bzw. `nothing_playing` (`test_transfer_with_release_snapshot`,
+      `test_transfer_real_tracks_fallbacks_and_busy`, `test_transfer_without_source_uses_last_state_or_reports_nothing`)
+- [x] 60-s-Frist nach Abbruch, danach pausierter letzter Stand (`test_grace_period_ends_and_keeps_paused_state`)
+- [x] Sofort trennen bei Gerät abmelden, Logout, Admin sperrt; Passwortwechsel trennt die **anderen** Geräte
+      (`test_revoking_sessions_closes_connections_immediately`, `test_password_change_drops_other_devices`)
+- [x] Neuprüfung erkennt Widerruf und Ablauf (4401 bzw. 4001); `auth` in der Verbindung: gültig → `auth_ok`, fremde
+      Sitzung oder älterer Token → 4401 (`test_recheck_detects_revocation_and_expiry`, `test_token_renewal_in_band`)
+- [x] Zweite Verbindung derselben Sitzung → erste 4409; höchstens 20 Geräte je Konto → 4429
+      (`test_second_connection_of_the_same_device_replaces_the_first`, `test_device_limit_per_account`)
+- [x] Ratenbegrenzung `rate_limited`, Flut → 4429, Drossel für `state` (`test_rate_limits`,
+      `test_state_throttle_drops_bursts`)
+- [x] Premium-Schalter: ohne Premium `allowed=false`, jeder Befehl → `premium`, keine Weitergabe; Admin und Premium
+      erlaubt; Code mit Teilumfang ohne `remote` erlaubt nicht; Änderung in der DB wird per `access` gemeldet
+      (`test_premium_switch`, `test_partial_codes_do_not_include_remote`, `test_access_change_seen_by_recheck`)
+- [x] `PATCH /me/sessions/{id}`: eigener Name, Geräteliste wird verteilt, fremde ID 404, leer 422
+      (`test_rename_session`)
+- [x] `GET /api/server` mit `features: ["connect"]` (`test_server_info_lists_connect_feature`); Herunterfahren
+      schließt mit 1001 (`test_shutdown_closes_connections`)
+- [x] Keine Migration nötig; Modell-/Migrations-Abgleich weiter grün
+- [ ] Im echten Unraid-Container mit einem einzelnen uvicorn-Prozess über Nginx Proxy Manager bzw. SWAG
+- [ ] Über einen Cloudflare-Tunnel: bleibt die Verbindung bei 25-s-Herzschlag stabil offen (Leerlauf-Limit ~100 s)?
+- [ ] Verhalten bei mehreren uvicorn-Workern ist **nicht** unterstützt (nur dokumentiert, nicht abgefangen)
+
+**Dashboard**
+
+- [x] Zeile „Auf anderen Geräten abspielen“ in der Karte „Premium-Leistungen“ vor dem Abzeichen, mit Hinweistext;
+      Label im Code-Dialog („Schaltet frei“) (`test_dashboard_has_remote_switch`, `test_premium_part2.py`)
+- [x] `premium_only`/`locked` enthalten `remote` nur bei Schalter an
+- [ ] Im Browser angeklickt (Umstellen auf „Nur Premium“ und zurück, Code nur mit dieser Leistung)
+
+**App**
+
+- [x] Alter Server ohne `features`: keine Verbindung, kein Geräte-Knopf, kein „Umbenennen“; Handshake 404 oder Close
+      4400 → aus bis zur Rückkehr in die App (`connect_state_test`, `connect_ui_test`)
+- [x] Close-Codes 1001 (Backoff), 4001 (Token erneuern, sofort neu), 4401 (einmal erneuern), 4409 (nicht neu), 4429
+      (ab 30 s); Rückkehr in die App setzt die Wartezeit zurück; Token-Erneuerung geht als `auth`; `ping` alle 25 s
+- [x] Im Hintergrund ohne Wiedergabe nach 10 s getrennt, mit Wiedergabe bleibt die Verbindung, unter 10 s auch
+- [x] `hello` mit Typ/Plattform/Fähigkeiten; `welcome` → Geräteliste; Remote-Modus mit lokal hochgerechneter Position;
+      Fehlertexte; offene Befehle scheitern bei Abbruch mit „Keine Verbindung zu deinen Geräten.“
+- [x] Eigener Zustand: entprellt, alle 15 s beim Spielen, einmal beim Pausieren, nach `welcome` sofort; über 1000
+      Titel um den aktuellen herum abgeschnitten
+- [x] Zielgerät (`connect_exec_test`): `take_over` mit Index, Position, Zufallsreihenfolge, Wiederholen und
+      `playing=false`; `release` mit Stand; Überspring-Grenze → `skip_limit`; Offline-Modus → `offline_unavailable`;
+      doppelte `exec`-ID nur einmal ausgeführt; `unsupported`/`bad_request`; strikt nacheinander; hin und zurück
+- [x] Oberfläche (`connect_ui_test`): Geräte-Liste mit allen Texten, Übertragen mit Ladekreis und Meldung, Fehlertext,
+      ausgegrautes Gerät, Premium-Sperre, Umbenennen (auch in *Angemeldete Geräte*), Mini-Player und „Spielt auf …“,
+      `PlayerController.play` schickt `cmd play`, Vollbild-Player ohne Geschwindigkeit und Schlaf-Timer, fremde
+      Warteschlange (springen, entfernen)
+- [ ] Windows-Medientasten im Remote-Modus (Umleitung über `mediaKeyTarget` ohne eigenen Test)
+- [ ] Android: Handy spielt im Hintergrund weiter und bleibt in der Liste; pausiert im Hintergrund verschwindet es
+      nach 10 s und erscheint beim Öffnen wieder
+- [ ] iPhone: dasselbe (eingefrorene Verbindung im Hintergrund, Rückkehr)
+- [ ] Windows-PC als Ziel und als Fernbedienung (Lautstärke, Tastenkürzel, Leiste über der Player-Leiste)
+- [ ] Netzwechsel WLAN ↔ Mobilfunk während der Wiedergabe (60-s-Frist, Wiederverbinden)
+- [ ] Übertragen Handy → PC → Handy mit echter Musik: Position, Zufall, Warteschlange stimmen; kein doppeltes
+      Abspielen
+- [ ] Zwei Geräte drücken fast gleichzeitig Play
+- [ ] Play-Version und GitHub-Version, Tablet-Erkennung (kurze Seite ≥ 600)
+
+**Datenschutz und Play Store**
+
+- [x] Datenschutzerklärung (`server/app/web/legal.py`): Gerätename änderbar, neuer Punkt „Wiedergabe auf anderen
+      Geräten“ (Gerätetyp, Plattform, Wiedergabe-Status, nur eigene Geräte, nur im Arbeitsspeicher)
+- [x] `docs/PLAYSTORE.md`: Datensicherheit und Tabelle 10.13 ergänzt
+- [ ] Data-Safety-Formular in der Play Console tatsächlich angepasst (macht der Betreiber)
+- [ ] Rechtliche Prüfung der Texte (Vorlage, keine Rechtsberatung)
+
+**Bewusst offen / bekannte Grenzen** (siehe README › Auf anderen Geräten abspielen)
+
+- Handys und Tablets sind nur sichtbar, solange die App offen ist oder spielt (Akku; kein Dauer-Dienst).
+- Kein Zustand über Server-Neustarts; nur ein uvicorn-Prozess.
+- Lautstärke nur bei einem PC als Ziel (am Handy im Vollbild-Player, gedrosselt); Überspring-Grenze zählt auf dem
+  Zielgerät.
+- Kein Web-Dashboard als Wiedergabe-Gerät, keine Direktverbindung im Heimnetz.
+- Ältere Apps erscheinen nicht und werden nicht automatisch angehalten; ältere Apps können bei „Nur Premium“ eine
+  leere Zeile „Mit Premium: “ zeigen.
+- Missbrauchtes Refresh-Token: Trennen erst bei der nächsten Neuprüfung (spätestens 25 s).
+- „Als Nächstes“ auf dem steuernden Gerät höchstens 50 Titel, bei „Alle wiederholen“ ohne Wiederbeginn.
+- Warteschlangen über 1000 Titel: behoben (siehe „Nachprüfung“ unten).
+
+**Nachprüfung (15 bestätigte Funde, alle behoben, jeweils mit Regressionstest)**
+
+Server (`tests/test_connect.py`, jetzt 40 Tests):
+
+- [x] Gelöschtes Konto: Hub vergisst Verbindungen, aktives Gerät und letzten Stand (`forget_user`); zusätzlich ist
+      der Eintrag an das Anlegedatum des Kontos gebunden – ein neues Konto mit derselben ID erbt nichts
+      (`test_deleted_account_leaves_nothing_for_a_new_account_with_the_same_id`,
+      `test_deleting_own_account_forgets_the_state`,
+      `test_account_with_other_creation_time_does_not_inherit_the_hub_entry`)
+- [x] Rubrik entzogen: Titel-Zwischenspeicher verworfen, neue `queue_rev`, Stand sofort neu verteilt
+      (`refresh_visibility`, `test_hidden_category_removes_cached_track_details`)
+- [x] `?token=` im uvicorn-Log wird zu `token=***` (`RedactTokens` in `app/main.py`,
+      `test_query_token_is_not_logged`)
+- [x] Server-Befehls-IDs `srv-<Prozess>-<n>` statt `srv-<n>` (`test_server_command_ids_are_unique_per_process`)
+- [x] Nur der Wechsel „pausiert → spielt“ zählt als Play-Druck; bis zur Bestätigung von `pause`/`release` gilt das
+      Gerät als spielend (`test_stale_playing_state_does_not_take_playback_back`,
+      `test_late_release_ack_and_stale_state_after_transfer`)
+- [x] Nach `transfer` geht der vorläufige Stand sofort an die anderen Geräte
+      (`test_transfer_sends_state_to_the_giving_device_right_away`)
+- [x] `queue_offset` und `track_id` werden geprüft und durchgereicht
+      (`test_queue_offset_and_expected_track_are_passed_through`)
+
+App (`test/connect_fixes_test.dart`, 14 Tests):
+
+- [x] Verbindungsaufbau mit 15-s-Grenze (`connectTimeout` und `ready.timeout`), danach neuer Versuch
+- [x] Netzwechsel ersetzt eine bestehende Verbindung sofort; gleicher Netzstand ändert nichts
+- [x] `/api/server` beim Start gescheitert: erneute Abfrage bei Netzwechsel und mit Wartezeit (5/15/30/60 s)
+- [x] Gemerkte `exec`-IDs gelten nur je Verbindung (nach Server-Neustart wird `srv-1 pause` wieder ausgeführt)
+- [x] Remote-Modus nur, solange das aktive Gerät in der Liste steht (Gnadenfrist: dieses Gerät bleibt bedienbar)
+- [x] Lange Warteschlangen: Versatz und erwarteter Titel in `skip_to`/`remove_queue`/`move_queue`; `play` mit
+      Ausschnitt um den gewählten Titel; Zielgerät trifft beim schnellen doppelten Entfernen den gemeinten Titel
+- [x] Lautstärke des PCs im Vollbild-Player am Handy; Regler (auch am PC) gedrosselt auf 4 Befehle/s, Wert beim
+      Ziehen gehalten
+- [x] Vollbild-Player schließt sich nicht, solange nach einer Übertragung der erste Stand fehlt
+- [x] Play/Zufall auf Album-, Playlist-, Mix-, Start-, Rubrik- und Offline-Seiten zeigen Fehler als Meldung
+      (`runPlayerAction`)
+
+**Abgleich App ↔ Server (Protokoll)**
+
+- [x] Versionsfeld: App sendet `hello.v = 1`, Server erwartet `1`, `welcome.protocol = 1`
+- [x] Nachrichtentypen beidseitig gleich benannt; unbekannte Typen ignorieren beide
+- [x] Felder `Device` (`id`, `name`, `kind`, `platform`, `caps.volume`, `caps.play`, `is_self`, `is_active`),
+      `RemoteState` (inkl. `track`, `upcoming`, `queue_rev`), `exec` (`id`, `from`, `action`, `args`), `result`/`ack`
+      (`ok`, `code`, `message`, `snapshot`) stimmen überein
+- [x] Fehlercodes und Texte in App und Server identisch
+- [x] Zeitgrenzen passen: App wartet 20 s auf `result`, Server höchstens 3 s (`release`) + 8 s (`take_over`)
+- [x] Indizes bei Warteschlangen über 1000 Titel: `State.queue_offset` (Beginn des Ausschnitts), Befehle mit Index
+      zählen in der vollen Warteschlange und tragen optional `track_id`; neuer Fehlercode `queue_changed`
+      (Text in App und Server gleich)
+- [ ] Echte Verbindung App ↔ Server (kein gemeinsamer Test; beide Seiten nur gegen eigene Fakes geprüft)
+
 ## Weitermachen nach einer Unterbrechung
 
 - Fertige Prüfbereiche werden nicht wiederholt: Der Prüf-Durchlauf (`wf_bbbf3d22-7ca`) lässt sich

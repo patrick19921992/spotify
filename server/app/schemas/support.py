@@ -108,6 +108,7 @@ class AppConfigOut(BaseModel):
     free_requests_per_week: int
     skips_requires_premium: bool
     free_skips_per_hour: int
+    remote_requires_premium: bool
     premium_badge_enabled: bool
     # Laufzeiten des Abos (Kennungen der Basis-Abos, Komma) und die empfohlene
     billing_base_plans: str
@@ -146,6 +147,7 @@ class AppConfigIn(BaseModel):
     free_requests_per_week: int | None = None
     skips_requires_premium: bool | None = None
     free_skips_per_hour: int | None = None
+    remote_requires_premium: bool | None = None
     premium_badge_enabled: bool | None = None
     billing_base_plans: str | None = None
     billing_recommended_plan: str | None = None

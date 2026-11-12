@@ -1,4 +1,3 @@
-import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +14,7 @@ import '../widgets/cover.dart';
 import '../widgets/playlist_picker.dart';
 import '../widgets/track_tile.dart';
 import 'home_widgets.dart';
+import 'player_widgets.dart' show runPlayerAction;
 
 /// Ein Mix (Genre-Mix, Entdecken, Künstler-/Rubrik-Mix …) – aufgebaut wie eine Playlist.
 class MixScreen extends ConsumerWidget {
@@ -177,7 +177,7 @@ class _MixHeader extends ConsumerWidget {
     final active = watchIsPlayingContext(ref, _matches, tracks);
     final playing = active && ref.watch(isPlayingProvider);
     final shuffleOn = active &&
-        ref.watch(playbackStateProvider).value?.shuffleMode == AudioServiceShuffleMode.all;
+        ref.watch(shuffleEnabledProvider);
     final offline = ref.watch(offlineProvider);
     final downloadedCount = tracks.where((t) => offline.isDownloaded(t.id)).length;
     final allDownloaded = tracks.isNotEmpty && downloadedCount == tracks.length;
@@ -281,7 +281,7 @@ class _MixHeader extends ConsumerWidget {
                   onPressed: tracks.isEmpty
                       ? null
                       : () => active
-                          ? player.toggleShuffle()
+                          ? runPlayerAction(context, player.toggleShuffle)
                           : playWithFeedback(context, ref, tracks, playContext: playContext, shuffle: true),
                 ),
                 const SizedBox(width: 8),
@@ -290,7 +290,7 @@ class _MixHeader extends ConsumerWidget {
                   onPressed: tracks.isEmpty
                       ? null
                       : () => active
-                          ? player.togglePlay()
+                          ? runPlayerAction(context, player.togglePlay)
                           : playWithFeedback(context, ref, tracks, playContext: playContext),
                 ),
               ],

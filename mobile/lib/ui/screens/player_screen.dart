@@ -13,7 +13,10 @@ import '../../state/offline.dart';
 import '../desktop/desktop_layout.dart';
 import '../nav.dart';
 import '../widgets/common.dart';
+import '../widgets/connect_bar.dart';
+import '../widgets/connect_sheet.dart';
 import '../widgets/cover.dart';
+import '../widgets/remote_volume.dart';
 import '../widgets/track_menu.dart';
 import 'player_lyrics.dart';
 import 'player_widgets.dart';
@@ -55,12 +58,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (_autoClose != null || _closing) return;
     _autoClose = Timer(const Duration(milliseconds: 400), () {
       _autoClose = null;
-      if (!mounted || ref.read(audioHandlerProvider).currentTrack != null) return;
+      if (!mounted || ref.read(currentTrackProvider) != null || _waitingForRemote) return;
       // Liegt noch die Warteschlange darüber, wird beim Zurückkehren erneut geprüft
       if (ModalRoute.isCurrentOf(context) == false) return;
       _close();
     });
   }
+
+  /// Gerade an ein anderes Gerät übertragen und dessen erster Stand ist noch unterwegs: kein Grund zum Schließen.
+  bool get _waitingForRemote => ref.read(isRemoteProvider) && ref.read(remoteStateProvider) == null;
 
   /// Nach unten ziehen (am Anfang der Seite) schließt den Player.
   bool _onScroll(ScrollNotification notification) {
@@ -72,10 +78,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final live = ref.watch(currentTrackProvider);
+    final waiting = ref.watch(isRemoteProvider) && ref.watch(remoteStateProvider) == null;
     // Abhängigkeit: neu prüfen, sobald der Player wieder ganz oben liegt
     final isTop = ModalRoute.isCurrentOf(context) ?? true;
-    if (live != null) {
-      _lastTrack = live;
+    if (live != null || waiting) {
+      if (live != null) _lastTrack = live;
       _autoClose?.cancel();
       _autoClose = null;
     } else if (isTop) {
@@ -84,7 +91,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final track = live ?? _lastTrack;
     if (track == null) return const Scaffold(backgroundColor: AppColors.background);
 
-    final handler = ref.watch(audioHandlerProvider);
+    final playContext = ref.watch(playContextProvider);
     final base = parseHexColor(track.coverColor) ?? AppColors.surfaceHighest;
     final top = darken(base, 0.12);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -121,7 +128,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     SliverToBoxAdapter(
                       child: SizedBox(
                         height: mainHeight,
-                        child: _centered(context, _NowPlaying(track: track, playContext: handler.playContext, onClose: _close)),
+                        child: _centered(context, _NowPlaying(track: track, playContext: playContext, onClose: _close)),
                       ),
                     ),
                     SliverToBoxAdapter(
@@ -276,10 +283,20 @@ class _NowPlaying extends ConsumerWidget {
           padding: EdgeInsets.fromLTRB(12, 4, 12, 0),
           child: PlayerTransportControls(),
         ),
+        // Im Remote-Modus mit einem PC als Ziel: dessen Lautstärke (die Tasten des Handys regeln nur das Handy)
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12),
+          child: RemoteVolumeRow(),
+        ),
         const SizedBox(height: 6),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 12),
           child: _BottomActions(),
+        ),
+        // Im Remote-Modus: „Spielt auf …“ unter den Steuerknöpfen
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24),
+          child: ConnectBar(borderRadius: BorderRadius.all(Radius.circular(6))),
         ),
         const SizedBox(height: 8),
       ],
@@ -376,17 +393,20 @@ class _SwipeCoverState extends ConsumerState<_SwipeCover> with SingleTickerProvi
   }
 }
 
-/// Untere Leiste: Geschwindigkeit, Schlaf-Timer, Warteschlange.
-class _BottomActions extends StatelessWidget {
+/// Untere Leiste: Geschwindigkeit, Schlaf-Timer, Geräte, Warteschlange. Im Remote-Modus ohne Geschwindigkeit und
+/// Schlaf-Timer (die gelten nur für dieses Gerät).
+class _BottomActions extends ConsumerWidget {
   const _BottomActions();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final remote = ref.watch(isRemoteProvider);
     return Row(
       children: [
-        const _SpeedButton(),
+        if (!remote) const _SpeedButton(),
         const Spacer(),
-        const _SleepTimerButton(),
+        if (!remote) const _SleepTimerButton(),
+        const ConnectButton(),
         IconButton(
           tooltip: 'Warteschlange',
           icon: const Icon(Icons.queue_music_rounded),

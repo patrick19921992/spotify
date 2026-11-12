@@ -13,6 +13,9 @@ from app.services import features as feature_set
 
 router = APIRouter(tags=["System"])
 
+# Fähigkeiten dieses Servers für die App (fehlt ein Eintrag, blendet die App die Funktion aus)
+SERVER_FEATURES = ("connect",)
+
 
 @router.get("/health", response_model=HealthOut)
 def health() -> HealthOut:
@@ -27,6 +30,7 @@ def server_info(settings: AppSettings, db: DbSession) -> ServerInfoOut:
         api_version=API_VERSION,
         public_url=settings.public_url,
         registration_mode=app_config.get_all(db)["registration_mode"],
+        features=list(SERVER_FEATURES),
     )
 
 

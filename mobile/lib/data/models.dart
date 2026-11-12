@@ -146,16 +146,23 @@ class ServerInfo {
   /// Selbst-Registrierung: 'off', 'approval' oder 'open' (alter Server: 'off').
   final String registrationMode;
 
+  /// Zusatzfunktionen des Servers (z. B. 'connect' = Wiedergabe auf anderen Geräten). Alter Server: leer.
+  final List<String> features;
+
   const ServerInfo({
     required this.name,
     required this.version,
     required this.apiVersion,
     required this.publicUrl,
     this.registrationMode = 'off',
+    this.features = const [],
   });
 
   /// Bietet der Server „Konto erstellen“ an?
   bool get registrationOpen => registrationModeOpen(registrationMode);
+
+  /// Kann der Server „Wiedergabe auf anderen Geräten“?
+  bool get supportsConnect => features.contains('connect');
 
   factory ServerInfo.fromJson(Json j) => ServerInfo(
         name: j['name'] as String? ?? 'Selfify',
@@ -163,6 +170,7 @@ class ServerInfo {
         apiVersion: _int(j['api_version']),
         publicUrl: j['public_url'] as String? ?? '',
         registrationMode: parseRegistrationMode(j['registration_mode']),
+        features: j['features'] is List ? _strings(j['features']) : const [],
       );
 }
 
@@ -1252,8 +1260,9 @@ abstract final class PremiumFeature {
       lyrics = 'lyrics',
       requests = 'requests',
       skips = 'skips',
+      remote = 'remote',
       badge = 'badge';
-  static const all = [offline, noAds, hqAudio, video, lyrics, requests, skips, badge];
+  static const all = [offline, noAds, hqAudio, video, lyrics, requests, skips, remote, badge];
 
   /// Kurznamen (wie LABELS auf dem Server).
   static const labels = {
@@ -1264,6 +1273,7 @@ abstract final class PremiumFeature {
     lyrics: 'Songtexte',
     requests: 'Mehr Song-Wünsche',
     skips: 'Unbegrenzt überspringen',
+    remote: 'Auf anderen Geräten abspielen',
     badge: 'Premium-Abzeichen',
   };
 
