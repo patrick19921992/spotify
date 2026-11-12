@@ -133,7 +133,8 @@ class _RecordingHandler extends SelfifyAudioHandler {
   List<Track>? played;
 
   @override
-  Future<void> playTracks(List<Track> tracks, {int index = 0, PlayContext? context, bool shuffle = false}) async {
+  Future<void> playTracks(List<Track> tracks,
+      {int index = 0, PlayContext? context, bool shuffle = false, bool wait = true}) async {
     played = tracks;
   }
 }

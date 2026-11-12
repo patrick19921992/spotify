@@ -10,6 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from app.connect.hub import hub_of
 from app.deps import AppSettings, Auth, DbSession, client_ip
 from app.locks import write_lock
 from app.models import Category, User, utcnow
@@ -126,9 +127,11 @@ def refresh(body: RefreshIn, request: Request, db: DbSession, settings: AppSetti
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(auth: Auth, db: DbSession) -> Response:
+def logout(request: Request, auth: Auth, db: DbSession) -> Response:
     revoke_session(db, auth.session)
     db.commit()
+    if hub := hub_of(request.app):
+        hub.drop_session(auth.session.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import func, select
 
+from app.connect.hub import hub_of
 from app.deps import AdminUser, AppSettings, DbSession
 from app.models import DownloadJob, User, UserSession, utcnow
 from app.schemas.premium import BillingStatusOut, BillingTestOut, PremiumStatusOut
@@ -138,6 +139,9 @@ def update_config(request: Request, body: AppConfigIn, _: AdminUser, db: DbSessi
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
     db.commit()
+    # Premium-Schalter können sich geändert haben: offene Geräte-Verbindungen gleich neu prüfen
+    if hub := hub_of(request.app):
+        hub.refresh_all()
     return AppConfigOut(**values, transcode_available=available)
 
 

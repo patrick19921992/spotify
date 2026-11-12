@@ -15,6 +15,7 @@ import '../widgets/cards.dart';
 import '../widgets/common.dart';
 import '../widgets/track_tile.dart';
 import 'home_widgets.dart';
+import 'player_widgets.dart' show runPlayerAction;
 
 /// Neueste Alben einer Rubrik.
 final _categoryAlbumsProvider = FutureProvider.autoDispose.family<List<Album>, int>(
@@ -467,7 +468,7 @@ class _CategoryPlayButton extends ConsumerWidget {
       onPressed: tracks.isEmpty
           ? null
           : () => active
-              ? ref.read(playerProvider).togglePlay()
+              ? runPlayerAction(context, ref.read(playerProvider).togglePlay)
               : playWithFeedback(context, ref, tracks, playContext: playContext),
     );
   }

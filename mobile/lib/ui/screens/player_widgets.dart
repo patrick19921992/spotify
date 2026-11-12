@@ -163,8 +163,7 @@ class PlayerShuffleButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(playbackStateProvider).value?.shuffleMode ?? AudioServiceShuffleMode.none;
-    final active = mode != AudioServiceShuffleMode.none;
+    final active = ref.watch(shuffleEnabledProvider);
     return _ToggleIconButton(
       icon: Icons.shuffle_rounded,
       active: active,
@@ -181,7 +180,7 @@ class PlayerRepeatButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(playbackStateProvider).value?.repeatMode ?? AudioServiceRepeatMode.none;
+    final mode = ref.watch(repeatModeProvider);
     return _ToggleIconButton(
       icon: mode == AudioServiceRepeatMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
       active: mode != AudioServiceRepeatMode.none,
@@ -203,10 +202,8 @@ class PlayerPlayPauseButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(playbackStateProvider).value;
-    final playing = state?.playing ?? false;
-    final processing = state?.processingState;
-    final loading = processing == AudioProcessingState.loading || processing == AudioProcessingState.buffering;
+    final playing = ref.watch(isPlayingProvider);
+    final loading = ref.watch(isBufferingProvider);
     return SizedBox(
       width: size,
       height: size,

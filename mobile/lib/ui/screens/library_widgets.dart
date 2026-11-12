@@ -1,4 +1,3 @@
-import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,6 +12,7 @@ import '../widgets/common.dart';
 import '../widgets/premium_gate.dart';
 import '../widgets/track_menu.dart';
 import '../widgets/track_tile.dart';
+import 'player_widgets.dart' show runPlayerAction;
 
 // Gemeinsame Bausteine für Bibliothek, Lieblingssongs und Playlist-Seite.
 
@@ -39,8 +39,7 @@ Future<void> libraryPlay(
 /// Beobachtet Titel und Warteschlange, damit sich die Anzeige aktualisiert.
 bool watchContextActive(WidgetRef ref, bool Function(PlayContext context) matches, List<Track> tracks) {
   final current = ref.watch(currentTrackProvider);
-  ref.watch(queueProvider);
-  final playContext = ref.watch(audioHandlerProvider).playContext;
+  final playContext = ref.watch(playContextProvider);
   if (current == null || playContext == null) return false;
   return matches(playContext) && tracks.contains(current);
 }
@@ -268,7 +267,7 @@ class LibraryPlayControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final active = watchContextActive(ref, matches, tracks);
     final playing = active && ref.watch(isPlayingProvider);
-    final shuffleOn = active && ref.watch(playbackStateProvider).value?.shuffleMode == AudioServiceShuffleMode.all;
+    final shuffleOn = active && ref.watch(shuffleEnabledProvider);
     final player = ref.read(playerProvider);
     // Videos laufen beim Abspielen als Ton mit
     final playable = tracks.isNotEmpty;
@@ -282,7 +281,7 @@ class LibraryPlayControls extends ConsumerWidget {
           onPressed: !playable
               ? null
               : () => active
-                    ? player.toggleShuffle()
+                    ? runPlayerAction(context, player.toggleShuffle)
                     : libraryPlay(context, ref, tracks, playContext: playContext, shuffle: true),
         ),
         const SizedBox(width: 8),
@@ -290,7 +289,7 @@ class LibraryPlayControls extends ConsumerWidget {
           playing: playing,
           onPressed: !playable
               ? null
-              : () => active ? player.togglePlay() : libraryPlay(context, ref, tracks, playContext: playContext),
+              : () => active ? runPlayerAction(context, player.togglePlay) : libraryPlay(context, ref, tracks, playContext: playContext),
         ),
       ],
     );

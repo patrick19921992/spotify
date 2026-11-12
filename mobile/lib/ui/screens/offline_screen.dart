@@ -19,6 +19,7 @@ import '../widgets/mini_player.dart';
 import '../widgets/premium_gate.dart';
 import '../widgets/track_tile.dart';
 import 'downloads_widgets.dart';
+import 'player_widgets.dart' show runPlayerAction;
 
 /// Wiedergabe-Quelle für "Alle Titel" auf dem Handy.
 const _offlineContext = PlayContext('queue', title: 'Auf diesem Gerät');
@@ -354,11 +355,10 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
         return nameA.toLowerCase().compareTo(nameB.toLowerCase());
       });
 
-    final handler = ref.read(audioHandlerProvider);
-    ref.watch(currentTrackProvider);
+    final playContext = ref.watch(playContextProvider);
     final playingHere = ref.watch(isPlayingProvider) &&
-        handler.playContext?.type == _offlineContext.type &&
-        handler.playContext?.title == _offlineContext.title;
+        playContext?.type == _offlineContext.type &&
+        playContext?.title == _offlineContext.title;
 
     return Scaffold(
       appBar: appBar,
@@ -483,7 +483,7 @@ class _OfflineScreenState extends ConsumerState<OfflineScreen> {
                       PlayButton(
                         size: 44,
                         playing: playingHere,
-                        onPressed: playingHere ? () => ref.read(playerProvider).togglePlay() : () => _playAll(tracks),
+                        onPressed: playingHere ? () => runPlayerAction(context, ref.read(playerProvider).togglePlay) : () => _playAll(tracks),
                       ),
                     ],
                   ),

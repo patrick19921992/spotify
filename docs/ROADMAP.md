@@ -86,7 +86,9 @@ Jeder Schritt endet mit einer Pause, einer Zusammenfassung und deiner Freigabe.
 
 ## Ideen für später
 
-- „Spotify Connect“: auf einem anderen Gerät weiterspielen
+- ~~„Spotify Connect“: auf einem anderen Gerät weiterspielen~~ – umgesetzt als „Auf anderen Geräten abspielen“
+  (Übertragen, Fernsteuern, Zurückholen; siehe README). Offen: Handys im Hintergrund ohne Wiedergabe bleiben
+  unsichtbar, kein Abspielen im Web-Dashboard
 - Android Auto / CarPlay mit eigener Bibliotheks-Ansicht (Steuerung im Auto geht bereits)
 - Kinderprofile, die nur bestimmte Rubriken sehen
 - Jahresrückblick („Dein Jahr in Musik“)

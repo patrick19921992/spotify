@@ -27,6 +27,14 @@ typedef HistoryReporter = void Function(Track track, double seconds, PlayContext
 /// Liefert passende Titel, wenn die Warteschlange zu Ende ist ("Autoplay").
 typedef AutoplayProvider = Future<List<Track>> Function(Track lastTrack);
 
+/// Empfänger der Medientasten, solange ein anderes Gerät ferngesteuert wird.
+abstract interface class MediaKeyTarget {
+  Future<void> play();
+  Future<void> pause();
+  Future<void> next();
+  Future<void> previous();
+}
+
 /// Hintergrund-Wiedergabe mit Sperrbildschirm-/Kopfhörer-/Auto-Steuerung (audio_service + just_audio).
 class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   // Kopfzeilen an Stream-Links (siehe [streamHeaders]) schickt der Player selbst mit – ohne den lokalen
@@ -87,10 +95,18 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   /// Ein Sprung wurde wegen der Grenze verweigert.
   void Function()? onSkipBlocked;
 
+  /// Zählt verweigerte Sprünge – ferngesteuertes „Weiter“ meldet daran die Grenze an das steuernde Gerät zurück.
+  int skipsBlocked = 0;
+
+  /// Medientasten (Windows-Medienübersicht) gehen hierhin statt an diesen Player, solange ein anderes Gerät
+  /// ferngesteuert wird. null = wie bisher.
+  MediaKeyTarget? mediaKeyTarget;
+
   /// Darf jetzt vorgesprungen werden? (Grenze aus: immer)
   bool _skipAllowed() {
     final check = allowSkip;
     if (check == null || check()) return true;
+    skipsBlocked++;
     onSkipBlocked?.call();
     return false;
   }
@@ -282,7 +298,9 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   /// Neue Wiedergabeliste abspielen (ersetzt die Warteschlange).
   /// Videos laufen als Ton mit (wie Musikvideos bei Spotify) – resolveSource fragt dafür nur die Tonspur an.
-  Future<void> playTracks(List<Track> tracks, {int index = 0, PlayContext? context, bool shuffle = false}) async {
+  /// Mit [wait] = false endet der Aufruf, sobald die Wiedergabe gestartet ist (für Fernbefehle).
+  Future<void> playTracks(List<Track> tracks,
+      {int index = 0, PlayContext? context, bool shuffle = false, bool wait = true}) async {
     final audio = tracks.toList();
     if (audio.isEmpty) return;
     // Nach Position, nicht nach Gleichheit: derselbe Titel kann mehrfach vorkommen
@@ -311,7 +329,54 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       await player.shuffle();
       await player.setShuffleModeEnabled(true);
     }
-    await player.play();
+    wait ? await player.play() : player.play().ignore();
+  }
+
+  /// Warteschlange übernehmen (Übertragung von einem anderen Gerät): wie [playTracks], aber ab [position], mit
+  /// gegebener Zufallsreihenfolge und Wiederholung – und nur mit [playing] auch gleich abspielen. Wartet nicht, bis
+  /// die Wiedergabe wieder endet (`play()` von just_audio endet erst beim nächsten Pausieren).
+  Future<void> loadQueue(
+    List<Track> tracks, {
+    required int index,
+    Duration position = Duration.zero,
+    bool playing = true,
+    bool shuffle = false,
+    List<int>? shuffleOrder,
+    AudioServiceRepeatMode repeat = AudioServiceRepeatMode.none,
+    PlayContext? context,
+  }) async {
+    final audio = tracks.toList();
+    if (audio.isEmpty) return;
+    final start = index >= 0 && index < audio.length ? index : 0;
+    final current = currentTrack;
+    if (current != null) _report(current, _lastPosition);
+    _lastIndex = null;
+    _tracks
+      ..clear()
+      ..addAll(audio);
+    _context = context;
+    _publishQueue();
+    await player.setShuffleModeEnabled(false);
+    _sourcesExpireAt = null;
+    _order = QueueShuffleOrder();
+    // Reihenfolge des anderen Geräts übernehmen (nur wenn sie zu dieser Liste passt)
+    final order = shuffleOrder;
+    final keepOrder = shuffle &&
+        order != null &&
+        order.length == audio.length &&
+        order.toSet().length == audio.length &&
+        order.every((i) => i >= 0 && i < audio.length);
+    if (keepOrder) _order.keepOnShuffle = List.of(order);
+    await player.setAudioSources(
+      audio.map(_sourceFor).toList(),
+      initialIndex: start,
+      initialPosition: position < Duration.zero ? Duration.zero : position,
+      shuffleOrder: _order,
+    );
+    if (shuffle && !keepOrder) await player.shuffle();
+    if (shuffle) await player.setShuffleModeEnabled(true);
+    await setRepeatMode(repeat);
+    if (playing) player.play().ignore();
   }
 
   /// Am Ende der Warteschlange anhängen (Videos als Ton).
@@ -382,17 +447,31 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   @override
-  Future<void> skipToQueueItem(int index) async {
+  Future<void> skipToQueueItem(int index) => skipToIndex(index);
+
+  /// Wie [skipToQueueItem]; mit [wait] = false endet der Aufruf, sobald die Wiedergabe läuft (für Fernbefehle).
+  Future<void> skipToIndex(int index, {bool wait = true}) async {
     if (index < 0 || index >= _tracks.length) return;
     if (allowSkip != null && _isAhead(index) && !_skipAllowed()) return;
     await player.seek(Duration.zero, index: index);
-    if (!player.playing) await player.play();
+    if (!player.playing) {
+      wait ? await player.play() : player.play().ignore();
+    }
   }
 
   @override
   Future<void> play() async {
     await _renewExpiringSources();
+    // Nach stop() (z. B. an ein anderes Gerät abgegeben) zählt der Verlauf ab hier wieder mit
+    _lastIndex ??= player.currentIndex;
     await player.play();
+  }
+
+  /// Weiterspielen ohne zu warten, bis wieder pausiert wird (für Fernbefehle).
+  Future<void> resume() async {
+    await _renewExpiringSources();
+    _lastIndex ??= player.currentIndex;
+    player.play().ignore();
   }
 
   @override
@@ -482,7 +561,9 @@ class SelfifyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     final playing = player.playing;
     final shuffle = player.shuffleModeEnabled;
     _sourcesExpireAt = null;
-    _order.restore = List.of(_order.indices); // Zufallsreihenfolge beibehalten
+    // Zufallsreihenfolge beibehalten – auch über das Mischen beim Laden hinweg (just_audio mischt dabei neu)
+    _order.restore = List.of(_order.indices);
+    _order.keepOnShuffle = List.of(_order.indices);
     await player.setAudioSources(
       _tracks.map(_sourceFor).toList(),
       initialIndex: index,

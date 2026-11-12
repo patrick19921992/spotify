@@ -109,6 +109,20 @@ class WindowsMediaControls {
   }
 
   void _onButton(PressedButton button) {
+    // Ein anderes Gerät wird ferngesteuert: Medientasten steuern dieses (wie die Knöpfe in der App)
+    final handler = this.handler;
+    final remote = handler is SelfifyAudioHandler ? handler.mediaKeyTarget : null;
+    if (remote != null) {
+      final Future<void>? action = switch (button) {
+        PressedButton.play => remote.play(),
+        PressedButton.pause || PressedButton.stop => remote.pause(),
+        PressedButton.next => remote.next(),
+        PressedButton.previous => remote.previous(),
+        _ => null,
+      };
+      action?.catchError((Object _) {});
+      return;
+    }
     final Future<void>? action = switch (button) {
       // Ohne Titel (z. B. nach dem Abmelden) gibt es nichts abzuspielen
       PressedButton.play => handler.mediaItem.value == null ? null : handler.play(),

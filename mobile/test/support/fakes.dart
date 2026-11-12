@@ -1,6 +1,7 @@
 // Testdaten und nachgestellte Server-/Plugin-Teile für Bildschirm-Tests.
 
 import 'dart:async';
+import 'dart:io' show SocketException;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -202,9 +203,45 @@ class FakeApi extends ApiClient {
     return value;
   }
 
+  /// `features` von `/api/server` (leer = alter Server ohne „Wiedergabe auf anderen Geräten“).
+  List<String> serverFeatures = const [];
+
+  /// Scheitert `/api/server` (z. B. Start ohne Netz)?
+  bool serverInfoFails = false;
+
   @override
-  Future<ServerInfo> serverInfo() async =>
-      _log('serverInfo', const ServerInfo(name: 'Selfify', version: '0.1.0', apiVersion: 1, publicUrl: ''));
+  Future<ServerInfo> serverInfo() async {
+    _log('serverInfo', null);
+    if (serverInfoFails) throw const SocketException('Netz weg');
+    return ServerInfo(name: 'Selfify', version: '0.1.0', apiVersion: 1, publicUrl: '', features: serverFeatures);
+  }
+
+  @override
+  Future<DeviceSession> renameSession(int id, String name) async {
+    _log('renameSession:$id:$name', null);
+    return (await sessions()).firstWhere((s) => s.id == id);
+  }
+
+  /// Zählt Token-Erneuerungen; [refreshError] lässt sie scheitern.
+  int refreshes = 0;
+  ApiException? refreshError;
+
+  @override
+  Future<Tokens> refresh() async {
+    refreshes++;
+    _log('refresh', null);
+    final error = refreshError;
+    if (error != null) throw error;
+    final fresh = Tokens(
+      accessToken: 'acc$refreshes',
+      refreshToken: 'ref',
+      mediaToken: 'med',
+      accessExpiresAt: DateTime.now().add(const Duration(hours: 1)),
+      mediaExpiresAt: DateTime.now().add(const Duration(days: 7)),
+    );
+    adoptTokens(fresh);
+    return fresh;
+  }
   @override
   Future<User> me() async => _log('me', User.fromJson(userJson(admin: admin)));
   @override

@@ -70,7 +70,14 @@ gespeichert). Das Konto legt der Betreiber an. Erlaubt er es, kannst du es auch 
 nach Einstellung schaltet der Betreiber selbst erstellte Konten erst frei und legt fest, welche Bereiche der
 Musiksammlung du siehst.</li>
 <li><strong>Angemeldete Geräte:</strong> Gerätename, Browser- bzw. App-Kennung, IP-Adresse, Zeitpunkte der Anmeldung
-und letzten Nutzung sowie die App-Version (Plattform, Kanal, Version).</li>
+und letzten Nutzung sowie die App-Version (Plattform, Kanal, Version). Den Gerätenamen kannst du in der App
+ändern.</li>
+<li><strong>Wiedergabe auf anderen Geräten:</strong> Solange die App geöffnet ist oder Musik spielt, hält sie eine
+Verbindung zum Server. Dabei übermittelt sie den Gerätetyp (Handy, Tablet, Computer), die Plattform und den
+Wiedergabe-Status (aktueller Titel, Position, Warteschlange, Zufallswiedergabe, Wiederholen, am Computer die
+Lautstärke). Der Server zeigt diese Angaben nur deinen eigenen Geräten, die mit demselben Konto angemeldet sind, und
+hält sie nur im Arbeitsspeicher: Der Gerätetyp wird nicht gespeichert, der letzte Wiedergabe-Status wird nach
+spätestens 30 Minuten ohne Verbindung und bei jedem Neustart des Servers verworfen.</li>
 <li><strong>Nutzung:</strong> Hörverlauf, Lieblingssongs, Playlists, gespeicherte Alben und Künstler.</li>
 <li><strong>Für andere sichtbar:</strong> Dein Anzeigename erscheint bei anderen Nutzern dieses Servers an Playlists,
 die du teilst, und an Titeln, die du dort hinzufügst.</li>

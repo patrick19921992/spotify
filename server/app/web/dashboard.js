@@ -94,10 +94,11 @@
   function pill(text, kind) { return h("span", { class: "pill" + (kind ? " " + kind : ""), text: text }); }
 
   // Premium-Leistungen – Schlüssel und Namen wie server/app/services/features.py (feste Reihenfolge)
-  var FEATURE_KEYS = ["offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "badge"];
+  var FEATURE_KEYS = ["offline", "no_ads", "hq_audio", "video", "lyrics", "requests", "skips", "remote", "badge"];
   var FEATURE_LABELS = {
     offline: "Offline-Hören", no_ads: "Keine Werbung", hq_audio: "Höhere Tonqualität", video: "Videos ansehen",
-    lyrics: "Songtexte", requests: "Mehr Song-Wünsche", skips: "Unbegrenzt überspringen", badge: "Premium-Abzeichen"
+    lyrics: "Songtexte", requests: "Mehr Song-Wünsche", skips: "Unbegrenzt überspringen",
+    remote: "Auf anderen Geräten abspielen", badge: "Premium-Abzeichen"
   };
   // Umfang eines Codes/einer Lizenz: null = alle Leistungen (immer als Text einsetzen, nie als HTML)
   function scopeText(features) {
@@ -1356,6 +1357,8 @@
             "Durchgesetzt auf dem Server. 0 = ohne Premium keine Wünsche. Premium: ohne Wochengrenze (die allgemeinen Grenzen gegen Missbrauch bleiben)."),
           featureRow("skips", whoSelect("skips_requires_premium", [skips.input]), skips.el,
             "Nur in der App durchgesetzt: ältere App-Versionen zählen nicht mit, und wer die App neu installiert, fängt von vorn an."),
+          featureRow("remote", whoSelect("remote_requires_premium"), null,
+            "Durchgesetzt auf dem Server. Gilt für Übertragen und Fernsteuern; jedes Gerät spielt für sich weiter."),
           featureRow("badge", h("label", { class: "check small" }, badge, "Premium-Nutzer bekommen ein Abzeichen im Profil"), null,
             "Nur in der App sichtbar, nur für den Benutzer selbst.")
         ], ""));

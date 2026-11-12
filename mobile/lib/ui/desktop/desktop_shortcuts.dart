@@ -2,10 +2,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../player/player.dart';
 import '../../player/windows_media_controls.dart' show windowsMediaControlsActive;
 import '../../state/auth.dart';
+import '../../state/connect.dart';
 import '../router.dart';
 import '../screens/video_screen.dart' show openVideoPages;
 import '../widgets/common.dart';
@@ -84,17 +86,25 @@ Map<ShortcutActivator, Intent> get desktopShortcuts => <ShortcutActivator, Inten
 /// Lautstärke (0–1) des Players.
 final volumeProvider = StreamProvider<double>((ref) => ref.watch(audioHandlerProvider).player.volumeStream);
 
-const _prefVolume = 'desktop.volume';
+const _prefVolume = desktopVolumeKey;
 
-/// Lautstärke setzen und für den nächsten Start merken. Auf ganze Prozent gerundet – sonst bleibt nach
-/// mehrmals „leiser“ ein winziger Rest (z. B. 1e-16) statt 0, und „Stumm“/„Ton an“ stimmt nicht mehr.
-Future<void> setDesktopVolume(WidgetRef ref, double volume) async {
-  final value = (volume.clamp(0.0, 1.0) * 100).round() / 100;
+/// Angezeigte Lautstärke: die eigene – im Remote-Modus die des anderen Geräts.
+final shownVolumeProvider = Provider<double>((ref) {
+  if (ref.watch(isRemoteProvider)) return ref.watch(remoteStateProvider)?.volume ?? 0;
+  return ref.watch(volumeProvider).value ?? ref.read(audioHandlerProvider).player.volume;
+});
+
+/// Lautstärke dieses Geräts setzen und für den nächsten Start merken (auch für den Videoplayer).
+Future<void> setDesktopVolume(WidgetRef ref, double volume) {
+  SharedPreferences? prefs;
   try {
-    ref.read(sharedPreferencesProvider).setDouble(_prefVolume, value);
+    prefs = ref.read(sharedPreferencesProvider);
   } catch (_) {}
-  await ref.read(audioHandlerProvider).player.setVolume(value);
+  return setPlayerVolume(prefs, ref.read(audioHandlerProvider), volume);
 }
+
+/// Lautstärke aus der Player-Leiste bzw. per Tastenkürzel – im Remote-Modus am anderen Gerät.
+Future<void> setShownVolume(WidgetRef ref, double volume) => ref.read(playerProvider).setVolume(volume);
 
 /// Lautstärke vor dem Stummschalten – gemeinsam für Player-Leiste und Videoplayer (die Lautstärke ist ja
 /// auch gemeinsam). Ohne gemerkten Wert (z. B. stumm gestartet) geht es mit der halben Lautstärke weiter.
@@ -111,6 +121,17 @@ Future<void> toggleDesktopMute(WidgetRef ref) {
     return setDesktopVolume(ref, 0);
   }
   return setDesktopVolume(ref, _volumeBeforeMute);
+}
+
+/// Stummschalten aus der Player-Leiste – im Remote-Modus am anderen Gerät.
+Future<void> toggleShownMute(WidgetRef ref) {
+  if (!ref.read(isRemoteProvider)) return toggleDesktopMute(ref);
+  final volume = ref.read(shownVolumeProvider);
+  if (volume > 0) {
+    _volumeBeforeMute = volume;
+    return setShownVolume(ref, 0);
+  }
+  return setShownVolume(ref, _volumeBeforeMute);
 }
 
 /// Hängt die Desktop-Aktionen über alle Seiten (MaterialApp.builder): Tastenkürzel, Maus-Zurück-Taste,
@@ -161,14 +182,20 @@ class _DesktopActionsState extends ConsumerState<DesktopActions> {
           PreviousTrackIntent: CallbackAction<PreviousTrackIntent>(onInvoke: (_) => _run(player.previous)),
           SeekByIntent: CallbackAction<SeekByIntent>(
             onInvoke: (intent) => _run(() {
-              final handler = ref.read(audioHandlerProvider);
-              if (handler.currentTrack == null) return Future.value();
-              final target = handler.player.position + intent.offset;
+              if (ref.read(currentTrackProvider) == null) return Future.value();
+              final position = ref.read(isRemoteProvider)
+                  ? ref.read(connectProvider.notifier).remotePosition()
+                  : ref.read(audioHandlerProvider).player.position;
+              final target = position + intent.offset;
               return player.seek(target < Duration.zero ? Duration.zero : target);
             }),
           ),
           VolumeByIntent: CallbackAction<VolumeByIntent>(
-            onInvoke: (intent) => setDesktopVolume(ref, ref.read(audioHandlerProvider).player.volume + intent.delta),
+            onInvoke: (intent) {
+              // Im Remote-Modus nur, wenn das andere Gerät die Lautstärke fernsteuern lässt
+              if (ref.read(isRemoteProvider) && !(ref.read(remoteDeviceProvider)?.canVolume ?? false)) return null;
+              return _run(() => setShownVolume(ref, ref.read(shownVolumeProvider) + intent.delta));
+            },
           ),
           FocusSearchIntent: _WhenNoPopup<FocusSearchIntent>(
             (_) {
@@ -202,7 +229,7 @@ class _PlayPauseAction extends Action<PlayPauseIntent> {
   }
 
   // Auf der Videoseite gehört die Leertaste dem Video – sonst liefe zusätzlich die Musik los
-  bool get _canToggle => ref.read(audioHandlerProvider).currentTrack != null && openVideoPages.value == 0;
+  bool get _canToggle => ref.read(currentTrackProvider) != null && openVideoPages.value == 0;
 
   @override
   bool isEnabled(PlayPauseIntent intent) => _focusedControl() != null || _canToggle;

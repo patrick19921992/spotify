@@ -91,7 +91,9 @@ z. B. **Nginx Proxy Manager** oder **SWAG** auf dem Unraid.
 
 - *Domain Names:* `musik.example.de`
 - *Forward Hostname/IP:* IP deines Unraid, *Port:* `8080`, *Scheme:* `http`
-- **Websockets Support: an.** Wird ab Schritt 4 für die Live-Anzeige des Download-Fortschritts gebraucht.
+- **Websockets Support: an.** Wird ab Schritt 4 für die Live-Anzeige des Download-Fortschritts gebraucht und
+  für [Auf anderen Geräten abspielen](#auf-anderen-geräten-abspielen) (`/api/connect/ws`). Ohne WebSockets bleibt
+  der Geräte-Knopf in der App einfach weg.
 - *Block Common Exploits:* an
 - Tab *SSL:* Let's-Encrypt-Zertifikat anfordern, **Force SSL** und **HTTP/2** an
 - Tab *Advanced → Custom Nginx Configuration:* längere Wartezeiten eintragen. Lange Hörbücher werden fürs
@@ -104,6 +106,10 @@ z. B. **Nginx Proxy Manager** oder **SWAG** auf dem Unraid.
 
 Dazu einen DNS-Eintrag (bzw. DynDNS) für `musik.example.de` auf deine Internetadresse und im Router
 Port 443 auf den Proxy weiterleiten.
+
+**Cloudflare-Tunnel statt Portfreigabe:** WebSockets leitet der Tunnel ohne Zusatz-Einstellung weiter. Die
+Geräte-Verbindung schickt alle 25 Sekunden ein Lebenszeichen (App und Server), das liegt unter dem Leerlauf-Limit
+von Cloudflare (rund 100 Sekunden). Ausprobiert ist das bisher nur in Tests, nicht an einem echten Tunnel.
 
 **Sicherheit, weil der Server aus dem Internet erreichbar ist:**
 
@@ -438,7 +444,13 @@ eingeschränkt.** Die Premium-Texte der App richten sich nach dem, was auf „Nu
 | Songtexte | `lyrics_requires_premium` | keine Songtexte | **Server** (403) |
 | Mehr Song-Wünsche | `requests_requires_premium`, `free_requests_per_week` (Standard 3, 0–100; 0 = keine Wünsche) | höchstens so viele Wünsche in 7 Tagen (rollierend) | **Server** (429 bzw. 403) |
 | Überspringen | `skips_requires_premium`, `free_skips_per_hour` (Standard 6, 1–100) | höchstens so oft pro Stunde „Weiter“ | **nur App** (ältere Apps zählen nicht mit, Neuinstallation setzt zurück, Antippen eines Titels in einer Liste und App-Start ohne Verbindung zählen nicht) |
+| Auf anderen Geräten abspielen | `remote_requires_premium` | jedes Gerät spielt nur für sich: kein Übertragen, kein Fernsteuern, kein automatisches Anhalten des anderen Geräts (Geräte-Liste ausgegraut mit Hinweis) | **Server** (Prüfung beim Verbinden und alle 25 s; nach Änderungen im Dashboard sofort) – siehe [Auf anderen Geräten abspielen](#auf-anderen-geräten-abspielen) |
 | Premium-Abzeichen | `premium_badge_enabled` (Ein/Aus) | – (Premium-Nutzer sehen ein Abzeichen in ihrem Profil) | App |
+
+**Codes mit Teilumfang** enthalten „Auf anderen Geräten abspielen“ nur, wenn es beim Erzeugen angehakt war. Codes
+und Lizenzen mit „Alle Leistungen“ (auch alle von vor diesem Update) enthalten es automatisch; ältere Codes mit
+Teilumfang dagegen nicht – steht die Zeile auf „Nur Premium“, können deren Besitzer nicht fernsteuern. Ältere Apps
+zeigen in diesem Fall auf der Premium-Seite womöglich eine leere Zeile „Mit Premium: “ (nur Kosmetik).
 
 Weitere Einstellungen:
 
@@ -571,6 +583,94 @@ Unter *App-Einstellungen › Registrierung* wählst du, **wer Konten anlegen dar
 
 ---
 
+## Auf anderen Geräten abspielen
+
+Wie „Spotify Connect“: Du siehst in der App alle Geräte, auf denen du mit **demselben Konto** angemeldet bist, und
+kannst die Wiedergabe dorthin übertragen oder das andere Gerät fernsteuern – z. B. am Handy aussuchen, am PC hören.
+
+**Was geht**
+
+- **Geräte-Liste:** Knopf „Geräte“ im Mini-Player, im Vollbild-Player (neben „Warteschlange“) und am PC in der
+  Player-Leiste. Die Liste zeigt das eigene Gerät („Dieses Gerät“), das gerade spielende („Spielt gerade“) und alle
+  weiteren verbundenen Geräte mit Symbol für PC, Handy oder Tablet.
+- **Übertragen:** Antippen eines anderen Geräts. Das bisherige Gerät hält an, das neue spielt an derselben Stelle
+  weiter – mit Warteschlange, Zufallsreihenfolge, Wiederholen und „Wird gespielt von …“. Klappt es auf dem Ziel
+  nicht (z. B. Titel dort nicht offline verfügbar), spielt das alte Gerät weiter und die App zeigt den Grund.
+- **Fernsteuern:** Spielt ein anderes Gerät, steuert diese App es: Abspielen/Pause, Weiter, Zurück, Spulen, Zufall,
+  Wiederholen, Titel oder Album antippen, „Als Nächstes spielen“, „Zur Warteschlange“, Radio, Warteschlange
+  (springen, entfernen, verschieben, leeren). Ist das Ziel ein PC, gibt es im Vollbild-Player des Handys und in der
+  Player-Leiste am PC einen Lautstärke-Regler für den PC (die Lautstärketasten des Handys regeln weiter nur das
+  Handy). Tastenkürzel und
+  Medientasten am PC steuern dann ebenfalls das andere Gerät. Eine schmale Leiste „Spielt auf …“ zeigt, wohin die
+  Befehle gehen.
+- **Live-Anzeige:** Titel, Cover, Fortschritt und Warteschlange des anderen Geräts laufen mit.
+- **Zurückholen:** in der Geräte-Liste auf „Dieses Gerät“ tippen.
+- **Umbenennen:** in der Geräte-Liste neben dem eigenen Gerät oder unter *Einstellungen › Angemeldete Geräte* →
+  „Umbenennen“. Der Name ist derselbe wie in der Sitzungsverwaltung.
+- **Wer zuletzt Play drückt, gewinnt:** Startest du auf einem zweiten Gerät etwas, hält das erste automatisch an
+  (nur für Geräte mit der neuen App, siehe unten).
+
+**Voraussetzungen:** Server und App mindestens in der Version mit dieser Funktion (der Server meldet sie in
+`GET /api/server` als `features: ["connect"]`; fehlt das, zeigt die App keinen Geräte-Knopf), WebSockets am
+Reverse Proxy an, auf allen Geräten dasselbe Konto. Ein gemeinsames WLAN ist **nicht** nötig: Alle Geräte reden nur
+mit deinem Server, jedes Zielgerät lädt die Musik selbst über seine eigene Verbindung (mit seinen eigenen
+Einstellungen: Tonqualität, Offline-Dateien, iPhone-Umwandlung). Eine Direktverbindung im Heimnetz gibt es nicht.
+
+**Premium:** Unter *App-Einstellungen › Premium-Leistungen* gibt es die Zeile „Auf anderen Geräten abspielen“
+(Standard „Für alle“). Steht sie auf „Nur Premium“, sieht ein Konto ohne Premium die Geräte ausgegraut mit dem
+Hinweis „Auf anderen Geräten abspielen gibt es nur mit Premium.“; der Server lehnt jeden Befehl ab und hält auch
+kein Gerät mehr automatisch an – jedes Gerät spielt dann nur für sich. Durchgesetzt wird das vom **Server**.
+
+**Grenzen – bitte kennen:**
+
+- **Handys und Tablets erscheinen nur, solange die App geöffnet ist oder Musik spielt.** Geht die App in den
+  Hintergrund und spielt nichts, trennt sie nach 10 Sekunden. Grund: Android hält die App im Hintergrund nur am
+  Leben, solange sie Musik abspielt (Vordergrund-Dienst für Medienwiedergabe), das iPhone friert die Verbindung ohne
+  laufenden Ton ein. Ein Dauer-Dienst nur fürs Erreichbarbleiben würde den Akku leeren – Spotify macht das auch
+  nicht. Der PC bleibt verbunden, solange die App offen ist.
+- **Ein pausiertes Handy in der Tasche lässt sich also nicht vom PC aus starten.** Erst die App öffnen.
+- **Kein Speicher über Neustarts:** Der Server hält alles nur im Arbeitsspeicher. Nach einem Neustart melden sich
+  die Geräte von selbst wieder an; was gerade spielt, ist sofort wieder „aktiv“, ein pausierter Stand ist weg.
+  Bricht die Verbindung des spielenden Geräts ab, bleibt es 60 Sekunden als „aktiv“ stehen (Netzwechsel), sein
+  letzter Stand bleibt 30 Minuten zum Übertragen erhalten. Das passiert auch, wenn ein pausiertes Handy in den
+  Hintergrund geht. In dieser Zeit steuern die anderen Geräte es **nicht** fern (es ist ja nicht erreichbar): Wer am
+  PC Play drückt, spielt am PC; „Weiterhören“ vom letzten Stand des Handys geht über die Geräte-Liste.
+- **Netzwechsel:** Wechselt das Handy das Netz (WLAN ↔ Mobilfunk), baut die App die Geräte-Verbindung sofort neu
+  auf. Startet die App ohne Netz oder während der Server neu startet, fragt sie später von selbst wieder nach.
+- **Gelöschte Konten:** Wird ein Konto gelöscht, vergisst der Server auch dessen Geräte-Stand sofort – ein neues
+  Konto, das dieselbe Benutzer-Nummer bekommt, sieht davon nichts.
+- **Nur ein Server-Prozess:** Die Geräte-Verwaltung liegt im Speicher **eines** uvicorn-Prozesses. Starte den
+  Container nicht mit mehreren Workern (keine Zusatzargumente wie `--workers` an `entrypoint.sh` bzw. den
+  Container-Befehl übergeben) – sonst sehen sich Geräte, die an verschiedenen Prozessen hängen, nicht.
+- **Lautstärke** lässt sich nur bei einem PC als Ziel fernsteuern (von jedem Gerät aus). Handy und iPhone haben
+  keine eigene Lautstärke in der App.
+- **Überspringen ohne Premium** zählt auf dem Gerät, das spielt: „Weiter“ vom Handy aus verbraucht das Kontingent
+  des PCs, wenn der PC spielt; der Hinweis erscheint auf beiden.
+- **Das Web-Dashboard ist kein Wiedergabe-Gerät** und erscheint nicht in der Liste.
+- **Videos** werden nie ferngestartet; landet ein Video in einer ferngesteuerten Warteschlange, läuft es wie bisher
+  als Ton. Geschwindigkeit und Schlaf-Timer gibt es nur für die Wiedergabe auf dem eigenen Gerät.
+- **Ältere Apps** verbinden sich nicht: Sie erscheinen nicht in der Liste und werden auch nicht automatisch
+  angehalten. Windows-PCs ohne funktionierende Wiedergabe (libmpv fehlt) erscheinen ausgegraut mit „Kann gerade
+  nicht abspielen“.
+- **Sehr lange Warteschlangen:** Übertragen und angezeigt werden höchstens 1000 Titel (um den aktuellen herum);
+  wer ferngesteuert in einer längeren Liste einen Titel antippt, schickt 1000 Titel um den gewählten herum.
+  Springen, Entfernen und Verschieben treffen trotzdem den richtigen Titel (das Zielgerät prüft, ob dort noch der
+  gemeinte Titel steht; hat sich die Warteschlange gerade geändert, kommt „Die Warteschlange hat sich gerade
+  geändert. Bitte noch einmal versuchen.“). Die Vorschau „Als Nächstes“ auf dem steuernden Gerät zeigt höchstens 50. Bei „Alle wiederholen“ zeigt sie am Ende
+  der Liste nicht wieder den Anfang.
+- **Sichtbarkeit:** Ein eingeschränktes Konto kann auch über ein anderes Gerät nur Titel aus seinen Rubriken
+  abspielen; der Server filtert jede Titelliste. Nimmt der Admin einem Konto eine Rubrik weg, verschwinden deren
+  Titel sofort auch aus der Anzeige der anderen Geräte. Nur Geräte desselben Kontos sehen und steuern sich – auch
+  Admins sehen keine fremden Geräte.
+- **Token im Log:** Die App meldet sich im Header an. Ein Token im Link (`?token=…`, für andere Clients) schreibt
+  der Server nicht ins Log (`token=***`).
+- **Abmelden wirkt sofort:** Meldest du ein Gerät ab (*Angemeldete Geräte* oder Abmelden in der App), änderst
+  das Passwort, löschst, sperrst oder setzt du ein Konto zurück, trennt der Server die Geräte-Verbindung sofort.
+  Wird ein Anmelde-Token missbraucht und deshalb gesperrt, merkt der Server das bei der regelmäßigen Prüfung
+  spätestens nach 25 Sekunden.
+
+---
+
 ## Einstellungen (Umgebungsvariablen)
 
 | Variable | Standard | Bedeutung |
@@ -634,10 +734,10 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 
 | Bereich | Endpunkte |
 |---------|-----------|
-| System | `GET /health`, `GET /server` (mit `registration_mode`: `off`/`approval`/`open`) |
+| System | `GET /health`, `GET /server` (mit `registration_mode`: `off`/`approval`/`open` und `features`: `["connect"]` = Server kann „Auf anderen Geräten abspielen“) |
 | Anmeldung | `POST /auth/login` (wartendes Konto: **403** mit Header `X-Selfify-Account-State: pending`), `POST /auth/refresh`, `POST /auth/logout` |
 | Registrierung | `POST /auth/register` {username, password, display_name?, device_name?} (ohne Login): **201** mit Tokens (Modus offen), **202** (wartet auf Freigabe), 404 (Modus aus), 409, 422, 429, 503; `POST /auth/withdraw` {username, password}: wartende Registrierung zurückziehen (**204**, 401, 409, 429) |
-| Mein Konto | `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/{id}` |
+| Mein Konto | `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `PATCH /me/sessions/{id}` {device_name} (eigenes Gerät umbenennen, 1–100 Zeichen; 404 „Gerät nicht gefunden.“, 422 bei leerem Namen), `DELETE /me/sessions/{id}` |
 | Benutzer (Admin) | `GET/POST /users`, `GET/PATCH/DELETE /users/{id}` (Felder `all_categories`, `category_ids`; `PATCH {is_active: true}` schaltet ein wartendes Konto frei, `DELETE` lehnt ab) |
 | Rubriken | `GET /categories` (alle bzw. bei eingeschränkten Konten nur die freigegebenen, inkl. Anzahl Titel), `POST /categories`, `PATCH/DELETE /categories/{id}` (Admin) |
 | Bibliothek | `GET /artists`, `GET /artists/{id}`, `GET /albums`, `GET /albums/{id}`, `GET /tracks`, `GET /tracks/{id}` |
@@ -652,6 +752,7 @@ Alle Endpunkte liegen unter `/api`. Die genaue Beschreibung steht unter `/api/do
 | YouTube | `GET /youtube/search?q=…&type=songs\|videos\|albums`, `GET /youtube/albums/{browseId}` |
 | Downloads | `POST /downloads`, `POST /downloads/album`, `POST /downloads/url`, `GET /downloads`, `POST /downloads/{id}/cancel\|retry`, `DELETE /downloads/{id}` |
 | Live-Fortschritt | WebSocket `/api/downloads/ws?token=<access_token>` – `snapshot`, dann `job`-Ereignisse (eigene Downloads; Admins mit `&scope=all` alle) |
+| Geräte-Steuerung | WebSocket `/api/connect/ws` – Anmeldung per Header `Authorization: Bearer <access_token>` (ersatzweise `?token=`, im Log unkenntlich), Protokoll Version 1 mit JSON-Nachrichten: App → Server `hello`, `state`, `cmd`, `ack`, `auth`, `ping`; Server → App `welcome`, `devices`, `state`, `exec`, `result`, `access`, `auth_ok`, `ping`. Close-Codes: 4001 Anmeldung erneuern, 4400 ungültige Nachricht/Protokoll, 4401 nicht angemeldet, 4408 keine Antwort, 4409 auf diesem Gerät neu verbunden, 4429 zu viele Nachrichten/Geräte, 1001 Server fährt herunter. Nur Geräte desselben Kontos |
 | Admin | `DELETE /tracks/{id}?delete_file=true`, `GET /downloads-system`, `POST /downloads-system/update` |
 | App-Konfiguration | `GET /app/config?channel=play&build=54` (ohne Login): Schalter, Update-Stufe, Wartungshinweis, Datenschutz-Links, Offline-Regel (`offline_requires_premium`, `offline_grace_days`, `offline_min_client_build`), Premium-Leistungen (`premium_only`, `free_audio_quality`, `free_requests_per_week`, `free_skips_per_hour`, `premium_badge_enabled`), Kauf (`billing_enabled`, `billing_product_ids`, `billing_base_plans`, `billing_recommended_plan`), Premium-Texte, `registration_mode` |
 | Premium | `GET /premium` (Stand samt `features` = freigeschaltete Leistungen, `premium_only`, `locked` = was dieser Benutzer gerade nicht darf, `badge`, `offline_allowed`, `checked_at`, Abo `play` mit `base_plan_id`/`offer_id`; 503 = gerade nicht prüfbar), `POST /premium/redeem` {code}, `POST /premium/play/verify` {product_id, purchase_token} (Kauf oder Wiederherstellung melden) |

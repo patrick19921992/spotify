@@ -133,6 +133,13 @@ der Ziel-API des verwendeten Flutter (derzeit 36) – du musst nichts tun.
   verarbeitet – dafür nur im Speicher des Servers. Bei angemeldeten Geräten speichert der Server sie zusätzlich
   (siehe Datenschutzerklärung, „Angemeldete Geräte“).
 - *App-Aktivität:* Hörverlauf, Lieblingssongs, Playlists – Funktion der App.
+- *App-Aktivität › App-Interaktionen* – **Auf anderen Geräten abspielen:** Solange die App offen ist oder Musik
+  spielt, überträgt sie den **Gerätenamen** (steht ohnehin schon bei den angemeldeten Geräten), den **Gerätetyp** (Handy, Tablet, Computer), die Plattform und den
+  **aktuellen Wiedergabe-Status** (Titel, Position, Warteschlange, Zufall/Wiederholen) an den eigenen Server. Der
+  Server zeigt das nur den Geräten **desselben Kontos**, gibt es nicht weiter und nutzt es nicht für Werbung.
+  Gerätetyp und Wiedergabe-Status werden **nicht gespeichert** (nur im Arbeitsspeicher, weg nach 30 Minuten ohne
+  Verbindung bzw. beim Neustart); gespeichert bleibt nur der Gerätename der Anmeldung, den der Benutzer ändern kann.
+  Zweck: Funktion der App. Die Funktion lässt sich nicht abschalten, sendet aber nur an deinen Server.
 - *App-Infos und Leistung:* Fehlermeldungen (nur wenn der Benutzer sie absendet), App-Version.
 - *Geräte- oder andere IDs:* **Werbe-ID** (nur wenn Werbung eingeschaltet ist) – für Werbung.
 - *Finanzdaten › Kaufverlauf:* nur wenn du den Kauf in der App einschaltest (Schritt 10) – der Server speichert
@@ -736,6 +743,7 @@ Windows, iPhone); Premium gibt es außerhalb der Play-Version per Code oder von 
 | **Songtexte** | Keine Songtexte; die App zeigt „Songtexte gibt es mit Premium.“ | – | **Server** |
 | **Mehr Song-Wünsche** | Höchstens **N Wünsche in 7 Tagen**; die App zeigt „Noch 2 von 3 Wünschen diese Woche“. Mit Premium ohne Wochengrenze | „Wünsche pro Woche“ (Standard 3, 0–100; **0 = ohne Premium gar keine Wünsche**) | **Server** |
 | **Überspringen** | Höchstens **N-mal pro Stunde** „Weiter“; danach „Du hast in dieser Stunde schon N-mal übersprungen. Mit Premium unbegrenzt.“ | „Mal pro Stunde“ (Standard 6, 1–100) | **nur App** (siehe unten) |
+| **Auf anderen Geräten abspielen** | Die Geräte-Liste ist ausgegraut mit „Auf anderen Geräten abspielen gibt es nur mit Premium.“ und „Premium ansehen“; kein Übertragen, kein Fernsteuern, kein automatisches Anhalten – jedes Gerät spielt nur für sich | – | **Server** (beim Verbinden, alle 25 s und sofort nach Änderungen im Dashboard). **Codes mit Teilumfang** enthalten es nur, wenn es angehakt war – auch ältere Teilumfang-Codes nicht |
 | **Premium-Abzeichen** | – (kein „Für alle“: es ist ein Ein/Aus) | Haken „Premium-Nutzer bekommen ein Abzeichen im Profil“ (Standard aus) | **App**; sieht nur der Benutzer selbst in seinem Profil (Einstellungen) |
 
 Die Zusatzfelder (Qualität, Wünsche, Überspringen) sind ausgegraut, solange die Zeile auf „Für alle“ steht; ihr Wert
@@ -850,3 +858,4 @@ auf „Nur Premium“ stellen – sonst merken sie es zuerst.
 - [ ] Play-Version **und** GitHub-Version starten auf einem echten Handy
 - [ ] Datensicherheit um „Kaufverlauf“ ergänzt; Gebühren auf Googles Seite nachgelesen
 - [ ] Registrierungsmodus geprüft und Data-Safety-Angaben passend (Kontoerstellung, Konto löschen inkl. „Registrierung zurückziehen“, Anzeigename sichtbar, IP-Adresse)
+- [ ] Data-Safety-Angaben um „Auf anderen Geräten abspielen“ ergänzt (Gerätename/-typ, Wiedergabe-Status, nur eigenes Konto, nicht gespeichert)

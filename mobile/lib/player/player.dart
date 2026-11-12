@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/api.dart';
 import '../data/models.dart';
 import '../state/app_config.dart';
 import '../state/auth.dart';
+import '../state/connect.dart';
 import '../state/connectivity.dart';
 import '../state/offline.dart';
 import '../state/offline_access.dart' show clockProvider;
@@ -17,7 +19,7 @@ import 'audio_handler.dart';
 import 'skip_limit.dart';
 import 'windows_audio.dart' show windowsAudioError;
 
-export 'audio_handler.dart' show PlayContext, SelfifyAudioHandler;
+export 'audio_handler.dart' show MediaKeyTarget, PlayContext, SelfifyAudioHandler;
 
 /// Wird in main.dart mit dem gestarteten Handler überschrieben.
 final audioHandlerProvider = Provider<SelfifyAudioHandler>((ref) => throw UnimplementedError());
@@ -153,12 +155,50 @@ final playbackStateProvider = StreamProvider<PlaybackState>((ref) => ref.watch(a
 
 final queueProvider = StreamProvider<List<MediaItem>>((ref) => ref.watch(audioHandlerProvider).queue);
 
-final positionProvider = StreamProvider<Duration>((ref) => ref.watch(audioHandlerProvider).player.positionStream);
+// ------------------------------------------------------------------ Anzeige (lokal oder ferngesteuert)
+//
+// Spielt ein anderes Gerät (Remote-Modus, siehe state/connect.dart), zeigen diese Provider dessen Stand – sonst den
+// des eigenen Players. Die Oberfläche liest nur hier, damit beides gleich aussieht.
 
-final bufferedPositionProvider =
-    StreamProvider<Duration>((ref) => ref.watch(audioHandlerProvider).player.bufferedPositionStream);
+/// Wird gerade ein anderes Gerät ferngesteuert?
+final isRemoteProvider = Provider<bool>((ref) => ref.watch(connectProvider.select((s) => s.isRemote)));
 
-final durationProvider = StreamProvider<Duration?>((ref) => ref.watch(audioHandlerProvider).player.durationStream);
+/// Stand des ferngesteuerten Geräts (null, wenn hier gespielt wird).
+final remoteStateProvider = Provider<RemoteState?>(
+  (ref) => ref.watch(isRemoteProvider) ? ref.watch(connectProvider.select((s) => s.remote)) : null,
+);
+
+/// Das ferngesteuerte Gerät (null, wenn hier gespielt wird).
+final remoteDeviceProvider = Provider<PlaybackDevice?>(
+  (ref) => ref.watch(isRemoteProvider) ? ref.watch(connectProvider.select((s) => s.activeDevice)) : null,
+);
+
+/// Position – im Remote-Modus lokal hochgerechnet (alle 500 ms neu, ohne Uhrvergleich zwischen Geräten).
+final positionProvider = StreamProvider<Duration>((ref) {
+  if (ref.watch(isRemoteProvider)) {
+    final remote = ref.watch(remoteStateProvider);
+    final clock = ref.read(clockProvider);
+    if (remote == null) return Stream.value(Duration.zero);
+    if (!remote.playing) return Stream.value(remote.positionAt(clock()));
+    return _ticking(() => remote.positionAt(clock()));
+  }
+  return ref.watch(audioHandlerProvider).player.positionStream;
+});
+
+Stream<Duration> _ticking(Duration Function() position) async* {
+  yield position();
+  yield* Stream.periodic(const Duration(milliseconds: 500), (_) => position());
+}
+
+final bufferedPositionProvider = StreamProvider<Duration>((ref) {
+  if (ref.watch(isRemoteProvider)) return Stream.value(Duration.zero);
+  return ref.watch(audioHandlerProvider).player.bufferedPositionStream;
+});
+
+final durationProvider = StreamProvider<Duration?>((ref) {
+  if (ref.watch(isRemoteProvider)) return Stream.value(ref.watch(remoteStateProvider)?.duration);
+  return ref.watch(audioHandlerProvider).player.durationStream;
+});
 
 /// Schlaf-Timer: Zeitpunkt der Pause, Epoche 0 = „Ende des Titels“, null = aus.
 /// Startet mit dem aktuellen Wert, damit später geöffnete Bildschirme einen laufenden Timer sehen.
@@ -168,31 +208,107 @@ final sleepTimerProvider = StreamProvider<DateTime?>((ref) async* {
   yield* handler.sleepTimerStream;
 });
 
-/// Der gerade gespielte Titel (mit allen Angaben).
+/// Der gerade gespielte Titel (mit allen Angaben) – im Remote-Modus der des anderen Geräts.
 final currentTrackProvider = Provider<Track?>((ref) {
+  if (ref.watch(isRemoteProvider)) return ref.watch(remoteStateProvider)?.track;
   ref.watch(mediaItemProvider);
   return ref.watch(audioHandlerProvider).currentTrack;
 });
 
-final isPlayingProvider = Provider<bool>((ref) => ref.watch(playbackStateProvider).value?.playing ?? false);
+final isPlayingProvider = Provider<bool>((ref) {
+  if (ref.watch(isRemoteProvider)) return ref.watch(remoteStateProvider)?.playing ?? false;
+  return ref.watch(playbackStateProvider).value?.playing ?? false;
+});
+
+/// Lädt/puffert der Player gerade (Ladekreis im Abspielknopf)? Im Remote-Modus nie.
+final isBufferingProvider = Provider<bool>((ref) {
+  if (ref.watch(isRemoteProvider)) return false;
+  final processing = ref.watch(playbackStateProvider).value?.processingState;
+  return processing == AudioProcessingState.loading || processing == AudioProcessingState.buffering;
+});
+
+/// Zufallswiedergabe an?
+final shuffleEnabledProvider = Provider<bool>((ref) {
+  if (ref.watch(isRemoteProvider)) return ref.watch(remoteStateProvider)?.shuffle ?? false;
+  return (ref.watch(playbackStateProvider).value?.shuffleMode ?? AudioServiceShuffleMode.none) !=
+      AudioServiceShuffleMode.none;
+});
+
+final repeatModeProvider = Provider<AudioServiceRepeatMode>((ref) {
+  if (ref.watch(isRemoteProvider)) return ref.watch(remoteStateProvider)?.repeat ?? AudioServiceRepeatMode.none;
+  return ref.watch(playbackStateProvider).value?.repeatMode ?? AudioServiceRepeatMode.none;
+});
+
+/// Woher die Wiedergabe kommt („Wird gespielt von …“).
+final playContextProvider = Provider<PlayContext?>((ref) {
+  if (ref.watch(isRemoteProvider)) return ref.watch(remoteStateProvider)?.context;
+  ref.watch(queueProvider);
+  ref.watch(mediaItemProvider);
+  return ref.watch(audioHandlerProvider).playContext;
+});
 
 /// Läuft gerade genau dieser Titel?
 final isCurrentTrackProvider =
     Provider.family<bool, int>((ref, trackId) => ref.watch(currentTrackProvider)?.id == trackId);
 
-/// Einfache Steuerung für die Oberfläche.
+/// Meldung, wenn im Offline-Modus keiner der Titel auf dem Gerät liegt.
+const offlineUnavailableMessage = 'Keiner dieser Titel ist offline verfügbar.';
+
+/// Meldung, wenn die Windows-Wiedergabe nicht starten kann.
+const windowsPlaybackMessage = 'Die Wiedergabe unter Windows konnte nicht gestartet werden (libmpv-2.dll fehlt oder '
+    'wird vom Virenschutz blockiert). Bitte Selfify neu installieren.';
+
+/// Gespeicherte Lautstärke am PC.
+const desktopVolumeKey = 'desktop.volume';
+
+/// Lautstärke setzen und für den nächsten Start merken. Auf ganze Prozent gerundet – sonst bleibt nach
+/// mehrmals „leiser“ ein winziger Rest (z. B. 1e-16) statt 0, und „Stumm“/„Ton an“ stimmt nicht mehr.
+Future<void> setPlayerVolume(SharedPreferences? prefs, SelfifyAudioHandler handler, double volume) async {
+  final value = (volume.clamp(0.0, 1.0) * 100).round() / 100;
+  try {
+    prefs?.setDouble(desktopVolumeKey, value).ignore();
+  } catch (_) {}
+  await handler.player.setVolume(value);
+}
+
+/// Einfache Steuerung für die Oberfläche. Im Remote-Modus gehen die Befehle an das aktive andere Gerät.
 class PlayerController {
   final Ref _ref;
   PlayerController(this._ref);
 
   SelfifyAudioHandler get handler => _ref.read(audioHandlerProvider);
 
+  bool get _remote => _ref.read(connectProvider).isRemote;
+
+  /// Befehl an das ferngesteuerte Gerät; Fehler kommen als [StateError] mit verständlichem Text.
+  Future<void> _command(String action, [Map<String, Object?> args = const {}]) async {
+    final result = await _ref.read(connectProvider.notifier).remoteCommand(action, args);
+    if (!result.ok) throw StateError(result.text);
+  }
+
   /// Spielt [tracks] ab Position [index]. Im Offline-Modus nur heruntergeladene Titel.
   Future<void> play(List<Track> tracks, {int index = 0, PlayContext? context, bool shuffle = false}) async {
-    if (windowsAudioError != null) {
-      throw StateError('Die Wiedergabe unter Windows konnte nicht gestartet werden (libmpv-2.dll fehlt oder wird '
-          'vom Virenschutz blockiert). Bitte Selfify neu installieren.');
+    if (_remote) {
+      if (tracks.isEmpty) return;
+      // Höchstens 1000 Titel – bei längeren Listen ein Ausschnitt um den gewählten Titel (sonst startete z. B. Titel
+      // 1201 einer Playlist auf dem anderen Gerät beim ersten Titel)
+      final chosen = index >= 0 && index < tracks.length ? index : 0;
+      final start = queueWindowStart(tracks.length, chosen);
+      return _command('play', {
+        'track_ids': [for (final t in tracks.skip(start).take(ConnectController.maxQueueIds)) t.id],
+        'index': chosen - start,
+        'shuffle': shuffle,
+        'context': playContextJson(context),
+      });
     }
+    await playLocally(tracks, index: index, context: context, shuffle: shuffle);
+  }
+
+  /// Auf diesem Gerät abspielen (auch wenn gerade ein anderes ferngesteuert wird – z. B. als Ziel eines Befehls).
+  /// Mit [wait] = false endet der Aufruf, sobald die Wiedergabe gestartet ist.
+  Future<void> playLocally(List<Track> tracks,
+      {int index = 0, PlayContext? context, bool shuffle = false, bool wait = true}) async {
+    if (windowsAudioError != null) throw StateError(windowsPlaybackMessage);
     // Videos laufen als Ton mit (wie Musikvideos bei Spotify) – sonst hielte z. B. eine Playlist mit
     // Song und Video nach dem Song einfach an. Ansehen lässt sich ein Video weiterhin per Antippen.
     var list = tracks.toList();
@@ -203,34 +319,118 @@ class PlayerController {
       // Fehlt der gewählte Titel offline, geht es mit dem nächsten heruntergeladenen weiter
       final before = list.take(start).where((t) => offline.isDownloaded(t.id)).length;
       list = list.where((t) => offline.isDownloaded(t.id)).toList();
-      if (list.isEmpty) throw StateError('Keiner dieser Titel ist offline verfügbar.');
+      if (list.isEmpty) throw StateError(offlineUnavailableMessage);
       start = before < list.length ? before : 0;
     }
-    await handler.playTracks(list, index: start < 0 ? 0 : start, context: context, shuffle: shuffle);
+    await handler.playTracks(list, index: start < 0 ? 0 : start, context: context, shuffle: shuffle, wait: wait);
   }
 
   Future<void> playOne(Track track, {PlayContext? context}) => play([track], context: context);
 
   Future<void> togglePlay() async {
+    if (_remote) {
+      final playing = _ref.read(connectProvider).remote?.playing ?? false;
+      return playing ? pause() : resume();
+    }
     final handler = this.handler;
     handler.player.playing ? await handler.pause() : await handler.play();
   }
 
-  Future<void> next() => handler.skipToNext();
-  Future<void> previous() => handler.skipToPrevious();
-  Future<void> seek(Duration position) => handler.seek(position);
-  Future<void> addToQueue(List<Track> tracks) => handler.addTracks(tracks);
-  Future<void> playNext(List<Track> tracks) => handler.playNext(tracks);
+  /// Weiterspielen (im Remote-Modus mit sofortiger Anzeige, bei Fehler zurück).
+  Future<void> resume() => _remote ? _optimistic(true) : handler.play();
 
-  Future<void> toggleShuffle() => handler.setShuffleMode(
-      handler.player.shuffleModeEnabled ? AudioServiceShuffleMode.none : AudioServiceShuffleMode.all);
+  Future<void> pause() => _remote ? _optimistic(false) : handler.pause();
+
+  Future<void> _optimistic(bool playing) async {
+    final connect = _ref.read(connectProvider.notifier);
+    connect.showPlaying(playing);
+    final result = await connect.remoteCommand(playing ? 'resume' : 'pause');
+    if (!result.ok) {
+      connect.revertPlaying();
+      throw StateError(result.text);
+    }
+  }
+
+  Future<void> next() => _remote ? _command('next') : handler.skipToNext();
+  Future<void> previous() => _remote ? _command('previous') : handler.skipToPrevious();
+
+  Future<void> seek(Duration position) => _remote
+      ? _command('seek', {'position_ms': position.inMilliseconds < 0 ? 0 : position.inMilliseconds})
+      : handler.seek(position);
+
+  Future<void> addToQueue(List<Track> tracks) => _remote
+      ? _command('add_queue', {'track_ids': [for (final t in tracks.take(1000)) t.id]})
+      : addToQueueLocally(tracks);
+
+  Future<void> playNext(List<Track> tracks) => _remote
+      ? _command('play_next', {'track_ids': [for (final t in tracks.take(1000)) t.id]})
+      : playNextLocally(tracks);
+
+  Future<void> addToQueueLocally(List<Track> tracks) => handler.addTracks(tracks);
+  Future<void> playNextLocally(List<Track> tracks) => handler.playNext(tracks);
+
+  /// Index für einen Befehl an das andere Gerät: [index] zählt im gemeldeten Ausschnitt (`queue_ids`), das Ziel
+  /// rechnet in seiner vollen Warteschlange – also den Versatz dazu. `track_id` sagt, welcher Titel dort erwartet wird
+  /// (hat sich die Warteschlange inzwischen verschoben, trifft der Befehl so trotzdem den gemeinten oder gar keinen).
+  Map<String, Object?> _queueArgs(String key, int index) {
+    final remote = _ref.read(connectProvider).remote;
+    final ids = remote?.queueIds ?? const <int>[];
+    return {
+      key: index + (remote?.queueOffset ?? 0),
+      if (index >= 0 && index < ids.length) 'track_id': ids[index],
+    };
+  }
+
+  /// Zu einem Titel der Warteschlange springen ([index] in der Original-Reihenfolge).
+  Future<void> skipToQueueItem(int index) =>
+      _remote ? _command('skip_to', _queueArgs('index', index)) : handler.skipToQueueItem(index);
+
+  Future<void> removeFromQueue(int index) =>
+      _remote ? _command('remove_queue', _queueArgs('index', index)) : handler.removeQueueItemAt(index);
+
+  Future<void> moveInQueue(int from, int to) => _remote
+      ? _command('move_queue', {
+          ..._queueArgs('from', from),
+          'to': to + (_ref.read(connectProvider).remote?.queueOffset ?? 0),
+        })
+      : handler.moveQueueItem(from, to);
+
+  Future<void> clearUpcoming() => _remote ? _command('clear_upcoming') : handler.clearUpcoming();
+
+  Future<void> toggleShuffle() {
+    if (_remote) {
+      return _command('set_shuffle', {'enabled': !(_ref.read(connectProvider).remote?.shuffle ?? false)});
+    }
+    return handler.setShuffleMode(
+        handler.player.shuffleModeEnabled ? AudioServiceShuffleMode.none : AudioServiceShuffleMode.all);
+  }
 
   /// Aus -> alle wiederholen -> diesen Titel wiederholen -> aus
-  Future<void> cycleRepeat() => handler.setRepeatMode(switch (handler.player.loopMode) {
-        LoopMode.off => AudioServiceRepeatMode.all,
-        LoopMode.all => AudioServiceRepeatMode.one,
-        LoopMode.one => AudioServiceRepeatMode.none,
-      });
+  Future<void> cycleRepeat() {
+    if (_remote) {
+      final next = switch (_ref.read(connectProvider).remote?.repeat ?? AudioServiceRepeatMode.none) {
+        AudioServiceRepeatMode.none => 'all',
+        AudioServiceRepeatMode.one => 'off',
+        _ => 'one',
+      };
+      return _command('set_repeat', {'mode': next});
+    }
+    return handler.setRepeatMode(switch (handler.player.loopMode) {
+      LoopMode.off => AudioServiceRepeatMode.all,
+      LoopMode.all => AudioServiceRepeatMode.one,
+      LoopMode.one => AudioServiceRepeatMode.none,
+    });
+  }
+
+  /// Lautstärke (0–1): am PC die eigene (gemerkt), im Remote-Modus die des anderen Geräts (nur wenn es das kann).
+  Future<void> setVolume(double volume) {
+    if (_remote) return _command('set_volume', {'volume': (volume.clamp(0.0, 1.0) * 100).round() / 100});
+    SharedPreferences? prefs;
+    try {
+      prefs = _ref.read(sharedPreferencesProvider);
+    } catch (_) {}
+    return setPlayerVolume(prefs, handler, volume);
+  }
 
   Future<void> setSpeed(double speed) => handler.setSpeed(speed);
 
@@ -238,12 +438,15 @@ class PlayerController {
   Future<void> startRadio(Track track) async {
     final api = _ref.read(apiProvider);
     if (api == null) return;
-    if (_ref.read(settingsProvider).offlineMode || _ref.read(isOfflineProvider)) {
+    final remote = _remote;
+    if (!remote && (_ref.read(settingsProvider).offlineMode || _ref.read(isOfflineProvider))) {
       throw StateError('Im Offline-Modus ist Radio nicht verfügbar.');
     }
     // Radio bleibt reine Musik (wie Autoplay) – Videos laufen nur mit, wenn man sie selbst in die Liste nimmt
     final tracks = (await api.radio(track.id)).where((t) => !t.isVideo).toList();
-    await handler.playTracks(tracks, context: PlayContext('radio', id: track.id, title: '${track.title}-Radio'));
+    final context = PlayContext('radio', id: track.id, title: '${track.title}-Radio');
+    if (remote) return play(tracks, context: context);
+    await handler.playTracks(tracks, context: context);
   }
 }
 

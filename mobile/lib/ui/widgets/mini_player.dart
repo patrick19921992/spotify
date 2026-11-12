@@ -7,7 +7,10 @@ import '../../state/likes.dart';
 import '../desktop/desktop_layout.dart';
 import '../desktop/desktop_player_bar.dart';
 import '../nav.dart';
+import '../screens/player_widgets.dart' show runPlayerAction;
 import 'common.dart';
+import 'connect_bar.dart';
+import 'connect_sheet.dart';
 import 'cover.dart';
 
 /// Mini-Player über der unteren Leiste – Tippen öffnet den Vollbild-Player.
@@ -70,9 +73,10 @@ class MiniPlayer extends ConsumerWidget {
                         }
                       },
                     ),
+                    const ConnectButton(iconSize: 22),
                     IconButton(
                       icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 30),
-                      onPressed: () => ref.read(playerProvider).togglePlay(),
+                      onPressed: () => runPlayerAction(context, () => ref.read(playerProvider).togglePlay()),
                     ),
                   ],
                 ),
@@ -83,6 +87,8 @@ class MiniPlayer extends ConsumerWidget {
                 backgroundColor: const Color(0x33FFFFFF),
                 color: Colors.white,
               ),
+              // Im Remote-Modus: „Spielt auf …“
+              const ConnectBar(),
             ],
           ),
         ),
