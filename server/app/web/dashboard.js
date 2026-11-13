@@ -902,7 +902,7 @@
         return h("tr", null,
           h("td", null, h("div", { text: user.display_name }), h("div", { class: "small muted", text: "@" + user.username })),
           h("td", null, user.is_admin ? pill("Admin", "blue") : "Benutzer", " ",
-            user.approval_pending ? pill("wartet auf Freigabe", "yellow") : (user.is_active ? null : pill("gesperrt", "red")),
+            user.approval_pending ? pill("wartet auf Freigabe (wird nach 14 Tagen gelöscht)", "yellow") : (user.is_active ? null : pill("gesperrt", "red")),
             user.self_registered ? h("div", { class: "small muted", text: "selbst registriert" }) : null),
           h("td", { class: "small nowrap", text: categoriesText(user) }),
           h("td", null, user.premium.active
@@ -1425,6 +1425,7 @@
         h("h2", { text: "Registrierung" }),
         h("label", { class: "field" }, "Wer darf Konten anlegen?", registrationMode),
         h("div", { class: "small dim", text: "Selbst registrierte Konten dürfen nichts von YouTube laden und sehen keine Admin-Bereiche. Sie sehen nur die Rubriken, die du freigibst." }),
+        h("div", { class: "small dim", text: "Wartende Konten, die du nicht innerhalb von 14 Tagen freischaltest, werden automatisch gelöscht." }),
         h("h3", { text: "Rubriken für neue Konten" }),
         defaultPicker.el,
         h("div", { class: "small dim", text: "Ohne Auswahl sehen neue Konten nichts, bis du ihnen Rubriken freigibst." }));

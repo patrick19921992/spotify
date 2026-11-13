@@ -111,7 +111,8 @@ Betreiber; die App spricht nur mit diesem Server.</p>
 Tagen ohne Nutzung ab. Du kannst dein Konto jederzeit selbst löschen – in der App unter „Einstellungen“ → „Konto
 löschen“ oder auf der Seite <a href="/konto-loeschen">Konto löschen</a>. Dabei werden Konto, Playlists,
 Lieblingssongs, Hörverlauf, Wünsche, Fehlermeldungen und Premium-Zuordnung endgültig gelöscht.</p>
-<p>Lehnt der Betreiber ein selbst erstelltes Konto ab, wird es sofort gelöscht. Solange dein Konto auf Freischaltung
+<p>Lehnt der Betreiber ein selbst erstelltes Konto ab, wird es sofort gelöscht. Schaltet er es nicht innerhalb von
+14 Tagen frei, wird es automatisch gelöscht. Solange dein Konto auf Freischaltung
 wartet, kannst du die Registrierung auf der Anmeldeseite der App („Registrierung zurückziehen“) oder auf der Seite
 <a href="/konto-loeschen">Konto löschen</a> zurückziehen.</p>
 

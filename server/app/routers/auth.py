@@ -19,6 +19,7 @@ from app.security import hash_password, password_needs_rehash, verify_password
 from app.services import app_config
 from app.services.auth import IssuedTokens, refresh_session, revoke_session, start_session
 from app.services.clients import CLIENT_HEADER, parse_client
+from app.services.registration import purge_expired_pending
 
 router = APIRouter(prefix="/auth", tags=["Anmeldung"])
 
@@ -43,7 +44,7 @@ MSG_TOO_MANY_PENDING = "Gerade warten zu viele neue Konten auf Freischaltung. Bi
 MSG_TOO_MANY_NEW = "Gerade werden sehr viele neue Konten angelegt. Bitte versuche es später noch einmal."
 MSG_REGISTERED_PENDING = (
     "Dein Konto wurde angelegt und wartet auf Freischaltung durch den Betreiber. "
-    "Du kannst dich anmelden, sobald es freigeschaltet ist."
+    "Du kannst dich anmelden, sobald es freigeschaltet ist. Ohne Freischaltung wird es nach 14 Tagen gelöscht."
 )
 MSG_REGISTERED_ACTIVE = "Dein Konto ist eingerichtet."
 MSG_ACCOUNT_PENDING = "Dein Konto wartet noch auf Freischaltung durch den Betreiber."
@@ -195,6 +196,8 @@ def _register(request: Request, response: Response, db: DbSession, settings: App
         hash_password(body.password)  # gleiche Laufzeit wie beim Anlegen: verrät nicht, ob es den Namen gibt
         raise HTTPException(status.HTTP_409_CONFLICT, MSG_NAME_TAKEN)
     if mode == "approval":
+        # Abgelaufene wartende Konten zuerst löschen – sie sollen keinen Platz unter der Obergrenze belegen
+        purge_expired_pending(db)
         pending = db.scalar(select(func.count(User.id)).where(User.approval_pending.is_(True))) or 0
         if pending >= MAX_PENDING_ACCOUNTS:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, MSG_TOO_MANY_PENDING)
