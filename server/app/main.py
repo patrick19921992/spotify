@@ -3,6 +3,8 @@
 Start: uvicorn app.main:create_app --factory
 """
 
+import asyncio
+import contextlib
 import logging
 import re
 from collections.abc import AsyncIterator
@@ -42,6 +44,7 @@ from app.routers import (
 from app.security import load_or_create_secret_key
 from app.services.bootstrap import run_bootstrap
 from app.services.play_billing import PurchaseVerifier, build_verifier
+from app.services.registration import purge_expired_pending
 
 logger = logging.getLogger("app")
 
@@ -49,6 +52,8 @@ logger = logging.getLogger("app")
 # erfolgreicher). Liegt nur im Speicher – nach einem Neustart beginnt die Zählung neu, wie beim Login
 REGISTER_MAX_PER_IP = 5
 REGISTER_WINDOW_SECONDS = 60 * 60
+# Aufräumen im Hintergrund (wartende Registrierungen nach Ablauf der Frist löschen): einmal pro Stunde
+HOUSEKEEPING_INTERVAL_SECONDS = 60 * 60
 
 
 _TOKEN_IN_URL = re.compile(r"((?:^|[?&\s])(?:access_)?token=)[^&\s\"']+", re.IGNORECASE)
@@ -91,6 +96,20 @@ def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVeri
     configure_logging(settings.log_level)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
 
+    def _purge_pending(app: FastAPI) -> None:
+        # eigene Sitzung im Hilfs-Thread (eine Sitzung gehört immer nur einem Thread)
+        with app.state.session_factory() as db:
+            purge_expired_pending(db)
+
+    async def _housekeeping(app: FastAPI) -> None:
+        """Stündliche Aufräumarbeiten: wartende Registrierungen nach Ablauf der Frist löschen."""
+        while True:
+            try:
+                await asyncio.to_thread(_purge_pending, app)
+            except Exception:  # noqa: BLE001 – ein Fehler beim Aufräumen darf den Server nicht stoppen
+                logger.exception("Aufräumen wartender Registrierungen fehlgeschlagen")
+            await asyncio.sleep(HOUSEKEEPING_INTERVAL_SECONDS)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Selfify %s startet – Daten: %s, Medien: %s", __version__, settings.data_dir, settings.media_dir)
@@ -103,7 +122,11 @@ def create_app(settings: Settings | None = None, purchase_verifier: PurchaseVeri
             )
         app.state.scanner.start()
         app.state.downloads.start()
+        housekeeping = asyncio.create_task(_housekeeping(app))
         yield
+        housekeeping.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await housekeeping
         # Geräte-Verbindungen sauber beenden: die Apps verbinden sich nach dem Neustart wieder
         app.state.connect_hub.close_all(1001)
         app.state.downloads.stop()

@@ -19,7 +19,7 @@ MSG_OFF = "Auf diesem Server kann man sich nicht selbst registrieren."
 MSG_TAKEN = "Dieser Benutzername ist nicht verfügbar. Bitte wähle einen anderen."
 MSG_PENDING = (
     "Dein Konto wurde angelegt und wartet auf Freischaltung durch den Betreiber. "
-    "Du kannst dich anmelden, sobald es freigeschaltet ist."
+    "Du kannst dich anmelden, sobald es freigeschaltet ist. Ohne Freischaltung wird es nach 14 Tagen gelöscht."
 )
 MSG_LOGIN_PENDING = "Dein Konto wartet noch auf Freischaltung durch den Betreiber."
 
@@ -413,3 +413,57 @@ def test_config_validates_mode_and_categories(client: TestClient, admin_headers:
     assert put(registration_default_categories="").json()["registration_default_categories"] == ""
     assert client.get("/api/app/config").json()["registration_mode"] == "open"
     assert client.get("/api/server").json()["registration_mode"] == "open"
+
+
+# ------------------------------------------------------------------------- Wartende Konten verfallen nach 14 Tagen
+
+
+def test_pending_registrations_are_deleted_after_14_days(client: TestClient, admin_headers: dict[str, str]) -> None:
+    from app.services.registration import PENDING_MAX_DAYS, purge_expired_pending
+
+    assert PENDING_MAX_DAYS == 14
+    set_config(client, admin_headers, registration_mode="approval")
+    assert register(client, "alt").status_code == 202
+    assert register(client, "frisch").status_code == 202
+    assert register(client, "freigegeben").status_code == 202
+    session_factory = client.app.state.session_factory  # type: ignore[attr-defined]
+    with session_factory() as db:
+        users = {u.username: u for u in db.query(User).filter(User.username.in_(["alt", "frisch", "freigegeben"]))}
+        now = utcnow()
+        users["alt"].created_at = now - timedelta(days=14, minutes=1)
+        users["frisch"].created_at = now - timedelta(days=13, hours=23)
+        # freigeschaltet und alt: bleibt
+        users["freigegeben"].created_at = now - timedelta(days=30)
+        users["freigegeben"].approval_pending = False
+        users["freigegeben"].is_active = True
+        db.commit()
+        assert purge_expired_pending(db, now) == 1
+        assert purge_expired_pending(db, now) == 0
+        left = {u.username for u in db.query(User).filter(User.username.in_(["alt", "frisch", "freigegeben"]))}
+    assert left == {"frisch", "freigegeben"}
+    # Anmeldung mit dem gelöschten Konto: wie ein unbekannter Name
+    assert login_status(client, "alt") == 401
+    # vom Admin angelegte Bestandskonten sind nie betroffen
+    with session_factory() as db:
+        assert db.query(User).filter(User.username == "admin").count() == 1
+
+
+def test_expired_pending_accounts_do_not_block_the_pending_limit(
+    client: TestClient, admin_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(auth_router, "MAX_PENDING_ACCOUNTS", 1)
+    set_config(client, admin_headers, registration_mode="approval")
+    assert register(client, "erster").status_code == 202
+    assert register(client, "zweiter").status_code == 503
+    with client.app.state.session_factory() as db:  # type: ignore[attr-defined]
+        first = db.query(User).filter(User.username == "erster").one()
+        first.created_at = utcnow() - timedelta(days=15)
+        db.commit()
+    # das abgelaufene Konto wird beim nächsten Versuch zuerst gelöscht
+    assert register(client, "zweiter").status_code == 202
+    with client.app.state.session_factory() as db:  # type: ignore[attr-defined]
+        assert db.query(User).filter(User.username == "erster").count() == 0
+
+
+def login_status(client: TestClient, username: str) -> int:
+    return client.post("/api/auth/login", json={"username": username, "password": PASSWORD}).status_code

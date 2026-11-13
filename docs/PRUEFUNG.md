@@ -774,6 +774,11 @@ den echten Unraid-Server, **nicht** mit einer echten App auf einem Gerät.
 - [x] 409 ohne Namen in der Meldung, auch für reservierte Namen
 - [x] 422 bei ungültigen Namen bzw. Passwörtern (auch kaputtes JSON)
 - [x] 503 ab 50 wartenden Konten
+- [x] Wartende Konten werden nach 14 Tagen ohne Freischaltung gelöscht (stündlich im Hintergrund und vor jeder
+      Registrierung „mit Freigabe“); freigeschaltete, gesperrte und vom Admin angelegte Konten bleiben; abgelaufene
+      zählen nicht gegen die Obergrenze von 50 (Tests in `test_registration.py`)
+- [ ] Löschen nach 14 Tagen im echten Container beobachtet (Protokollzeile „… wartende Registrierung(en) nach 14
+      Tagen ohne Freischaltung gelöscht.“)
 - [x] Zurückziehen über `POST /auth/withdraw`: 204 / 401 / 409 / 429
 - [x] Bestandskonten sehen alles (Migration 0009: `all_categories=true`, CASCADE, Upgrade/Downgrade auf SQLite)
 - [x] Eingeschränkte: Listen, Suche, Zähler, Startseite, Mixe, Verlauf, Favoriten, Playlists (Länge und Positionen,

@@ -559,7 +559,9 @@ Unter *App-Einstellungen › Registrierung* wählst du, **wer Konten anlegen dar
   IPv6: je /64-Netz, weil ein Anschluss dort meist ein ganzes /64 hat; auch fehlgeschlagene Versuche zählen; die
   Zählung liegt nur im Speicher und beginnt nach einem Neustart von vorn), höchstens **20 neue selbst registrierte
   Konten je Stunde** insgesamt – auch im Modus „Offen“ (danach 503 „Gerade werden sehr viele neue Konten
-  angelegt …“) – und höchstens **50 wartende Konten** gleichzeitig (danach 503, bis du freischaltest oder ablehnst). Reservierte Namen wie `admin`, `root`
+  angelegt …“) – und höchstens **50 wartende Konten** gleichzeitig (danach 503, bis du freischaltest oder ablehnst). Wartende
+  Konten, die du **nicht innerhalb von 14 Tagen** freischaltest, löscht der Server automatisch (stündlich und bei jeder
+  neuen Registrierung); die App sagt das schon beim Registrieren. Reservierte Namen wie `admin`, `root`
   oder `support` sind gesperrt; die Meldung bei einem vergebenen Namen nennt den Namen nicht.
 
 **Grenzfälle, die du kennen solltest:**
